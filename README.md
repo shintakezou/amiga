@@ -8,7 +8,8 @@ written by others (but their programs were *bigger*, not *pure*, not
 written in “100% assembly” — bad thing for me in that age :-D),
 implementations of something I read on some magazine, or alike.
 
-Few files were edited or removed.
+Few files were edited or removed. Typos and grammar errors are usually
+kept (but I fixed something anyway).
 
 Executables aren't included, but I want to show the list of a LHA
 archive to show their sizes (second column).
@@ -36,6 +37,14 @@ assembler.
 In source files you can find comments in Italian and English; the
 encoding for non ASCII letters, when used, is Latin1 (which was the
 default on Amiga, AFAIR).
+
+Textual documentation has `.doc` extension, and AmigaGuide
+documentation uses
+`.guide`. [AmigaGuide](https://en.wikipedia.org/wiki/AmigaGuide) files
+are hypertexts; you can read it with
+`agr`/[AGreader](http://aminet.net/package/misc/unix/AGReader) (I have
+a repository with the idea to enhance the original code in mind, but
+there it is since 2015…).
 
 All email addresses you can find here and there are dead and must not
 be used — if they still exist and someone answers, **it's not me**!
