@@ -1,0 +1,59 @@
+;
+; $VER: AskErr.a  by Mauro Panigada
+;
+; Started: 11-04-1996 (day/month/year)
+; Finished: 11-04-1996                   FREEWARE
+;
+; PURPOSE: Give a help when AmigaDOS says "Can't examine "c2": error 205"
+; I do not know if there is an analog program.
+;
+; Short and very simple, without added stuff which could make it better
+; (more user-friendly, but the same quality!).
+;
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+
+
+		bra.s	start
+
+		dc.b	"$VER: AskErr v1.0 written by Mauro Panigada",0
+		even
+
+start		moveq	#36,d0
+		lea	dosname(pc),a1
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq.s	fastend
+
+		move.l	d0,a6
+		move.l	#template,d1
+		move.l	#array,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d5
+		beq.s	exit0
+		move.l	array,a0
+		move.l	(a0),d1
+		moveq	#0,d2
+		jsr	_LVOPrintFault(a6)
+		move.l	d5,d1
+		jsr	_LVOFreeArgs(a6)
+exit0		move.l	a6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+fastend		rts
+
+dosname		dc.b	"dos.library",0
+		even
+template	dc.b	"ERROR/N/A",0
+		even
+array		dc.l	0
+
+
+		END

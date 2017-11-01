@@ -1,0 +1,240 @@
+;
+; FalseMenu
+; written by Mauro Panigada
+;
+; $VER: FalseMenu v0.9 by Mauro Panigada
+;
+; Started: 1996-12-12
+; Finished: XXXX-XX-XX
+;
+; It creates a window in which pressing right mouse button you can see
+; menu that appear under mouse, white ground and black border around,
+; as new style menues. An exsercize, very hard for me.
+;
+; NOTE: It is not optimized, it is not written to work or to do
+;   something.
+;
+; NO FONT-SENSITIVE! Only TopazFont (or 8*8 not proportional...)
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/intuition_lib.i"
+
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+	STRUCTURE Internal,0
+		LONG	_ExecBase
+		LONG	_IntuiBase
+		LONG	_LockedScreen
+		LONG	_Window
+		LONG	_UserPort
+		LONG	_RastPort
+		WORD	_Code
+		LONG	_Class
+		WORD	_MouseX
+		WORD	_MouseY
+		LABEL	I_SIZEOF
+
+
+
+		bra.s	Start
+
+		dc.b	"$VER: FalseMenu v0.9 by Mauro Panigada",0
+		even
+
+Start		link	a5,#-(I_SIZEOF)
+		move.l	sp,a4
+
+		lea	IntuiName(pc),a1
+		moveq	#39,d0
+		move.l	4.w,a6
+		move.l	a6,(a4)
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_IntuiBase(a4)
+		beq	Sayonara
+
+		suba.l	a0,a0
+		move.l	d0,a6
+		jsr	_LVOLockPubScreen(a6)
+		move.l	d0,_LockedScreen(a4)
+
+		sub.l	a0,a0
+		lea	WindowTags(pc),a1
+		move.l	d0,4(a1)
+		jsr	_LVOOpenWindowTagList(a6)
+		move.l	d0,_Window(a4)
+		beq	ERR_Window
+
+		move.l	d0,a0
+		move.l	ws_UserPort(a0),_UserPort(a4)
+		move.l	wd_RPort(a0),_RastPort(a4)
+
+; At the beginning I thought: I will use layers to make menu as
+; system does. Then I saw StartMenu doing it as normal window: it is
+; easier, faster, better...
+
+MAIN_Loop	move.l	(a4),a6
+		move.l	_UserPort(a4),a0
+		jsr	_LVOWaitPort(a6)
+		move.l	_UserPort(a4),a0
+		jsr	_LVOGetMsg(a6)
+		move.l	d0,a1
+		move.w	im_Code(a1),_Code(a4)
+		move.l	im_Class(a1),_Class(a4)
+		move.w	im_MouseX(a1),_MouseX(a4)
+		move.w	im_MouseY(a1),_MouseY(a4)
+		jsr	_LVOReplyMsg(a6)
+
+		move.l	_Class(a4),d0
+		cmp.l	#IDCMP_CLOSEWINDOW,d0
+		beq	MAIN_End
+		cmp.l	#IDCMP_MOUSEBUTTONS,d0
+		bne	MAIN_Loop
+
+MouseButtons	move.w	_Code(a4),d0
+		cmp.b	#IECODE_RBUTTON,d0
+		bne	MAIN_Loop
+
+RButtonPressed	lea	MenuDef(pc),a0
+		move.l	_Window(a4),a1
+		move.w	_MouseX(a4),d0
+		move.w	_MouseY(a4),d1
+		bsr	MakeMenu
+
+		;> d0  number identifies selected menu. For definition
+		;      and identification see below.
+
+		;cmp.l	#0,d0
+		;beq...
+
+		bra	MAIN_Loop
+
+MAIN_End	move.l	_Window(a4),a0
+		move.l	_IntuiBase(a4),a6
+		jsr	_LVOCloseWindow(a6)
+
+ERR_Window	move.l	_LockedScreen(a4),a1
+		sub.l	a0,a0
+		jsr	_LVOUnlockPubScreen(a6)
+
+Sayonara	unlk	a5
+		moveq	#0,d0
+		rts
+
+
+************************************************************************
+************                                             ***************
+************                  MAKEMENU                   ***************
+************                                             ***************
+************************************************************************
+
+; a0=struct mmenu
+; a1=window
+; d0,d1=mouse x,y (or what you want)
+; a6=intuition
+;
+MakeMenu	movem.l	d2-d7/a2-a5,-(sp)
+		lea	MenuWindow(pc),a2
+		move.l	wd_WScreen(a1),4(a2)
+		move.l	4(a2),a1
+		move.w	sc_Width(a1),d6		; dim of screen
+		move.w	sc_Height(a1),d7
+		move.w	d0,14(a2)
+		move.w	d1,18(a2)
+		move.w	d1,d5
+		move.w	d0,d4
+
+		moveq	#0,d3			; livel 0
+		move.l	a0,a3
+		move.l	(a0)+,d0
+		bmi	MM_CreaEndLivel
+		lea	IText(pc),a1
+		move.l	d0,12(a1)
+		move.l	
+
+MM_End		movem.l	(sp)+,d2-d7/a2-a5
+		rts
+
+
+MenuWindow	dc.l	WA_PubScreen,0
+		dc.l	WA_Left,0
+		dc.l	WA_Top,0
+		dc.l	WA_Width,0
+		dc.l	WA_Height,0
+		;dc.l	WA_BackFill,0
+		dc.l	WA_DragBar,TRUE
+		dc.l	WA_SizeGadget,FALSE
+		dc.l	WA_DepthGadget,FALSE
+		dc.l	WA_CloseGadget,FALSE
+		dc.l	WA_Borderless,TRUE
+		dc.l	WA_Activate,TRUE
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	TAG_END
+
+IText		dc.b	1,0,JAM1,0
+		dc.w	0,0
+		dc.l	0,0,0
+
+***
+***                                                                   ***
+*************************************************************************
+
+
+IntuiName	dc.b	"intuition.library",0
+		even
+
+WindowTags	dc.l	WA_PubScreen,0
+		dc.l	WA_Width,300
+		dc.l	WA_Height,100
+		dc.l	WA_IDCMP,IDCMP_MOUSEBUTTONS|IDCMP_CLOSEWINDOW
+		dc.l	WA_Title,Title
+		dc.l	WA_CloseGadget,TRUE
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	TAG_END
+
+; How can you understand which menu is selected?
+; Is provided in the structure: a Custom field in which you can put
+; every thing you want to know well what you can do.
+
+MenuDef		dc.l	Menu1,0,0		; Menu,Submenu, custom
+		dc.l	Menu2,SubMenu1,1
+		dc.l	Menu3,0,2
+		dc.l	Menu4,0,3
+		dc.l	-1		; end
+
+SubMenu1	dc.l	Menu4,0,4
+		dc.l	Menu3,0,5
+		dc.l	Menu2,0,6
+		dc.l	Menu1,SubMenu2,7
+		dc.l	-1
+
+SubMenu2	dc.l	Menu5,0,8
+		dc.l	Menu6,0,9
+		dc.l	-1
+
+Menu1		dc.b	"Ciao bel menu",0
+		even				; is it a need?
+Menu2		dc.b	"Clickami",0
+		even
+Menu3		dc.b	"Sogno di una notte...",0
+		even
+Menu4		dc.b	"A che serve?",0
+		even
+Menu5		dc.b	"Che barba",0
+		even
+Menu6		dc.b	"Che noia",0
+		even
+
+
+Title		dc.b	"FalseMenu",0
+		even
+
+
+		END		

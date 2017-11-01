@@ -1,0 +1,17 @@
+
+$VER: RequestString.doc 39.2 (c) 1999 by Mauro Panigada
+
+RequestString 39.2
+===================
+
+(c) 1999 by Mauro Panigada
+
+RequestString replaces the Thomas Kessler's RequestString. Mine is better:
+is shorter and so on. I do not remember what, but something does not work well
+in TK's RS, so I re-wrote it. The template is the same.. and it is also easy
+to use, just try
+
+ 1> RequestString ?
+
+Need Operating System 37, 68020+ and reqtools.library, as TK's version.
+Read also the source header...

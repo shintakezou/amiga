@@ -1,0 +1,320 @@
+;
+; $VER: MProtect.a v1.5 by Mauro Panigada
+;
+; ** FREEWARE **
+;
+; Started: 04-04-1996 (day/month/year)
+; Finished: 10-04-1996 (day/month/year) two days of real work...
+; Note...: because of a black-out while saving the source code, I lost
+;  it, but using DPU and old DiskX (for some check) I joined sector
+;  by sector in the header alive and saved my code again... I am happy!
+;
+; PURPOSE: Differently from previous version of MProtect, this one is
+; not a simple exercise. Keep it in your C directory! It could be useful!
+; Of course the final purpose is the same for Protect, but according to
+; me my MProtect is a bit better! It's FREEWARE.
+;
+; USAGE: MProtect ?
+; This will give you a dos-like help; it is simple to be used, so here
+; I won't tell more. Surely using a program is the best way to know it,
+; and I suggest to you to try to use MProtect and you will know its
+; features.
+;
+; BUGS AND NOTES: No bugs are known at the moment. However, I AM *NOT*
+; RESPONSIBLE OF ANY DAMAGES CAUSED BY USING MY PROGRAM. I note this
+; because I am NOT sure that there isn't any bugs; however, the program
+; is very simple, but often are the simple programs that give problems!
+;
+; MAIN FEATURES:
+;   o Short (shorter than Protect!)
+;   o Easy to use
+;   o Multiple files
+;   o Handling of OTR (Other) and GRP (Group) protections
+;
+; ONLY FROM THIS NEW VERSION (v1.5):
+;   o Match-pattern for each multiple files-arguments!
+;   o It is enough! Use it!
+;
+; EXAMPLES: Suppose that you have DF2:TOPO, DF2:CANE, DF2:DOG-GOD and
+; DF2:GOD-DOG with strange file protections... You will just type:
+; 1> mprotect df2:topo df2:cane df2:dog-god df2:god-dog
+;    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; and you will see your file with normal protections! This new version
+; supports matching-pattern!
+;
+; 1) If you type "protect df2:*" and "mprotect df2:*" you will see a
+; different behavior. "Protect" kills every protection: your files
+; will have: --------. With MProtect you will see: ----RWED. From this
+; point of view my MProtect is surely better! (Protect needs argument
+; specification to do the same thing)
+; 2) Protect accepts only one argument for the file. Suppose you want to
+; do some operation with protect on two files in different directory, you
+; must write:
+;              protect df2:topo
+;              protect dh0:gatto
+;
+; If they are all in the same dir, you can write (if you want):
+;
+;              protect df2:#?o
+;
+; This will protect all files in df2: with 'o' as last letter. Matching
+; pattern is useful only when the files are in the same directory.
+; With my MProtect you can now write:
+;
+;              mprotect df2:topo dh0:gatto
+; Or:
+;              mprotect df2:?o?o dh0:gat#? df2:i/am/the/best/#?.?
+;
+; Protect has a defect: it has not multiple files... Why the Protect
+; programmers didn't use "FILE/M/A" option also with match-pattern?
+; I have just thought about this: MProtect can do it!
+; 
+; DONE: This version now supports the multiple files with pattern-matching!
+; It is now also PURE, so you can make it RESIDENT. A note: it is quite
+; the same thing for "protect", but with a different sintax while
+; specifing the mask and with multiple files (and match-pattern!), see
+; above for main features.
+;
+; ADDED NOTES:
+; - When it loops for a new file-entry, it frees AnchorPath and then
+;   re-allocates it... It could be better to MatchEnd and then only
+;   clear the structure.
+; - I think the QUITE option is unuseful, so 'protect df2:#? QUITE' is
+;   'mprotect df2:#? >nil:'.
+; - (11-Apr-1996) I see that there isn't a control-break. Now I added
+;   it (just hit Ctrl-C to stop).
+; - (15-Apr-1996) Before Ctrl-C performed with SetSignal, now with
+;   CheckSignal.
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"dos/dosasl.i"
+
+
+SETVAR		MACRO
+voffset		SET	\1
+		ENDM
+
+VARW		MACRO
+\1		EQU	voffset
+voffset		SET	voffset+2
+		ENDM
+
+VARL		MACRO
+\1		EQU	voffset
+voffset		SET	voffset+4
+		ENDM
+
+NAME		MACRO
+\1		EQU	voffset
+		ENDM
+
+MEMB		MACRO
+\1		EQU	voffset
+voffset		SET	voffset+\2
+		ENDM
+
+
+;====== variables definitions ====
+
+		SETVAR	0
+		VARL	_readarg
+		VARW	_mask
+		VARL	_anchorpath
+		MEMB	array,4*16
+		NAME	BUFFERLEN
+
+
+		bra.s	main
+
+		dc.b	"$VER: MProtect v1.5 written by Mauro Panigada",0
+		even
+
+main		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#36,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		bne.s	main0
+
+		lea	dosname(pc),a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq.s	exit0
+		move.l	d0,a6
+		jsr	_LVOOutput(a6)
+		move.l	d0,d1
+		lea	ynmsg(pc),a0
+		move.l	a0,d2
+		moveq	#ynlen,d3
+		jsr	_LVOWrite(a6)
+		move.l	a6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+exit0		moveq	#10,d0
+		rts
+
+ynmsg		dc.b	"You need OS v2.0+ (36+)!",10
+ynlen		EQU	*-ynmsg
+		even
+
+main0		move.l	d0,a5
+		moveq	#BUFFERLEN,d0
+		move.l	#MEMF_PUBLIC!MEMF_CLEAR,d1
+		jsr	_LVOAllocVec(a6)
+		move.l	d0,a4
+		tst.l	d0
+		beq	memerror
+		move.l	a5,a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		lea	array(a4),a3
+		move.l	a3,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,_readarg(a4)
+		beq	noargs
+		addq.w	#4,a3
+		lea	table(pc),a2
+		moveq	#14,d4
+		moveq	#0,d2
+		move.l	4.w,a6
+loop		move.w	(a2)+,d3
+		move.l	(a3)+,d0
+		beq.s	skip
+		or.w	d3,d2
+skip		dbf	d4,loop
+		move.w	d2,_mask(a4)
+		move.l	array(a4),a3
+loop0		move.l	(a3)+,d7
+		beq	exit1
+
+		move.l	#ap_SIZEOF+256,d0
+		move.l	#MEMF_PUBLIC!MEMF_CLEAR,d1
+		jsr	_LVOAllocVec(a6)
+		move.l	d0,_anchorpath(a4)
+		beq	memerror
+
+		move.l	a5,a6
+		move.l	d0,a0
+		move.l	#SIGBREAKF_CTRL_C,ap_BreakBits(a0)
+		move.w	#256,ap_Strlen(a0)
+		move.l	d0,d2
+		move.l	d7,d1
+		jsr	_LVOMatchFirst(a6)
+		tst.l	d0
+		bne.s	checkerror
+mloop		move.l	_anchorpath(a4),a0
+		lea	ap_Buf(a0),a1
+		move.l	a1,d1
+		move.w	_mask(a4),d2
+		jsr	_LVOSetProtection(a6)
+		tst.l	d0
+		bne.s	shortok
+		jsr	_LVOIoErr(a6)
+		move.l	d0,d1
+		move.l	-4(a3),d2
+		jsr	_LVOPrintFault(a6)
+		bra.s	skip_per
+shortok		move.l	_anchorpath(a4),a1
+		lea	ap_Buf(a1),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		lea	mdone(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+skip_per	move.l	_anchorpath(a4),d1
+		jsr	_LVOMatchNext(a6)
+		tst.l	d0
+		beq.s	mloop
+checkerror	cmp.l	#ERROR_NO_MORE_ENTRIES,d0
+		beq.s	faend
+		cmp.l	#ERROR_BREAK,d0
+		beq	brkerror
+		move.l	d0,d1
+		lea	gerror(pc),a0
+		move.l	a0,d2
+		jsr	_LVOPrintFault(a6)
+faend		bsr	apsub
+		move.l	a5,a6
+		move.l	#SIGBREAKF_CTRL_C,d1
+		jsr	_LVOCheckSignal(a6)
+		and.l	#SIGBREAKF_CTRL_C,d0
+		beq	loop0
+stopCtrlC	lea	stopmsg(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+
+exit1		move.l	_readarg(a4),d1
+		beq.s	next0
+		move.l	a5,a6
+		jsr	_LVOFreeArgs(a6)
+next0		move.l	a5,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+		move.l	a4,d0
+		beq.s	nextfast
+		move.l	d0,a1
+		jsr	_LVOFreeVec(a6)
+nextfast	rts
+
+brkerror	bsr	apsub
+		move.l	a5,a6
+		bra.s	stopCtrlC
+
+noargs		lea	mhelp(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		bra.s	exit1
+
+memerror	lea	memerr(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		bra.s	exit1
+
+apsub		move.l	_anchorpath(a4),d1
+		move.l	d1,d3
+		jsr	_LVOMatchEnd(a6)
+		move.l	d3,a1
+		move.l	4.w,a6
+		jmp	_LVOFreeVec(a6)
+		
+
+;=========== data =====
+
+dosname		dc.b	"dos.library",0
+		even
+template	dc.b	"FILE/M/A,OTR_READ/S,OTR_WRITE/S,OTR_EXECUTE/S,"
+		dc.b	"OTR_DELETE/S,GRP_READ/S,GRP_WRITE/S,"
+		dc.b	"GRP_EXECUTE/S,GRP_DELETE/S,S=SCR=SCRIPT/S,P=PURE/S,"
+		dc.b	"A=ARC=ARCHIVE/S,R=READ/S,W=WRI=WRITE/S,EXE=EXECUTE/S,"
+		dc.b	"D=DEL=DELETE/S",0
+		even
+table		dc.w	FIBF_OTR_READ,FIBF_OTR_WRITE
+		dc.w	FIBF_OTR_EXECUTE,FIBF_OTR_DELETE
+		dc.w	FIBF_GRP_READ,FIBF_GRP_WRITE
+		dc.w	FIBF_GRP_EXECUTE,FIBF_GRP_DELETE
+		dc.w	FIBF_SCRIPT,FIBF_PURE,FIBF_ARCHIVE
+		dc.w	FIBF_READ,FIBF_WRITE,FIBF_EXECUTE
+		dc.w	FIBF_DELETE
+
+mhelp		dc.b	"MProtect v1.5 written by Mauro Panigada",10
+		dc.b	"Type 'MProtect ?' for a help.",10,0
+		even
+memerr		dc.b	"There is not enough memory!",10,0
+		even
+mdone		dc.b	"  ...Done",10,0
+		even
+gerror		dc.b	"ERROR",0
+		even
+stopmsg		dc.b	"*** USER BREAK",10,0
+
+
+		END

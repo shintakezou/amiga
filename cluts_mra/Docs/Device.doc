@@ -1,0 +1,16 @@
+
+$VER: Device.doc v1.0 (c) 1999 by Mauro Panigada
+
+Device v1.0
+===========
+
+(c) 1999 by Mauro Panigada
+
+This program is based on a C source by Roberto Larcher, in Commodore Gazette
+Nov 1991, VI, N. 5, p. 18
+
+I rewrite it in assembly language and so Device is born. It simply give you some
+information on device you specified. It maybe can be useful.
+The last value (Disk in Use) does not give always a correct answer... I did not
+understand why.
+

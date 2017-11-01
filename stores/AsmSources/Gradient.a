@@ -1,0 +1,160 @@
+;
+; Gradient v1.0
+; written by Mauro Panigada
+;
+; $VER: Gradient.a v1.0 (1996-07-22) by Mauro Panigada
+;
+; STARTED: 1996-07-22
+; FINISHED: 1996-07-22
+;
+; PURPOSE: Translated from AmigaE to Assembler, it is only an example!
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/intuition_lib.i"
+		include	"intuition/gadgetclass.i"
+		include	"intuition/icclass.i"
+		include	"gadgets/gradientslider.i"
+
+
+		bra.s	start
+
+		dc.b	"Gradient v1.0 (1996-07-22) "
+		dc.b	"by Mauro Panigada",0
+		even
+
+start		lea	intname(pc),a1
+		moveq	#39,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	sayonara
+		move.l	d0,a5
+
+		suba.l	a0,a0
+		lea	window(pc),a1
+		move.l	a5,a6
+		jsr	_LVOOpenWindowTagList(a6)
+		move.l	d0,d7
+		beq	closeint
+
+		lea	gradient(pc),a1
+		moveq	#39,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,d6
+		beq	closewin
+
+		move.l	a5,a6
+		suba.l	a0,a0
+		lea	gradname(pc),a1
+		lea	gradtag(pc),a2
+		jsr	_LVONewObjectA(a6)
+		move.l	d0,d5
+		beq	closegrad
+
+		move.l	d7,a0
+		move.l	d5,a1
+		moveq	#-1,d0
+		move.l	d0,d1
+		suba.l	a2,a2
+		jsr	_LVOAddGList(a6)
+		move.l	d5,a0
+		move.l	d7,a1
+		suba.l	a2,a2
+		moveq	#-1,d0
+		jsr	_LVORefreshGList(a6)
+
+		move.l	d7,a3
+		move.l	4.w,a6
+loop		move.l	wd_UserPort(a3),a0
+		jsr	_LVOWaitPort(a6)
+		move.l	wd_UserPort(a3),a0
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	loop
+
+		move.l	d0,a1
+		move.l	im_Class(a1),d4
+		jsr	_LVOReplyMsg(a6)
+
+		move.l	a5,a6
+		move.l	#GRAD_CurVal,d0
+		move.l	d5,a0
+		lea	val(pc),a1
+		jsr	_LVOGetAttr(a6)
+
+; Qui devo scrivere il codice che scrive il valore in questione (val)!
+; Si tratterebbe di un RawDoFmt per la conversione e poi di un PrintIText.
+
+		cmp.l	#IDCMP_CLOSEWINDOW,d4
+		bne.s	loop
+
+		move.l	4.w,a6
+loop0		move.l	wd_UserPort(a3),a0
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	okgo
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+		bra.s	loop0
+
+okgo		move.l	a5,a6
+		move.l	d7,a0
+		move.l	d5,a1
+		moveq	#-1,d0
+		jsr	_LVORemoveGList(a6)
+
+		move.l	d5,a0
+		jsr	_LVODisposeObject(a6)
+
+closegrad	move.l	d6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+
+closewin	move.l	a5,a6
+		move.l	d7,a0
+		jsr	_LVOCloseWindow(a6)
+
+closeint	move.l	a5,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+
+sayonara	rts
+
+
+
+intname		dc.b	"intuition.library",0
+		even
+
+gradient	dc.b	"gadgets/"
+gradname	dc.b	"gradientslider.gadget",0
+		even
+
+gradtag		dc.l	GA_TOP,20
+		dc.l	GA_LEFT,20
+		dc.l	GA_WIDTH,350
+		dc.l	GA_HEIGHT,30
+		dc.l	GA_ID,1
+		dc.l	GRAD_KnobPixels,20
+		dc.l	TAG_END
+
+
+window		dc.l	WA_Flags,$e
+		dc.l	WA_IDCMP,$268
+		dc.l	WA_Width,400
+		dc.l	WA_Height,80
+		dc.l	WA_Title,title
+		dc.l	TAG_DONE
+
+val		dc.l	0
+
+title		dc.b	"Gradient in Asm!",0
+		even
+
+
+		END

@@ -1,0 +1,43 @@
+
+                                 Askq v1.0
+                                ===========
+
+                         written by Mauro Panigada
+
+
+
+	It requires OS2.0+.
+
+	This program is useful in script files, when the users
+must decide something about an operation, or only to ask a "advice"
+to the user. So it replace the ask command in a intuitioned way.
+
+	The syntax is:
+
+	Askq TEXT [GADGETS] [TITLE] [VAR]
+
+	TEXT must be given. The default gadgets given will be
+"Yes|No" and the title will be "Request". The answer will be stored
+in a var, default var is AskqAnswer. Remember always that the last
+gadget on the right is the 0, then from the first gadget on the left
+to the gadget on the left of the last, the gadgets will be 1,2,3...
+IE from left to right: 1,2,3,4...n,0
+This is a strange thing of EasyRequestArgs.
+
+	The GADGETS will be divided by using |. If in TEXT,
+GADGETS text or TITLE appear spaces, you have to put the " at the
+beginning of the argument and close (") it when that argument is finished.
+
+	Example:
+
+	Askq "Am I a great programmer?" "No!!| Rotten | Stupid | Dai baka" "To be or not to be"
+
+	In the specified VAR or in the default, Askq will store
+the gadget number (see above).
+
+	Really the result will be put also in d0, but I think it is
+more useful in a envar.
+
+	Enjoy yourself.
+
+

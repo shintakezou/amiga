@@ -1,0 +1,106 @@
+;
+; Ricerca numeri speciali, la cui somma dei cubi delle TRE cifre che lo
+; formano e` uguale al numero stesso
+;
+; es: 153 = 1 + 125 + 27
+;
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+
+
+CUBO		MACRO
+		move.l	\1,\2
+		mulu.w	\1,\2
+		mulu.w	\1,\2
+		ENDM
+
+
+		lea	dosname(pc),a1
+		moveq	#37,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	fine
+
+		move.l	d0,a6
+		lea	buffer(pc),a5
+
+		moveq	#1,d7
+		moveq	#0,d6
+		moveq	#0,d5	; la ricerca parte da 100
+
+		moveq	#100,d4		; e termina con 999
+		move.w	#999,d3
+		movea.w	#"0",a4
+
+
+loop		;cmp.w	d4,d3	; non necessario: vedi giu`
+		;beq	fatto
+
+		CUBO	d7,d0		; grande lavoro in tempo macch
+		CUBO	d6,d1		; qui!
+		CUBO	d5,d2
+
+		add.w	d2,d1
+		add.w	d0,d1
+
+		cmp.w	d1,d4
+		bne.s	nulla
+
+		move.b	d7,d2
+		move.b	d6,d1
+		move.b	d5,d0
+
+		add.w	a4,d2	; in teoria, se un processore superiore
+		move.b	d2,(a5)	; e` in grado di parallelizzare (math+mem)
+		add.w	a4,d1	; e` molto meglio...
+		move.b	d1,1(a5)
+		add.w	a4,d0
+		move.b	d0,2(a5)
+
+		move.l	a5,d1
+		jsr	_LVOPutStr(a6)
+
+nulla		addq.w	#1,d4	; non necessario, vedi subito sotto.
+
+		cmp.b	#9,d5
+		beq.s	l1
+		addq.b	#1,d5
+		bra.s	loop
+
+l1		moveq	#0,d5
+		cmp.b	#9,d6
+		beq.s	l2
+		addq.b	#1,d6
+		bra.s	loop
+
+l2		moveq	#0,d6
+		cmp.b	#9,d7
+		beq.s	fatto		; **** controllo fine
+		addq.b	#1,d7
+		bra.s	loop
+
+fatto		move.l	a6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+
+fine		rts
+
+
+dosname		dc.b	"dos.library",0
+		even
+
+buffer		dc.b	"000",10,0
+		even
+
+
+
+		END
+

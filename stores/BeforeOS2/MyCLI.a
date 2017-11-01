@@ -1,0 +1,187 @@
+; abbandonato 12/5/1994
+
+
+Supervisor		EQU	-30	; *code long aligned (a5)
+AllocMem		EQU	-198	; bytes,req (d0/d1)
+FreeMem			EQU	-210	; mem,bytes (a1/d0)
+OpenLibrary		EQU	-552
+CloseLibrary		EQU	-414
+
+Open			EQU	-30	; *name,#mode (d1/d2). 1005 Old
+					;                      1006 New
+Close			EQU	-36	; filehand (d1)
+Read			EQU	-42	; fh,*buf,#len (d1/d2/d3)
+Write			EQU	-48	; fh,*buf,#len (d1/d2/d3)
+Input			EQU	-54
+Output			EQU	-60
+DeleteFile		EQU	-72	; *name (d1)
+Rename			EQU	-78	; *old,*new (d1/d2)
+Lock			EQU	-84	; *name,#type (d1/d2). -2 Shared
+					;                      -1 Exclusive
+UnLock			EQU	-90	; lock (d1)
+Examine			EQU	-102	; lock,*fib (d1/d2) (260 bytes)
+fib_DiskKey		EQU	0	; .l fib_DiskKey
+fib_DirEntryType	EQU	4	; .l fib_DirEntryType
+fib_FileName		EQU	8	; .b fib_FileName[108]
+fib_Protection		EQU	116	; .l fib_Protection
+fib_EntryType		EQU	120	; .l fib_EntryType
+fib_Size		EQU	124	; .l fib_Size
+fib_NumBlocks		EQU	128	; .l fib_NumBlocks
+					; struct DateStamp fib_Date
+ds_Days			EQU	132	; 	.l ds_Days
+ds_Minute		EQU	136	; 	.l ds_Minute
+ds_Tick			EQU	140	; 	.l ds_Tick
+fib_Comment		EQU	144	; 	.b fib_Comment[116]
+fib_totlen		EQU	260	
+ExNext			EQU	-108	; lock,*fib (d1/d2)
+Info			EQU	-114	; lock,*parstruct (d1/d2) (36)
+id_NumSoftErr		EQU	0	; .l id_NumSoftErrors
+id_UnitNumber		EQU	4	; .l id_UnitNumber
+id_DiskState		EQU	8	; .l id_DiskState
+id_NumBlocks		EQU	12	; .l id_NumBlocks
+id_NumBlocksUsed	EQU	16	; .l id_NumBlocksUsed
+id_BytesPerBlock	EQU	20	; .l id_BytesPerBlock
+id_DiskType		EQU	24	; .l id_DiskType
+id_VolumeNode		EQU	28	; .l (BPTR) id_VolumeNode
+id_InUse		EQU	32	; .l id_InUse
+id_totlen		EQU	36
+CreateDir		EQU	-120	; *name (d1)
+CurrentDir		EQU	-126	; lock (d1)
+IoErr			EQU	-132
+LoadSeg			EQU	-150	; *filename (d1) (>bptr)
+UnLoadSeg		EQU	-156	; seg (d1)
+SetComment		EQU	-180	; *name,*comment (d1/d2)
+SetProtection		EQU	-186	; *name,mask (d1/d2)
+FM_DELETE		EQU	1	; DELETE  = 1
+FM_EXECUTE		EQU	2	; EXECUTE = 2
+FM_WRITE		EQU	4	; WRITE   = 4
+FM_READ			EQU	8	; READ    = 8
+FM_ARCHIVE		EQU	16	; ARCHIVE = 16
+ParentDir		EQU	-210	; lock (d1)
+
+		movea.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#0,d0
+		jsr	OpenLibrary(a6)
+		move.l	d0,dosbase
+		beq.s	exit0
+		bsr	_start
+		move.l	dosbase,a1
+		movea.l	4.w,a6
+		jsr	CloseLibrary(a6)
+exit0		rts
+
+_start		move.l	d0,a6
+		jsr	Input(a6)
+		move.l	d0,incli
+		beq.s	exit0
+		jsr	Output(a6)
+		move.l	d0,outcli
+		beq.s	exit0
+		move.l	#presenta,d2
+		bsr	_write
+		move.l	4.w,a5
+		exg	a5,a6
+		move.l	#256,d0
+		move.l	#$10001,d1
+		jsr	AllocMem(a6)
+		move.l	d0,membase
+		beq	exit0
+		exg	a5,a6
+inmess		move.l	#promp,d2
+		bsr	_write
+readinput	move.l	incli,d1
+		move.l	membase,d2
+		move.l	#256,d3
+		jsr	Read(a6)
+		bsr	_command
+		move.l	dosbase,a6
+		bra.s	inmess
+torno0		add.l	#4,sp
+		move.l	4.w,a6
+		move.l	membase,a1
+		move.l	#256,d0
+		jsr	FreeMem(a6)
+exit1		rts
+
+; Per ora fa cosi`...
+
+_command	move.l	membase,a0
+		cmp.l	#'fine',(a0)
+		beq	torno0
+
+cercaarg	cmp.b	#32,(a0)
+		beq	questoind
+		cmp.b	#10,(a0)
+		beq	noarg
+		add.l	#1,a0
+		bra.s	cercaarg
+
+noarg		move.b	#10,1(a0)
+		
+questoind	clr.b	(a0)
+		move.l	a0,ptrarg
+		moveq	#0,d0
+clen		cmp.b	#10,(a0)+
+		beq	questalen
+		addq.l	#1,d0
+		bra.s	clen
+
+questalen	add.l	#1,d0
+		move.l	d0,lenarg
+
+		move.l	membase,d1
+		move.l	dosbase,a6
+		jsr	LoadSeg(a6)
+		tst.l	d0
+		beq	torna			; errore
+		lsl.l	#2,d0
+		add.l	#4,d0
+		move.l	d0,a2
+		movem.l	d0-d7/a0-a6,-(sp)
+		move.l	sp,mystack
+		move.l	ptrarg,a0
+		move.l	lenarg,d0
+		jsr	(a2)
+		move.l	mystack,sp
+		movem.l	(sp)+,d0-d7/a0-a6
+		move.l	a2,d1
+		sub.l	#4,d1
+		lsr.l	#2,d1
+		jsr	UnLoadSeg(a6)
+
+torna		rts
+
+ptrarg		dc.l	0
+lenarg		dc.l	0
+mystack		dc.l	0
+
+_write
+_setchar	move.l	outcli,d1
+		bsr	_countlen
+		move.l	d0,d3
+		jmp	Write(a6)
+
+_countlen	move.l	d2,a0
+		moveq	#0,d0
+countloop	tst.b	(a0)+
+		beq.s	countfine
+		add.l	#1,d0
+		bra.s	countloop
+countfine	rts
+
+dosname		dc.b	'dos.library',0
+		even
+incli		dc.l	0
+outcli		dc.l	0
+dosbase		dc.l	0
+membase		dc.l	0
+presenta	dc.b	10,'MyCLI'
+		dc.b	' - ',27,'[32mC',27,'[0mommand ',27,'[32m'
+		dc.b	'L',27,'[0mine ',27,'[32mI',27,'[0mnterface',10,10
+		dc.b	' by Mauro Panigada',10,10,0
+		even
+promp		dc.b	'CLI> ',0
+		even
+
+		END

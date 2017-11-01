@@ -1,0 +1,1468 @@
+;
+; MUConverter v0.9
+; written by Mauro Panigada
+;
+; $VER: MUConverter.a v0.9 (1996-05-27) by Mauro Panigada
+;
+; STARTED: 1996-05-27
+; FINISHED: 1996-xx-xx
+;
+; PURPOSE: Handling several kind of file with user-modules like libraries
+;  that make reading, showing and earing different formats files possible.
+;  It could be interesting, but surely is ...
+; COMMENT: Unuseful... now there's data-typing! It is written for V39, but
+;  this system don't need it!
+; USAGE: Read the docs (probably AmigaGuide and Text)
+;
+; ABOUT MU-SHAREWARE: It is the same for FREEWARE, but with a false regi-
+;  stration that you can have if you write modules or you did something
+;  interesting for this program... I think no one will want to register!
+;  However your name will be added in 'Authors'.
+;
+
+
+; Note sul bilinguismo dei commenti di questo programma: poiche` comunque
+; l'inutilita` del prg e` tale che non vale nulla o poco piu`, allora
+; e` inutile mettere commenti inglesi per far capire a tutti (tutti chi?)
+; E` importante invece che rimanga per me un esempio di prg, da dove in
+; futuro attingere e scopiazzare pezzi, (specialm. per le parti ripetiti-
+; ve), insomma come esercizio.
+; In origine era destinato a un pubblico piu` vasto (il prg e il source)
+; invece ora, al massimo (!) il prg e niente altro! (MU freeware)
+
+
+DEBUG		EQU	1
+
+OSVERSION20	EQU	37
+OSVERSION30	EQU	39
+LV		EQU	OSVERSION30
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+		include	"dos/dos_lib.i"
+		include	"dos/dostags.i"
+		include	"dos/var.i"
+		include	"intuition/intuition.i"
+		include	"intuition/screens.i"
+		include	"intuition/intuition_lib.i"
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i"
+		include	"libraries/asl.i"
+		include	"libraries/asl_lib.i"
+		include	"libraries/amigaguide.i"
+		include	"libraries/amigaguide_lib.i"
+		;include	"graphics/graphics_lib.i"
+		include	"rexx/rxslib.i"
+
+;*** UTILITY
+
+_LVOStrnicmp	EQU	-168
+
+
+MV		MACRO
+		dc.b	"v0.9"
+		ENDM
+
+MD		MACRO
+		dc.b	"(1996-05-27)"
+		ENDM
+
+MY		MACRO
+		dc.b	"1996"
+		ENDM
+
+E_IMV		EQU	1
+
+
+NEWGAD		MACRO
+		dc.w	\1,\2,\3,\4
+		dc.l	\5,0
+		dc.w	0
+		dc.l	\6,0,\7
+		ENDM
+
+GADNUMID	SET	-1
+
+DEFGAD		MACRO
+GADNUMID	SET	GADNUMID+1
+		IFEQ	NARG-1
+GADNUMID	SET	0
+		dc.l	-1
+		ELSE
+		dc.l	\1,\2,\3,0
+		IFEQ	NARG-4
+\4		EQU	GADNUMID
+		ENDC
+		ENDC
+		ENDM
+
+
+MENU		MACRO
+		dc.b	\1,0
+		dc.l	\2,\3
+		dc.w	\4
+		dc.l	0,\5
+		ENDM
+
+MENUBAR		MACRO
+		MENU	\1,NM_BARLABEL,0,0,0
+		ENDM
+
+MENUEND		MACRO
+		dc.b	NM_END,0
+		ENDM
+
+ITEXT		MACRO
+		dc.b	\4,\5		; front/backpen
+		dc.b	\6,0		; drawmode
+		dc.w	\2,\3		; left/top
+		IFEQ	NARG-8
+		dc.l	\8		; font
+		dc.l	\7
+		dc.l	\1
+		ELSE
+		dc.l	Topaz_80	; font
+		dc.l	\7		; text
+		dc.l	\1		; next
+		ENDC
+		ENDM
+
+
+
+	STRUCTURE	mstores,0
+		LONG	tag0
+		LONG	newp
+		LONG	tag1
+		LONG	fsl
+		LONG	tag2
+		LONG	pname
+
+		LONG	_intbase
+		LONG	_gadtoolsbase
+		LONG	_publock
+		LONG	_visualinfo
+		LONG	_sfont
+		LONG	_window
+		LONG	_dosbase
+		LONG	_userport
+		LONG	_rastport
+		LONG	_class
+		WORD	_code
+		WORD	_qualifier
+		LONG	_iaddress
+		LONG	_glist
+		WORD	_barheight
+		LONG	_nmenulist
+		LONG	_screen
+		LONG	_amigaguidebase
+		LONG	_aslbase
+		LONG	_ppbase
+		LONG	_xpkbase
+		LONG	_muconvbase
+		LONG	_iffbase
+		BYTE	_intsignal
+		BYTE	_mysignal
+		LONG	_arexxport
+		LONG	_rexxsysbase
+		LONG	_utilbase
+		;LONG	_gfxbase
+		STRUCT	_preparg,9*4
+		WORD	_secflag
+		LABEL	mstores_SIZE
+
+
+
+*>>>>>>>>>>>>>>>>>>> +--------------+
+*>>>>>>>>>>>>>>>>>>> | STARTUP CODE |
+*>>>>>>>>>>>>>>>>>>> +--------------+
+
+		SECTION	MConverterST,CODE
+pseg
+		include	"misc/easystart.i"
+
+		lea	stores,a5
+		IFEQ	DEBUG-1
+		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#LV,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_dosbase(a5)
+		beq.s	dbret
+		jmp	main
+dbret		rts
+		ENDC
+		bra.s	start
+
+		dc.b	"$VER: MUConverter "
+		MV
+		dc.b	" "
+		MD
+		dc.b	" written by"
+		dc.b	" Mauro Panigada",0
+		even
+
+start		move.l	#(mstores_SIZE/2)-1,d0
+		moveq	#0,d1
+		move.l	a5,a4	; to make sure that we'll have a clear
+clrloop		move.w	d1,(a4)+	; area.
+		dbf	d0,clrloop
+		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#LV,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_dosbase(a5)
+		beq.s	fexit
+		lea	pseg(pc),a4
+		move.l	-4(a4),d7	; next segment
+		move.l	d7,newp(a5)	; now next = first of new one
+		clr.l	-4(a4)
+		jsr	_LVOForbid(a6)	; rough thing
+notal		move.l	a5,d1
+		move.l	_dosbase(a5),a6
+		move.l	#-1,fsl(a5)
+		move.l	d7,newp(a5)
+		move.l	#pnamen,pname(a5)	; init tags values
+		move.l	#NP_Seglist,tag0(a5)
+		move.l	#NP_FreeSeglist,tag1(a5)
+		move.l	#NP_Name,tag2(a5)
+		jsr	_LVOCreateNewProc(a6)	; go!
+		tst.l	d0
+		bne.s	wevenp
+		move.l	d7,-4(a4)	; if it fails, dos will free
+wevenp		move.l	4.w,a6		; this segment
+		jsr	_LVOPermit(a6)
+fexit		rts
+
+dosname		dc.b	"dos.library",0
+		even
+
+
+
+*>>>>>>>>>>>>>>>>>>>>> +-----------+
+*>>>>>>>>>>>>>>>>>>>>> | MAIN CODE |
+*>>>>>>>>>>>>>>>>>>>>> +-----------+
+
+		SECTION	MConverterCODE,CODE
+
+		lea	stores,a5
+		bra.s	main
+
+pnamen		dc.b	"MUConverter_Task",0
+		even
+
+main		clr.b	_secflag(a5)
+		movea.l	4.w,a6		; we are opening all the libs
+		lea	intname,a1	; we need. Amigaguide, Powerpacker
+		moveq	#LV,d0		; and xpk are not needed, but if
+		jsr	_LVOOpenLibrary(a6)	; there are, it's better!
+		move.l	d0,_intbase(a5)
+		beq	main_noint	; ** INTUITION **
+		lea	aslname,a1
+		moveq	#LV,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_aslbase(a5)		; ** ASL **
+		beq	main_noasl
+		lea	gadtoolsname,a1
+		moveq	#39,d0			; gadtools V39
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_gadtoolsbase(a5)
+		beq	main_nogadtools		; ** GADTOOLS **
+		lea	amigaguidename,a1
+		moveq	#34,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_amigaguidebase(a5)
+		lea	ppname,a1
+		moveq	#0,d0		; ??? ------------------------
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_ppbase(a5)
+		lea	xpkname,a1
+		moveq	#0,d0		; ??? ------------------------
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_xpkbase(a5)
+		lea	iffname,a1
+		moveq	#0,d0		; ??? ------------------------
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_iffbase(a5)
+		;beq	main_noiffparse
+		lea	rexxsysname,a1
+		moveq	#0,d0		; ??? ------------------------
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_rexxsysbase(a5)
+		;beq	main_norexxsys
+		lea	utilname,a1
+		moveq	#LV,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_utilbase(a5)	; ** UTILITY **
+		beq	main_noutil
+		moveq	#LV,d0
+		;lea	gfxname,a1		; ** GFX **
+		;jsr	_LVOOpenLibrary(a6)
+		;move.l	d0,_gfxbase(a5)
+		;beq	main_nogfx
+
+		bsr	openscreen
+		move.l	_screen(a5),_publock(a5)	; my screen, why do I
+						; must lock it?
+		tst.l	d0
+		beq	main_noscr
+
+		move.l	d0,a0
+		moveq	#0,d0
+		jsr	_LVOPubScreenStatus(a6)
+		
+		bsr	getvisual
+		bsr	creategadgets
+		tst.l	d0
+		bne	main_nogad
+		move.l	_screen(a5),customscr+4
+		bsr	openwindow
+		tst.l	d0
+		bne	main_nowin
+		bsr	makemenu
+		tst.l	d0
+		bne	main_nomenu
+
+;		lea	b1_coord,a2
+;		move.w	(a2)+,d7
+;		move.l	_gadtoolsbase(a5),a6
+;mbev_loop	move.l	_rastport(a5),a0
+;		lea	box_tag,a1
+;		move.l	_visualinfo(a5),4(a1)
+;		move.w	(a2)+,d0
+;		move.w	(a2)+,d1
+;		add.w	_barheight(a5),d1
+;		move.w	(a2)+,d2
+;		move.w	(a2)+,d3
+;		jsr	_LVODrawBevelBoxA(a6)
+;		dbf	d7,mbev_loop
+
+		move.l	4.w,a6
+		lea	muconvname,a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_muconvbase(a5)
+		bne	wma_ok
+
+		move.l	_intbase(a5),a6
+		move.l	_window(a5),a0
+		lea	es_all,a1
+		move.l	#mul_msg,es_TextFormat(a1)
+		move.l	#mul_gad,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		suba.l	a3,a3
+		jsr	_LVOEasyRequestArgs(a6)
+
+wma_ok		move.l	_rexxsysbase(a5),d0
+		bne.s	make_rexxport
+
+		move.l	_intbase(a5),a6
+		move.l	_window(a5),a0
+		lea	es_all,a1
+		move.l	#rxport_msg,es_TextFormat(a1)
+		move.l	#mul_gad,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		suba.l	a3,a3
+		jsr	_LVOEasyRequestArgs(a6)
+		bra.s	wwiport
+
+make_rexxport	move.l	4.w,a6
+		jsr	_LVOCreateMsgPort(a6)	; crea porta ARexx
+		move.l	d0,_arexxport(a5)
+		beq	exit
+
+		move.l	d0,a1			; la rende pubblica
+		move.b	#0,LN_PRI(a1)
+		move.b	MP_SIGBIT(a1),_mysignal(a5)
+		move.l	#arexx_name,LN_NAME(a1)
+		jsr	_LVOAddPort(a6)
+			; qua teoricamente potrebbe fallire...?
+		or.b	#$80,_secflag(a5)
+; Attenzione a questo sopra! Se MUConv gia` c'e` se ne accorge quando
+; apre lo schermo pubblico: intuition non apre due schermi pubblici con
+; lo stesso nome per ovvie ragioni. Quindi MUC va subito a exit; qui
+; deve vedere se deve fare RemPort (lo fa solo se la porta e` stata crea-
+; ta E aggiunta con AddPort, vedi anche la nota sopra...) e lo fa find-ando
+; la stessa porta col suo nome pubblico: se la trova, la rimuove. Ma se
+; gia` c'e` MUC in memoria, c'e` gia` la porta, quindi la ricerca avra`
+; esito positivo e tentera` di chiudere una porta non sua! (causando crash)
+; Questo flag serve proprio per assicurarsi che la porta sia stata creata
+; veramente ex novo!
+
+wwiport		move.l	_userport(a5),a0
+		move.b	MP_SIGBIT(a0),_intsignal(a5)
+
+waitmessages	pea	waitmessages(pc)
+wmsg_0		move.l	4.w,a6
+		moveq	#0,d0
+		moveq	#0,d2
+		move.b	_intsignal(a5),d2
+		bset.l	d2,d0
+		move.b	_mysignal(a5),d2
+		beq.s	norxport
+		bset.l	d2,d0
+norxport	move.l	d0,d3
+		jsr	_LVOWait(a6)
+		and.l	d3,d0		; serve?
+		move.b	_intsignal(a5),d2
+		btst.l	d2,d0
+		bne.s	intmsg
+wwm_arexx	move.b	_mysignal(a5),d2
+		btst.l	d2,d0
+		bne	arexxcmd
+		bra.s	wmsg_0
+
+intmsg		move.l	_userport(a5),a0
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOGT_GetIMsg(a6)
+		move.l	d0,a1
+		move.l	im_Class(a1),_class(a5)
+		move.w	im_Code(a1),_code(a5)
+		move.w	im_Qualifier(a1),_qualifier(a5)
+		move.l	im_IAddress(a1),_iaddress(a5)
+		jsr	_LVOGT_ReplyIMsg(a6)
+
+		move.l	_class(a5),d0
+		cmp.l	#IDCMP_RAWKEY,d0
+		beq	rawkey_ur		; ur=user routine (!)
+		cmp.l	#BUTTONIDCMP,d0
+		beq	button_ur
+		cmp.l	#IDCMP_MENUPICK,d0
+		beq	menupick_ur
+
+		rts
+
+
+arexxcmd	move.l	4.w,a6
+		move.l	_arexxport(a5),d0
+		beq	arxc_no		; per sicurezza: qui, se non si apre
+		move.l	d0,a0		; la librearia rexxsys, non ci dovrebbe
+		jsr	_LVOGetMsg(a6)	; arrivare mai, ma le vie del
+		move.l	d0,a4		; multitasking sono infinite...
+		move.l	a4,a0
+		move.l	_rexxsysbase(a5),a6
+		jsr	_LVOIsRexxMsg(a6)
+		tst.l	d0		; assumo 0=falso, ~0=vero
+		bne.s	arxc_okrx
+
+		move.l	_intbase(a5),a6	; <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+		move.l	_window(a5),a0	; << poiche` questo si ripete
+		lea	es_all,a1	; << spesso, si puo` fare come sub!
+		move.l	#rxport0_msg,es_TextFormat(a1)
+		move.l	#yesno_gad,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		suba.l	a3,a3
+		jsr	_LVOEasyRequestArgs(a6)
+		tst.b	d0
+		bne	arxc_noact
+		rts
+
+arxc_okrx	cmp.l	#RXCOMM,rm_Action(a4)
+		bne	arxc_noact
+
+		lea	rm_Args(a4),a3
+		move.l	(a3),a0
+		lea	cmd_QUIT,a1		; <------* cmd_QUIT *
+		moveq	#4,d0
+		move.l	_utilbase(a5),a6
+		jsr	_LVOStrnicmp(a6)
+		tst.l	d0
+		beq.s	arxc_quit
+
+no_info		move.l	(a3),a0
+		lea	cmd_ABOUT,a1		; cmd_ABOUT
+		moveq	#5,d0
+		jsr	_LVOStrnicmp(a6)
+		tst.l	d0
+		bne.s	no_about
+		bsr	about
+		bra	arxc_noact
+no_about	move.l	(a3),a0
+		lea	cmd_MEMORY,a1		; cmd_MEMORY
+		moveq	#6,d0
+		jsr	_LVOStrnicmp(a6)
+		tst.l	d0
+		bne.s	no_memory
+		bsr	memory
+		bra	arxc_noact
+no_memory	move.l	(a3),a0
+		lea	cmd_REGISTRATION,a1	; cmd_REGISTRATION
+		moveq	#12,d0
+		jsr	_LVOStrnicmp(a6)
+		tst.l	d0
+		bne.s	no_regi
+		bsr	registr
+		;bra	arxc_noact
+no_regi
+
+arxc_noact	move.l	a4,a1
+		move.l	4.w,a6
+		jsr	_LVOReplyMsg(a6)
+arxc_no		rts
+
+
+arxc_quit	move.l	a4,a1
+		move.l	4.w,a6
+		jsr	_LVOReplyMsg(a6)
+
+
+; Spostato qui per comodita`, ovviamente!
+;:::::::::::::::::::::::::::::::::::::::::::::::::: QUIT :::::::::::::
+quit		move.l	(sp)+,d0
+
+;++++++++++++++++++++++++++++++++++++++++++++++++++ EXIT ++++++++++++++++
+exit		move.l	4.w,a6
+		move.b	_secflag(a5),d0
+		and.b	#$80,d0
+		beq	ex_nosysport
+		jsr	_LVOForbid(a6)
+		lea	arexx_name,a1
+		jsr	_LVOFindPort(a6)
+		move.l	d0,d4
+		jsr	_LVOPermit(a6)
+		tst.l	d4
+		beq.s	ex_nosysport
+ex_rmsgloop	move.l	d4,a0		; prende (per finta) e
+		jsr	_LVOGetMsg(a6)	; reply-a tutti i messaggi
+		tst.l	d0		; rexx accodati...
+		beq.s	ex_killp
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+		bra.s	ex_rmsgloop
+ex_killp	move.l	d4,a1
+		jsr	_LVORemPort(a6)
+ex_nosysport	move.l	_arexxport(a5),a0	; questa funzione, dice
+		jsr	_LVODeleteMsgPort(a6)	; doc, accetta 0 in entrata!
+
+		bsr	killmenu
+		bsr	closewindow
+		bsr	freegadgets
+		bsr	freevisual
+ex_retry	bsr	closescreen
+		tst.l	d0
+		bne.s	exit_go
+
+exit_wait	move.l	_intbase(a5),a6
+		suba.l	a0,a0
+		suba.l	a2,a2
+		suba.l	a3,a3
+		lea	ew_waitmsg,a1
+		jsr	_LVOEasyRequestArgs(a6)
+		bra.s	ex_retry
+
+exit_go		move.l	4.w,a6
+		move.l	_intbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_gadtoolsbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_dosbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_ppbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_amigaguidebase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_xpkbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_aslbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_iffbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_rexxsysbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_utilbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		;move.l	_gfxbase(a5),a1
+		;jsr	_LVOCloseLibrary(a6)
+		rts
+
+
+;===============================================================
+
+main_noint	lea	noint_msg,a0
+se_do		bsr	sayerror
+		bra	exit
+
+main_noasl	lea	noasl_msg,a0
+		bra.s	se_do
+
+main_nogadtools	lea	nogt_msg,a0
+		bra.s	se_do
+
+main_noscr	move.l	_intbase(a5),a6
+		lea	PubTitle,a0
+		jsr	_LVOLockPubScreen(a6)
+		tst.l	d0
+		beq.s	no_really_scr
+		move.l	d0,a3
+		move.l	a3,a0
+		jsr	_LVOScreenToFront(a6)
+		suba.l	a0,a0
+		move.l	a3,a1
+		jsr	_LVOUnlockPubScreen(a6)
+		bra	exit
+no_really_scr	lea	noscr_msg,a0
+		bra.s	se_do
+
+main_nowin	lea	nowin_msg,a0
+		bra.s	se_do
+
+main_nogad	lea	nogad_msg,a0
+		bra.s	se_do
+
+main_nomenu	lea	nomenu_msg,a0
+		bra.s	se_do
+
+main_noutil	lea	noutil_msg,a0
+		bra.s	se_do
+
+;main_nogfx	lea	nogfx_msg,a0
+;		bra	se_do
+
+
+sayerror	move.l	a0,-(sp)
+		move.l	_dosbase(a5),a6
+		move.l	#console,d1
+		move.l	#MODE_NEWFILE,d2
+		jsr	_LVOOpen(a6)
+		move.l	d0,d4
+		beq.s	see_err
+		move.l	d4,d1
+		move.l	(sp)+,d2
+		jsr	_LVOFPuts(a6)
+		move.l	d4,d1
+		jmp	_LVOFlush(a6)
+see_err		move.l	(sp)+,d0
+		rts
+
+
+
+;----------------------------------------------------------
+menupick_ur	move.w	_code(a5),d0
+		cmp.w	#-1,d0
+		beq	mpu_exit
+		move.w	d0,d1
+		and.w	#$1f,d0		; d0 = menu number
+		move.w	d1,d2
+		lsr.w	#5,d1
+		and.w	#$3f,d1		; d1 = item number
+		moveq	#11,d3
+		lsr.w	d3,d2
+		and.w	#$1f,d2		; d2 = subitem number
+
+		;cmp.b	#0,d0
+		tst.b	d0
+		beq	mpu_m0
+
+; ## MISCELLANEA ##
+		tst.b	d1
+		beq	sub_modpref
+		cmp.b	#1,d1
+		beq	mainpref	; *-> MAIN PREFS
+		cmp.b	#3,d1
+		beq	loadpref	; *-> LOAD PREFS
+		cmp.b	#4,d1
+		beq	savepref	; *-> SAVE PREFS
+		cmp.b	#6,d1
+		beq	fushow		; *-> SHOW
+		cmp.b	#7,d1
+		beq	fuhear		; *-> HEAR
+		cmp.b	#8,d1
+		beq	furead		; *-> READ
+		cmp.b	#10,d1
+		beq	fuguide		; *-> AMIGA GUIDE
+
+mpu_exit	rts
+
+;## SUB MODULE PREFS ##
+sub_modpref	tst.b	d2
+		beq	gfx_prefs	; *-> GFX PREFS
+		cmp.b	#1,d2
+		beq	snd_prefs	; *-> SND PREFS
+		cmp.b	#2,d2
+		beq	txt_prefs	; *-> TXT PREFS
+
+		rts
+
+;## PROJECT ##
+mpu_m0		cmp.b	#10,d1		; *-> QUIT
+		beq	quit
+		cmp.b	#6,d1
+		beq	about		; *-> ABOUT
+		cmp.b	#7,d1
+		beq	memory		; *-> MEMORY
+		cmp.b	#8,d1
+		beq	registr		; *-> REGISTRATION
+		cmp.b	#3,d1
+		beq	frename		; *-> RENAME
+		cmp.b	#4,d1
+		beq	fdelete		; *-> DELETE
+		cmp.b	#1,d1
+		beq	fseldest	; *-> SELECT DEST
+
+; ## SUB SELECT SOURCE ##
+subm0_0		tst.b	d2
+		beq	sfauto		; *-> AUTO
+		cmp.b	#2,d2
+		beq	sfgfx		; *-> GRAPHICS
+		cmp.b	#3,d2
+		beq	sfsnd		; *-> SOUND
+		bra	sftxt		; *-> TEXT
+
+		rts
+
+
+;---------------------------------------------
+rawkey_ur	rts
+
+;---------------------------------------------
+button_ur	move.l	_iaddress(a5),a0	; prende l'identita`
+		move.w	gg_GadgetID(a0),d0	; del gadget selezionato
+
+		cmp.w	#G_SELSOUR,d0	; Gruppo selettori source
+		beq	sfgfx
+		cmp.w	#S_SELSOUR,d0
+		beq	sfsnd
+		cmp.w	#T_SELSOUR,d0
+		beq	sftxt
+
+		cmp.w	#G_SELDEST,d0	; Gruppo selettori destination
+		beq	fseldest
+		cmp.w	#S_SELDEST,d0
+		beq	fseldest
+		cmp.w	#T_SELDEST,d0
+		beq	fseldest
+
+		cmp.w	#G_CONVERT,d0	; Gruppo convertitori
+		beq	gfx_suru
+		cmp.w	#S_CONVERT,d0
+		beq	snd_suru
+		cmp.w	#T_CONVERT,d0
+		beq	txt_suru
+
+		cmp.w	#G_INFORMA,d0	; Gruppo informazione
+		beq	gfx_info
+		cmp.w	#S_INFORMA,d0
+		beq	snd_info
+		cmp.w	#T_INFORMA,d0
+		beq	txt_info
+
+		cmp.w	#G_DO,d0	; Gruppo 'fa'
+		beq	fushow
+		cmp.w	#S_DO,d0
+		beq	fuhear
+		cmp.w	#T_DO,d0
+		beq	furead
+
+		rts
+
+
+
+;+-----------------------------------------------+
+;|   ROUTINES THAT MAKE THE PROGRAM FUNCTIONAL   |
+;+-----------------------------------------------+
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::: GFX CONVERT :::::
+;::::::::::::::::::::::::::::::::::::::::::::::::::: GFX INFO ::::::::
+gfx_suru	rts
+
+gfx_info
+
+;:::::::::::::::::::::::::::::::::::::::::::::::::::: SND CONVERT ::::
+;:::::::::::::::::::::::::::::::::::::::::::::::::::: SND INFO :::::::
+snd_suru	rts
+
+snd_info	rts
+
+;:::::::::::::::::::::::::::::::::::::::::::::::::::: TXT CONVERT :::::
+;:::::::::::::::::::::::::::::::::::::::::::::::::::: TXT INFO ::::::::
+txt_suru	rts
+
+txt_info	rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::: MAIN PREFS :::::::
+mainpref	rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::::: LOAD PREFS :::::::
+loadpref	rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::::: SAVE PREFS ::::::::
+savepref	rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::: GFX PREFS :::::::::
+gfx_prefs	rts
+
+;:::::::::::::::::::::::::::::::::::::::::::::::::::::: SND PREFS :::::
+snd_prefs	rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::::::: TXT PREFS :::::
+txt_prefs	rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::::::: SHOW ::::::::::
+fushow		rts
+
+;:::::::::::::::::::::::::::::::::::::::::::::::::::::::: HEAR ::::::::
+fuhear		rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::::::: READ :::::::::::
+furead		rts
+
+;:::::::::::::::::::::::::::::::::::::::::::::::::::::::: GUIDE ::::::::
+fuguide		rts
+
+;:::::::::::::::::::::::::::::::::::::::::::::::::::::: RENAME ::::::::::
+frename		rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::::: DELETE :::::::::::
+fdelete		rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::: SELECT DEST ::::::::::
+fseldest	rts
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::: SELECT SOURCE ::::::
+sfauto		moveq	#0,d0
+		bra.s	sfselsource
+
+sfgfx		moveq	#1,d0
+		bra.s	sfselsource
+
+sfsnd		moveq	#2,d0
+		bra.s	sfselsource
+
+sftxt		moveq	#3,d0
+
+sfselsource	rts
+
+;:::::::::::::::::::::::::::::::::::::::::: ABOUT, MEMORY, REGISTR :::::::
+memory		bsr	shutdown
+		move.l	4.w,a6		; qui invece di questa sfilza
+		move.l	#MEMF_PUBLIC,d1	; si puo` mettere un loop
+		jsr	_LVOAvailMem(a6)	;fatto con i dati presi
+		move.l	d0,_preparg(a5)		; da giu`, dove
+		move.l	#MEMF_CHIP,d1		; ci sarebbero gli op-
+		jsr	_LVOAvailMem(a6)	; portuni MEMF...
+		move.l	d0,_preparg+4(a5)
+		move.l	#MEMF_FAST,d1
+		jsr	_LVOAvailMem(a6)
+		move.l	d0,_preparg+8(a5)
+		move.l	#MEMF_CHIP!MEMF_LARGEST,d1
+		jsr	_LVOAvailMem(a6)
+		move.l	d0,_preparg+12(a5)
+		move.l	#MEMF_FAST!MEMF_LARGEST,d1
+		jsr	_LVOAvailMem(a6)
+		move.l	d0,_preparg+16(a5)
+		move.l	#MEMF_LOCAL,d1
+		jsr	_LVOAvailMem(a6)
+		move.l	d0,_preparg+20(a5)
+		move.l	#MEMF_24BITDMA,d1
+		jsr	_LVOAvailMem(a6)
+		move.l	d0,_preparg+24(a5)
+		move.l	#MEMF_KICK,d1
+		jsr	_LVOAvailMem(a6)
+		move.l	d0,_preparg+28(a5)
+		move.l	#MEMF_TOTAL,d1
+		jsr	_LVOAvailMem(a6)
+		move.l	d0,_preparg+32(a5)
+		move.l	_window(a5),a0
+		lea	es_all,a1
+		move.l	#memon,es_TextFormat(a1)	; memon/mumon!
+		;move.l	#neg_txt,es_GadgetFormat(a1)
+		sub.l	a2,a2
+		lea	_preparg(a5),a3
+		move.l	_intbase(a5),a6
+		jsr	_LVOEasyRequestArgs(a6)
+		bsr	arise
+		rts
+
+about		bsr	shutdown
+		move.l	_window(a5),a0
+		lea	es_all,a1
+		move.l	#infom,es_TextFormat(a1)
+		move.l	#neg_txt,es_GadgetFormat(a1)
+		sub.l	a2,a2
+		lea	infoarg,a3
+		jsr	_LVOEasyRequestArgs(a6)
+		bsr	arise
+		rts
+
+registr		rts
+
+
+
+
+;-----------------------------------------------------------------------
+shutdown	move.l	_intbase(a5),a6		; fa in modo che
+		move.l	_window(a5),a0		; non arrivi nessun
+		moveq	#0,d0			; idcmp alla finestra
+		jmp	_LVOModifyIDCMP(a6)	; deselezionata!
+
+arise		move.l	_window(a5),a0	; cfr sopra, contrario.
+		move.l	a0,a2
+		move.l	_intbase(a5),a6
+		move.l	#ALL_IDCMP,d0
+		jsr	_LVOModifyIDCMP(a6)
+		move.l	wd_UserPort(a2),_userport(a5)
+		move.l	_userport(a5),a0
+		move.b	MP_SIGBIT(a0),_intsignal(a5)
+		rts
+; intuition distrugge la userport se idcmp=0, quindi la ricrea...
+
+
+*=================================================================
+* Subroutines to make intuition interface (by Mauro Panigada)
+*=================================================================
+
+;---------------------------------------------------
+getvisual	move.l	_publock(a5),a0
+		sub.l	a1,a1
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOGetVisualInfoA(a6)
+		move.l	d0,_visualinfo(a5)
+		rts
+
+;----------------------------------------------------
+creategadgets	move.l	_publock(a5),a0
+		moveq	#0,d6
+		move.b	sc_BarHeight(a0),d6
+		ext.w	d6
+		move.w	d6,_barheight(a5)
+		move.l	_gadtoolsbase(a5),a6
+		lea	_glist(a5),a0
+		jsr	_LVOCreateContext(a6)
+		lea	glist,a4
+		move.l	#sfont,_sfont(a5)
+		moveq	#0,d7		; gadgetID
+cgad_loop	tst.l	d0
+		beq	cgad_error
+		move.l	d0,a0
+		move.l	(a4),d0		; KIND
+		bmi.s	cgad_end
+		move.l	4(a4),a1	; NEWGAD
+		move.l	_visualinfo(a5),gng_VisualInfo(a1)
+		move.l	_sfont(a5),gng_TextAttr(a1)
+		add.w	d6,gng_TopEdge(a1)
+		move.w	d7,gng_GadgetID(a1)
+		addq.w	#1,d7
+		move.l	8(a4),a2	; TAGLIST
+		jsr	_LVOCreateGadgetA(a6)
+		move.l	d0,12(a4)
+		add.l	#(4*4),a4
+		bra.s	cgad_loop
+cgad_end	moveq	#0,d0
+		rts
+cgad_error	moveq	#-1,d0
+		rts
+
+;--------------------------------------------------
+freegadgets	move.l	_glist(a5),d0
+		beq.s	fg_end
+		move.l	d0,a0
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOFreeGadgets(a6)
+fg_end		rts
+
+;------------------------------------------------------
+freevisual	move.l	_gadtoolsbase(a5),a6
+		move.l	_visualinfo(a5),d0
+		beq.s	fv_end
+		move.l	d0,a0
+		jsr	_LVOFreeVisualInfo(a6)
+fv_end		rts
+
+
+;==========================================================
+openwindow	move.l	_intbase(a5),a6
+		suba.l	a0,a0
+		lea	newwindowtag,a1
+		move.w	_barheight(a5),d0
+		add.w	d0,nwt_posy+6
+		sub.w	d0,nwt_dimy+6
+		move.l	_glist(a5),nwt_gadgets(a1)
+		jsr	_LVOOpenWindowTagList(a6)
+		move.l	d0,_window(a5)
+		beq.s	ow_error
+		move.l	d0,a1
+		move.l	wd_UserPort(a1),_userport(a5)
+		move.l	wd_RPort(a1),_rastport(a5)
+		move.l	a1,a3
+		move.l	_glist(a5),a0
+		sub.l	a2,a2
+		moveq	#-1,d0
+		jsr	_LVORefreshGList(a6)
+		move.l	_gadtoolsbase(a5),a6
+		move.l	a3,a0
+		sub.l	a1,a1
+		jsr	_LVOGT_RefreshWindow(a6)
+		moveq	#0,d0
+		rts
+ow_error	moveq	#-1,d0
+		rts
+
+;------------------------------------------------
+closewindow	move.l	4.w,a6
+		tst.l	_userport(a5)
+		beq.s	cw_goon
+cw_msgloop	move.l	_userport(a5),a0	; reply pending msges
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	cw_goon
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+		bra.s	cw_msgloop
+cw_goon		move.l	_intbase(a5),a6
+		move.l	_window(a5),d0
+		beq.s	cw_end
+		move.l	d0,a0
+		jsr	_LVOCloseWindow(a6)
+cw_end		rts
+
+;-----------------------------------------------------
+openscreen	move.l	_intbase(a5),a6
+		suba.l	a0,a0
+		lea	newscreentag,a1
+		jsr	_LVOOpenScreenTagList(a6)
+		move.l	d0,_screen(a5)
+ops_error	rts
+
+;----------------------------------------------------
+closescreen	move.l	_intbase(a5),a6
+		move.l	_screen(a5),d0
+		beq.s	cs_noscr
+		move.l	d0,a0
+		jmp	_LVOCloseScreen(a6)
+cs_noscr	moveq	#-1,d0		
+		rts
+
+;-------------------------------------------------
+makemenu	lea	mymenu,a0
+		lea	mymenutag,a1
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOCreateMenusA(a6)
+		move.l	d0,_nmenulist(a5)
+		beq	mm_error
+		move.l	d0,a0
+		lea	mymenutag,a2
+		move.l	_visualinfo(a5),a1
+		jsr	_LVOLayoutMenusA(a6)
+		move.l	_nmenulist(a5),a1
+		move.l	_window(a5),a0
+		move.l	_intbase(a5),a6
+		jsr	_LVOSetMenuStrip(a6)
+		moveq	#0,d0
+		rts
+mm_error	moveq	#-1,d0
+		rts
+
+
+;---------------------------------------------
+killmenu	move.l	_intbase(a5),a6
+		move.l	_window(a5),d0
+		beq.s	km_error
+		move.l	d0,a0
+		jsr	_LVOClearMenuStrip(a6)
+		move.l	_nmenulist(a5),d0
+		beq.s	km_error
+		move.l	d0,a0
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOFreeMenus(a6)
+km_error	rts
+
+
+
+
+
+;========================================================
+
+*>>>>>>>>>>>>>>>>>>>>>>> +--------------+
+*>>>>>>>>>>>>>>>>>>>>>>> | DATA SECTION |
+*>>>>>>>>>>>>>>>>>>>>>>> +--------------+
+
+		SECTION	MConverterDATA,DATA
+
+newscreentag	dc.l	SA_Width,640
+		dc.l	SA_Height,256
+		dc.l	SA_Depth,2
+		dc.l	SA_DetailPen,0
+		dc.l	SA_BlockPen,1
+		dc.l	SA_DisplayID,PAL_MONITOR_ID|HIRES_KEY
+		dc.l	SA_Pens,ScreenPens
+		dc.l	SA_Title,ScreenTitle
+		dc.l	SA_Font,Topaz_80
+		dc.l	SA_Overscan,OSCAN_STANDARD
+		dc.l	SA_Type,PUBLICSCREEN
+		dc.l	SA_PubName,PubTitle
+		dc.l	SA_AutoScroll,TRUE
+		dc.l	SA_Colors,ScreenColors
+		dc.l	TAG_END
+
+WinIDCMP	EQU	BUTTONIDCMP|LISTVIEWIDCMP
+ALL_IDCMP	EQU	WinIDCMP|IDCMP_MENUPICK|IDCMP_RAWKEY
+
+newwindowtag	dc.l	WA_Top,0
+nwt_posy	dc.l	WA_Left,0
+		dc.l	WA_Width,640
+nwt_dimy	dc.l	WA_Height,256
+		dc.l	WA_IDCMP,ALL_IDCMP
+customscr	dc.l	WA_CustomScreen,0
+		dc.l	WA_SizeGadget,FALSE
+		dc.l	WA_DragBar,FALSE
+		dc.l	WA_DepthGadget,FALSE
+		dc.l	WA_CloseGadget,FALSE
+		dc.l	WA_Backdrop,TRUE
+		dc.l	WA_Activate,TRUE
+		dc.l	WA_Borderless,TRUE
+		dc.l	WA_NewLookMenus,TRUE
+		dc.l	WA_Gadgets,0
+nwt_gadgets	EQU	(*-newwindowtag)-4
+		dc.l	TAG_END
+
+
+box_tag		dc.l	GT_VisualInfo,0
+		dc.l	GTBB_Recessed,TRUE
+		dc.l	TAG_END
+
+;b1_coord	dc.w	BNUMBER
+;b1c_s		dc.w	4,12,640-4,150-14
+;BNUMBER		EQU	((*-b1c_s)/8)-1
+
+
+sfont
+Topaz_80	dc.l	Topaz_name
+		dc.w	TOPAZ_EIGHTY
+		dc.b	FS_NORMAL,FPF_ROMFONT
+
+Topaz_80b	dc.l	Topaz_name
+		dc.w	TOPAZ_EIGHTY
+		dc.b	FSF_BOLD,FPF_ROMFONT
+
+ScreenPens	dc.w	-1
+
+ScreenColors	dc.w	0,10,10,10	; $AAA
+		dc.w	1,0,0,0		; $000
+		dc.w	2,15,15,15	; $FFF
+		dc.w	3,6,8,11	; $368
+		dc.w	-1
+
+mymenutag	dc.l	GTMN_NewLookMenus,TRUE
+		dc.l	TAG_END
+
+mymenu		MENU	NM_TITLE,project_menu,0,0,0
+		MENU	NM_ITEM,load_item,0,0,0
+		MENU	NM_SUB,auto_sub,load_key,0,0
+		MENUBAR	NM_SUB
+		MENU	NM_SUB,gfx_sub,0,0,0
+		MENU	NM_SUB,snd_sub,0,0,0
+		MENU	NM_SUB,txt_sub,0,0,0
+		MENU	NM_ITEM,saveas_item,save_key,0,0
+		MENUBAR	NM_ITEM
+		MENU	NM_ITEM,rename_item,0,0,0
+		MENU	NM_ITEM,delete_item,0,0,0
+		MENUBAR	NM_ITEM
+		MENU	NM_ITEM,about_item,0,0,0
+		MENU	NM_ITEM,memory_item,0,0,0
+		MENU	NM_ITEM,registr_item,0,0,0
+		MENUBAR	NM_ITEM
+		MENU	NM_ITEM,quit_item,0,0,0
+		MENU	NM_TITLE,misc_menu,0,0,0
+		MENU	NM_ITEM,prefs_item,0,0,0
+		MENU	NM_SUB,gfxp_sub,0,0,0
+		MENU	NM_SUB,sndp_sub,0,0,0
+		MENU	NM_SUB,txtp_sub,0,0,0
+		MENU	NM_ITEM,mprefs_item,0,0,0
+		MENUBAR	NM_ITEM
+		MENU	NM_ITEM,pload_item,0,0,0
+		MENU	NM_ITEM,psave_item,0,0,0
+		MENUBAR	NM_ITEM
+		MENU	NM_ITEM,show_item,show_key,0,0
+		MENU	NM_ITEM,hear_item,hear_key,0,0
+		MENU	NM_ITEM,read_item,read_key,0,0
+		MENUBAR	NM_ITEM
+		MENU	NM_ITEM,guide_item,0,0,0
+		MENUEND
+
+
+glist		DEFGAD	TEXT_KIND,gadget0,g0_tag
+		DEFGAD	TEXT_KIND,gadget1,g1_tag
+
+		DEFGAD	BUTTON_KIND,gadget2,0,G_SELSOUR
+		DEFGAD	BUTTON_KIND,gadget3,0,G_SELDEST
+		DEFGAD	BUTTON_KIND,gadget4,0,G_CONVERT
+		DEFGAD	BUTTON_KIND,gadget5,0,G_INFORMA
+		DEFGAD	BUTTON_KIND,gadget6,0,G_DO
+
+		DEFGAD	BUTTON_KIND,gadget7,0,S_SELSOUR
+		DEFGAD	BUTTON_KIND,gadget8,0,S_SELDEST
+		DEFGAD	BUTTON_KIND,gadget9,0,S_CONVERT
+		DEFGAD	BUTTON_KIND,gadget10,0,S_INFORMA
+		DEFGAD	BUTTON_KIND,gadget11,0,S_DO
+
+		DEFGAD	BUTTON_KIND,gadget12,0,T_SELSOUR
+		DEFGAD	BUTTON_KIND,gadget13,0,T_SELDEST
+		DEFGAD	BUTTON_KIND,gadget14,0,T_CONVERT
+		DEFGAD	BUTTON_KIND,gadget15,0,T_INFORMA
+		DEFGAD	BUTTON_KIND,gadget16,0,T_DO
+
+		DEFGAD	LISTVIEW_KIND,gadget17,g17_tag
+		DEFGAD	LISTVIEW_KIND,gadget18,g18_tag
+		DEFGAD	LISTVIEW_KIND,gadget19,g19_tag
+
+		DEFGAD	END
+
+
+gadget0		NEWGAD	0,200,640,13,0,PLACETEXT_IN,0
+g0_tag		dc.l	GTTX_Text,welcome.txt
+		dc.l	GTTX_Border,TRUE
+		dc.l	GTTX_Justification,GTJ_CENTER
+		dc.l	GTTX_FrontPen,2
+		dc.l	TAG_END
+gadget1		NEWGAD	0,213,640,13,0,PLACETEXT_IN,0
+g1_tag		dc.l	GTTX_Text,welcome1.txt
+		dc.l	GTTX_Border,TRUE
+		dc.l	GTTX_Justification,GTJ_CENTER
+		dc.l	GTTX_FrontPen,2
+		dc.l	TAG_END
+gadget2		NEWGAD	2,5,180,13,g2_text,PLACETEXT_IN,0
+gadget3		NEWGAD	2,18,180,13,g3_text,PLACETEXT_IN,0
+gadget4		NEWGAD	2,31,100,13,g4_text,PLACETEXT_IN,0
+gadget5		NEWGAD	102,31,80,13,g5_text,PLACETEXT_IN,0
+gadget6		NEWGAD	2,44,180,13,g6_text,PLACETEXT_IN,0
+gadget7		NEWGAD	2,5+57,180,13,g2_text,PLACETEXT_IN,0
+gadget8		NEWGAD	2,18+57,180,13,g3_text,PLACETEXT_IN,0
+gadget9		NEWGAD	2,31+57,100,13,g4_text,PLACETEXT_IN,0
+gadget10	NEWGAD	102,31+57,80,13,g5_text,PLACETEXT_IN,0
+gadget11	NEWGAD	2,44+57,180,13,g11_text,PLACETEXT_IN,0
+gadget12	NEWGAD	2,5+114,180,13,g2_text,PLACETEXT_IN,0
+gadget13	NEWGAD	2,18+114,180,13,g3_text,PLACETEXT_IN,0
+gadget14	NEWGAD	2,31+114,100,13,g4_text,PLACETEXT_IN,0
+gadget15	NEWGAD	102,31+114,80,13,g5_text,PLACETEXT_IN,0
+gadget16	NEWGAD	2,44+114,180,13,g16_text,PLACETEXT_IN,0
+gadget17	NEWGAD	190,5,300,57,0,0,0
+g17_tag		dc.l	GTLV_Labels,0
+		dc.l	GTLV_Selected,0
+		dc.l	GTLV_ShowSelected,0
+		dc.l	TAG_END
+gadget18	NEWGAD	190,5+57,300,57,0,0,0
+g18_tag		dc.l	GTLV_Labels,0
+		dc.l	GTLV_Selected,0
+		dc.l	GTLV_ShowSelected,0
+		dc.l	TAG_END
+gadget19	NEWGAD	190,5+(57*2),300,57,0,0,0
+g19_tag		dc.l	GTLV_Labels,0
+		dc.l	GTLV_Selected,0
+		dc.l	GTLV_ShowSelected,0
+		dc.l	TAG_END
+
+
+
+ew_waitmsg	dc.l	EasyStruct_SIZEOF
+		dc.l	0
+		dc.l	ew_title
+		dc.l	ew_body
+		dc.l	ew_gadget
+
+es_all		dc.l	EasyStruct_SIZEOF
+		dc.l	0
+		dc.l	ew_title,0,0
+
+infoarg		dc.l	PubTitle,arexx_name
+internalv	dc.w	E_IMV
+
+
+*»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»» STRINGS
+
+ScreenTitle	dc.b	"MUConverter "
+		MV
+		dc.b	" - (c) "
+		MY
+		dc.b	" by Mauro Panigada"
+		even
+ew_title
+PubTitle	dc.b	"MUConverter",0
+		even
+Topaz_name	dc.b	"topaz.font",0
+		even
+
+intname		dc.b	"intuition.library",0
+		even
+;gfxname		dc.b	"graphics.library",0
+;		even
+aslname		dc.b	"asl.library",0
+		even
+gadtoolsname	dc.b	"gadtools.library",0
+		even
+amigaguidename	dc.b	"amigaguide.library",0
+		even
+ppname		dc.b	"powerpacker.library",0
+		even
+xpkname		dc.b	"xpkmaster.library",0
+		even
+muconvname	dc.b	"muconv.library",0
+		even
+iffname		dc.b	"iffparse.library",0
+		even
+rexxsysname	dc.b	"rexxsyslib.library",0
+		even
+utilname	dc.b	"utility.library",0
+		even
+
+console		dc.b	"CON:0/20/640/80/MUConverter Output/AUTO/CLOSE/"
+		dc.b	"WAIT",0
+		even
+
+arexx_name	dc.b	"MUCONV_AREXX",0
+		even
+
+cmd_QUIT	dc.b	"QUIT",0
+		even
+cmd_INFO	dc.b	"INFO",0
+		even
+cmd_ABOUT	dc.b	"ABOUT",0
+		even
+cmd_MEMORY	dc.b	"MEMORY",0
+		even
+cmd_REGISTRATION
+		dc.b	"REGISTRATION",0
+		even
+
+
+;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;:··········:
+;: MESSAGES : (separati per un futuro [?] desiderio di localizzazione!)
+;:··········:
+
+ew_body		dc.b	"Close all windows on my screen!",0
+ew_gadget	dc.b	"Retry to close screen",0
+		even
+
+mul_msg		dc.b	"     I can't open MUConv.library!",10
+		dc.b	"You can't use some powerful functions!",0
+		even
+neg_txt
+mul_gad		dc.b	"Ok",0
+		even
+rxport_msg	dc.b	"I can't find rexxsyslib.library!",10
+		dc.b	"     No Arexx Port created!",0
+		even
+rxport0_msg	dc.b	"ERROR! I have received a non-ARexx message",10
+		dc.b	"on my ARexx-port! A task is playing...",10
+		dc.b	"Shall I reply that unuseful message?",0
+		even
+yesno_gad	dc.b	"Yes!|No",0
+		even
+
+welcome.txt	dc.b	"Welcome to MUConverter!",0
+welcome1.txt	dc.b	"The complete MUltiple Converter by Mauro Panigada"
+		dc.b	0
+		even
+
+project_menu	dc.b	"Project",0
+load_item	dc.b	"Select Source",0
+auto_sub	dc.b	"Auto...",0
+load_key	dc.b	"L",0
+gfxp_sub
+gfx_sub		dc.b	"Graphic...",0
+sndp_sub
+snd_sub		dc.b	"Sound...",0
+txtp_sub
+txt_sub		dc.b	"Text...",0
+saveas_item	dc.b	"Select Destination...",0
+save_key	dc.b	"S",0
+rename_item	dc.b	"Rename...",0
+delete_item	dc.b	"Delete...",0
+about_item	dc.b	"About...",0
+memory_item	dc.b	"Memory...",0
+registr_item	dc.b	"Authors...",0
+quit_item	dc.b	"Quit",0
+misc_menu	dc.b	"Miscellanea",0
+prefs_item	dc.b	"Module Preferences",0
+mprefs_item	dc.b	"Main Preferences",0
+pload_item	dc.b	"Load Preferences",0
+psave_item	dc.b	"Save Preferences",0
+show_item	dc.b	"Show IFF",0
+show_key	dc.b	"M",0
+hear_item	dc.b	"Hear IFF",0
+hear_key	dc.b	"H",0
+read_item	dc.b	"Read Ascii/IFF",0
+read_key	dc.b	"R",0
+guide_item	dc.b	"Read Guide",0
+		even
+
+g2_text		dc.b	"Select Source",0
+g3_text		dc.b	"Select Destination",0
+g4_text		dc.b	"Convert",0
+g5_text		dc.b	"Info",0
+g6_text		dc.b	"Show Image",0
+g11_text	dc.b	"Hear Sound",0
+g16_text	dc.b	"Read Text",0
+		even
+
+infom		dc.b	"          MUConverter "
+		MV
+		dc.b	"          ",10,10
+		dc.b	"                 by",10
+		dc.b	"           Mauro Panigada",10,10
+		dc.b	"    A MU-Project program (by MU)",10,10
+		dc.b	" This program is MU-shareware. Read",10
+		dc.b	" amigaguide doc for more.",10,10
+		dc.b	"Public screen: %s",10
+		dc.b	"Arexx port: %s",10,10
+		dc.b	"To contact me write to:",10,10
+		dc.b	"  Mauro Panigada",10
+		dc.b	"  via delle Capinere n. 14",10
+		dc.b	"  00169 Roma",10
+		dc.b	"  ITALY",10,10
+		dc.b	"{Private version: %x}",0
+		even
+
+memon		dc.b	"Information about free memory:",10,10
+		dc.b	" Public memory: %ld",10
+		dc.b	" Graphics (chip) memory: %ld",10
+		dc.b	" Fast memory: %ld",10
+		dc.b	" Largest chunk in chip: %ld",10
+		dc.b	" Largest chunk in fast: %ld",10
+		dc.b	" Local memory: %ld",10
+		dc.b	" 24 bit dma memory: %ld",10
+		dc.b	" Kick memory: %ld",10
+		dc.b	" TOTAL MEMORY: %ld",0
+		even
+
+noint_msg	dc.b	"Error while opening intuition.library (V37)",10,0
+		even
+nogt_msg	dc.b	"Error while opening gadtools.library (V37)",10,0
+		even
+noasl_msg	dc.b	"Error while opening asl.library (V37)",10,0
+		even
+nogad_msg	dc.b	"Error while creating gadgets!",10,0
+		even
+noscr_msg	dc.b	"Error while opening screen!",10,0
+		even
+nowin_msg	dc.b	"Error while opening window!",10,0
+		even
+nomenu_msg	dc.b	"Error while making menu!",10,0
+		even
+noutil_msg	dc.b	"Error while opening utility.library (V37)",10,0
+		even
+;nogfx_msg	dc.b	"Error while opening graphics.library (V37)",10,0
+;		even
+
+
+*>>>>>>>>>>>>>>>>>>>> +------------+
+*>>>>>>>>>>>>>>>>>>>> | DATA STORE |
+*>>>>>>>>>>>>>>>>>>>> +------------+
+
+		SECTION	MConverteSTORES,BSS
+
+stores		ds.b	mstores_SIZE
+
+
+
+*+----------------+
+*| END OF SOURCE! |  Another master-piece by Mauro Panigada (!)
+*+----------------+
+
+		END

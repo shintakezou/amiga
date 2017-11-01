@@ -1,0 +1,174 @@
+;
+; $VER: MProtect.a v1.0 by Mauro Panigada
+;
+; Started: 03-04-1996 (day/month/year)     ** FREEWARE **
+;
+; PURPOSE: Just an exercise. It is the same for AmigaDOS Protect, but
+; a bit different... Keep it as an example (but it can be also useful
+; in particular situations..., then keep it also in your C directory!)
+;
+; USAGE: MProtect ?
+; This will give you a dos-like help; it is simple to be used, so here
+; I won't tell more.
+; Then using a program is the best way to know it (and using my program
+; you will know all particular situations which I spoke above about).
+;
+; BUGS AND NOTES: No bugs are known at the moment. Perhaps it is better
+; than DOS command which asks for a mask... However, I AM *NOT*
+; RESPONSIBLE OF ANY DAMAGES CAUSED BY USING MY PROGRAM. I note this
+; because I am NOT sure that there isn't any bugs; however, the program
+; is very simple, but often are the simple programs that give problems!
+;
+; MAIN FEATURES:
+;   o Short
+;   o Easy to use
+;   o Multiple files (no pattern matching)
+;   o Handling of OTR (Other) and GRP (Group) protections
+;   o You, man-user, find other features by using it!
+;
+; EXAMPLE: Suppose that you have DF2:TOPO, DF2:CANE, DF2:DOG-GOD and
+; DF2:GOD-DOG with strange file protections... You will just type:
+; 1> mprotect df2:topo df2:cane df2:dog-god df2:god-dog
+;    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; and you will see your file with normal protections! Now, you can not
+; specify a match pattern (I will do this too), and typing a dir-name
+; you will see your directory protected as specified, but files in it
+; will have the same protection...
+;
+; 1) If you type "protect df2:*" and "mprotect df2:file0 df2:file1 ..." you
+; will see a different behavior. "Protect" with matching pattern is
+; shorter (only "df2:*"), but it kills every protection: your files
+; will have: --------. With MProtect you will see: ----RWED. From this
+; point of view my MProtect is better!
+; 2) Protect accepts only one argument for the file. Suppose you want to
+; do some operation with protect on two files in different directory, you
+; must write:
+;              protect df2:topo
+;              protect dh0:gatto
+;
+; If they are all in the same dir, you can write (if you want):
+;
+;              protect df2:#?o
+;
+; This will protect all files in df2: with 'o' as last letter. Matching
+; pattern is useful only when the files are in the same directory.
+; With my MProtect you can write only:
+;
+;              mprotect df2:topo dh0:gatto
+;
+; Protect has a defect: it has not multiple files... Why the Protect
+; programmers didn't use "FILE/M/A" option also with match-pattern?
+; So their program would be more powerful.
+; 
+; TO DO: Next version must support multiple match-pattern and must be
+; pure. That's all folks!
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+
+
+		bra.s	main
+
+		dc.b	"$VER: MProtect v1.0 written by Mauro Panigada",0
+		even
+
+main		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#36,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		bne.s	main0
+
+		lea	dosname(pc),a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq.s	exit0
+		move.l	d0,a6
+		jsr	_LVOOutput(a6)
+		move.l	d0,d1
+		move.l	#ynmsg,d2
+		moveq	#ynlen,d3
+		jsr	_LVOWrite(a6)
+		move.l	a6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+exit0		moveq	#10,d0
+		rts
+
+ynmsg		dc.b	"You need OS v2.0+ (36+)!",10
+ynlen		EQU	*-ynmsg
+		even
+
+main0		move.l	d0,a6
+		move.l	#template,d1
+		move.l	#array,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d7
+		beq.s	noargs
+		moveq	#0,d2
+		lea	array(pc),a4
+		move.l	a4,a5
+		move.l	(a4),a4
+		lea	table(pc),a3
+		moveq	#14,d4
+		addq.w	#4,a5
+loop		move.w	(a3)+,d3
+		move.l	(a5)+,d0
+		beq.s	skip
+		or.w	d3,d2
+skip		dbf	d4,loop
+		move.w	d2,d5
+loop0		move.l	(a4)+,d1
+		beq.s	exit1
+		move.l	d5,d2
+		jsr	_LVOSetProtection(a6)
+		tst.l	d0
+		bne.s	loop0
+serror		jsr	_LVOIoErr(a6)
+		move.l	d0,d1
+		move.l	-4(a4),d2
+		jsr	_LVOPrintFault(a6)
+		bra.s	loop0
+exit1		move.l	d7,d1
+		beq.s	next0
+		jsr	_LVOFreeArgs(a6)
+next0		move.l	a6,a1
+		move.l	4.w,a6
+		jmp	_LVOCloseLibrary(a6)
+
+noargs		move.l	#mhelp,d1
+		jsr	_LVOPutStr(a6)
+		bra.s	exit1
+
+
+dosname		dc.b	"dos.library",0
+		even
+template	dc.b	"FILE/M/A,OTR_READ/S,OTR_WRITE/S,OTR_EXECUTE/S,"
+		dc.b	"OTR_DELETE/S,GRP_READ/S,GRP_WRITE/S,"
+		dc.b	"GRP_EXECUTE/S,GRP_DELETE/S,SCRIPT/S,PURE/S,"
+		dc.b	"ARC=ARCHIVE/S,READ/S,WRITE/S,EXE=EXECUTE/S,"
+		dc.b	"DELETE/S",0
+		even
+array		dc.l	0
+		ds.l	15
+table		dc.w	FIBF_OTR_READ,FIBF_OTR_WRITE
+		dc.w	FIBF_OTR_EXECUTE,FIBF_OTR_DELETE
+		dc.w	FIBF_GRP_READ,FIBF_GRP_WRITE
+		dc.w	FIBF_GRP_EXECUTE,FIBF_GRP_DELETE
+		dc.w	FIBF_SCRIPT,FIBF_PURE,FIBF_ARCHIVE
+		dc.w	FIBF_READ,FIBF_WRITE,FIBF_EXECUTE
+		dc.w	FIBF_DELETE
+
+mhelp		dc.b	"MProtect v1.0 written by Mauro Panigada",10
+		dc.b	"Type 'MProtect ?' for a help.",10,0
+		even
+
+
+		END

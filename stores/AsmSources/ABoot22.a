@@ -1,0 +1,111 @@
+***
+*** $VER: ABoot V2.2 written by Mauro Panigada
+***
+*** FREEWARE!
+***
+*** PURPOSE: reads and executes a bootblock.
+*** USAGE: "Aboot DISK" or "Aboot ?" for information, where DISK is
+***   a number from 0 to N, where N is the number of your devices
+***   led by trackdisk.device (0=df0:,1=df1: etc.)
+*** BUGS: it doesn't check a failure when allocating IO structure or
+***   memory to load bootblock or message port... If there is not an
+***   error while opening dos.library or calling ReadArgs, it does not
+***   free ReadArgs' area by using FreeArgs and does not close dos.
+***   WHY? Well, I think if you run a bootblock, it can happen everything!
+***   So it is NOT useful to deallocate memory: you could lost
+***   your system...
+***
+*** NOTE: at the moment it does not work...
+***
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/exec.i"
+		include	"exec/exec_lib.i"
+		include	"devices/trackdisk.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+
+CALL		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+
+		bra.s	main
+
+		dc.b	"$VER: Aboot V2.2 by Mauro Panigada",0
+		even
+
+main		movea.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#36,d0
+		CALL	OpenLibrary
+		tst.l	d0
+		bne.s	dosok
+		moveq	#20,d0
+		rts
+
+dosok		move.l	d0,a6
+		move.l	#template,d1
+		move.l	#array,d2
+		moveq	#0,d3
+		CALL	ReadArgs
+		move.l	d0,d7
+		beq	argerror
+		move.l	array(pc),a0
+		move.l	a0,d0
+		beq	argerror0
+		move.l	(a0),d6
+		move.l	#message,d1
+		move.l	a0,d2
+		CALL	VPrintf
+		bra.s	busy_loop
+
+argerror0	move.l	d7,d1
+		CALL	FreeArgs
+argerror	move.l	a6,a1
+		move.l	4.w,a6
+		CALL	CloseLibrary
+		rts
+
+busy_loop	btst.b	#6,$bfe001
+		bne.s	busy_loop
+
+		move.l	4.w,a6
+		CALL	CreateMsgPort
+		move.l	d0,a0
+		move.l	#IOSTD_SIZE,d0
+		CALL	CreateIORequest
+		move.l	d0,a5
+		move.l	d0,a1
+		move.l	d6,d0
+		moveq	#0,d1
+		lea	trackname(pc),a0
+		CALL	OpenDevice
+		move.l	#1024,d0
+		move.l	#MEMF_CHIP,d1
+		CALL	AllocMem
+		move.l	a5,a1
+		move.l	d0,IO_DATA(a1)
+		move.l	d0,a4
+		move.w	#CMD_READ,IO_COMMAND(a1)
+		clr.l	IO_OFFSET(a1)
+		move.l	#1024,IO_LENGTH(a1)
+		CALL	DoIO
+
+		move.l	a5,a1
+		jmp	12(a4)
+
+
+dosname		dc.b	"dos.library",0
+		even
+trackname	dc.b	"trackdisk.device",0
+		even
+message		dc.b	"Insert a disk in device %ld and press left mouse"
+		dc.b	" button.",10,0
+		even
+template	dc.b	"DEVICE/N/A",0
+		even
+array		dc.l	0
+
+		END

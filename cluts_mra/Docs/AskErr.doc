@@ -1,0 +1,20 @@
+
+$VER: AskErr.doc v1.0 (c) 1999 by Mauro Panigada
+
+AskErr v1.0
+===========
+
+(c) 1999 by Mauro Panigada
+
+AskErr is a simple, very short CLI/Shell utility that allow you to know the
+error string associated with an error number.
+
+For example:
+
+ 1> AskErr 205
+ object not found
+ 1> AskErr 206
+ invalid window description
+
+Of course, typing "AskErr ?" you will have the template, but it is so easy!!!
+

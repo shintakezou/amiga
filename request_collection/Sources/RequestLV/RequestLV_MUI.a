@@ -1,0 +1,823 @@
+;
+; $VER: RequestLV.a 1.0 (c) 2000 by Mauro Panigada
+;
+; RequestLV 0.9
+; written by Mauro PANIGADA
+;
+; It uses MUI. MUI (Magic User Interface) is (c) by Stefan Stuntz
+;
+; FIRST WORKING VERSION: 2000.07.25
+;
+; Template:
+; LIST/M/A,TITLE,LABEL/K,SEL=SELECTED/N/K,FROMFILE/S,SORT/S,NOQUOTES/S
+;
+; LIST		a list of items in the form
+;		If FROMFILE switch is given, they are taken from a file; the
+;		separator is linefeed (10). The lists from files
+;               will be enqueued.
+; TITLE		title of the window
+; LABEL		the label of the listview. Always above it.
+; SELECTED	the item selected
+; FROMFILE	arg LIST is a name of a file
+; SORT		sort the list items
+; NOQUOTES	output text no quoted
+;
+;
+; RequesttLV will write to std output the item selected. You have to hit OK
+; gadget (or doubleclick on the item??); the return code will be 0. If
+; Cancel gadget is clicked, the return code is 10
+;
+; BUGS   * STRANGE THING: notification when you click on close gadget of the
+;	   window, does not work!!! Anyway, using Cancel button or KILL via
+;          a commodities control program or send a ctrl c (break) is OK !!!
+;
+; TO DO: * in line routines (shorter and faster), instead of silly subs
+;        * when open file fails, which file caused the error
+;	 * shorter code (tag in data instead of in code and so on)
+;
+
+		incdir	"include:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"exec/execbase.i"
+		include	"exec/lists.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/screens.i"
+		include	"intuition/intuition_lib.i"
+		*include	"libraries/gadtools.i"
+		*include	"libraries/gadtools_lib.i"
+		include	"mui/mui.i"
+		include	"mui/mui_lib.i"
+
+
+Call		MACRO
+		jsr		(_LVO\1,a6)
+		ENDM
+
+ExecBase	MACRO
+		move.l		(4).w,a6
+		ENDM
+
+Base		MACRO
+		move.l		(\1Base,a5),a6
+		ENDM
+
+Call2		MACRO
+		move.l		(\1Base,a5),a6
+		jsr		(_LVO\2,a6)
+		ENDM
+
+Lar		MACRO
+		lea		(\1,\2),\3
+		move.l		\3,\4
+		ENDM
+
+InitTagList	MACRO
+		move.l		sp,\1
+		clr.l		-(sp)
+		ENDM
+
+Tag		MACRO
+		move.l		\2,-(sp)
+		move.l		#\1,-(sp)
+		ENDM
+
+GetTagList	MACRO
+		move.l		sp,\1
+		ENDM
+
+EndTagList	MACRO
+		move.l		\1,sp
+		ENDM
+
+MAXSTRINGLEN	EQU	80
+
+PUDDLE_SIZE	EQU	(LN_SIZE+32)*64
+THRESH_SIZE	EQU	PUDDLE_SIZE-(LN_SIZE+4)
+
+
+	STRUCTURE sotrages,0
+		LONG	OldStack
+		LONG	ReturnCode
+		LONG	PoolHeader
+		LONG	ListHeader
+		LONG	DOSBase
+		LONG	MUIBase
+		LONG	IntBase
+
+		LONG	TheFile
+
+		LABEL	Args
+		LONG	ListArg
+		LONG	TitleArg
+		LONG	LabelArg
+		LONG	SelectedArg
+		LONG	FromFileArg
+		LONG	SortArg
+		LONG	NoQuotesArg
+
+		LONG	thestring
+
+		LONG	Argument
+
+		LONG	ListObj
+		LONG	ListviewObject
+		LONG	CancelButton
+		LONG	OKButton
+		LONG	HorizGroup
+		LONG	VertGroup
+		LONG	MWindow
+
+		LONG	App
+
+		WORD	ListElements
+		LONG	ListArg0
+
+		LONG	Signal
+
+		LABEL	stores_SIZE
+
+
+		opt	p=68020
+
+
+	SECTION	codice,CODE
+
+		lea		(Stores),a5		; 68020+ only
+		move.l		sp,(OldStack,a5)
+		ExecBase
+		move.w		(AttnFlags,a6),d0
+		and.w		#AFF_68020,d0
+		bne.s		Start
+ReturnFail0	moveq		#RETURN_FAIL,d0
+		rts
+
+AppVer		dc.b	"$VER: "
+		dc.b	"RequestLV 0.9 "
+CR		dc.b	"(2000.07.25) by "
+ApplicName	dc.b	"Mauro PANIGADA",13,10,0
+		dc.b	"$Text: MUI is (c) by Stefan Stuntz",0
+		even
+
+Start		clr.l		(ReturnCode,a5)
+
+		lea		(DOSName,pc),a1		; apre DOS
+		moveq		#39,d0
+		Call		OpenLibrary
+		move.l		d0,(DOSBase,a5)
+		beq.s		ReturnFail0
+
+		lea		(IntName,pc),a1
+		moveq		#39,d0
+		Call		OpenLibrary
+		move.l		d0,(IntBase,a5)
+		bne.s		IntOK
+
+		Lar		IntErrTxt,pc,a0,d1
+		move.l		#39,-(sp)
+		lea		(IntName,pc),a0
+		bra.s		MUIErr_Ent
+
+IntOK		lea		(MUIName,pc),a1		; apre MUI  !!!
+		moveq		#MUIMASTER_VMIN,d0
+		Call		OpenLibrary
+		move.l		d0,(MUIBase,a5)
+		bne.s		AllOKNow
+
+		Lar		MUIErrTxt,pc,a0,d1	; Niente MUI!
+		move.l		#MUIMASTER_VMIN,-(sp)
+		lea		(MUIName,pc),a0
+MUIErr_Ent	move.l		a0,-(sp)
+		move.l		sp,d2
+		Call2		DOS,VPrintf
+		move.l		#RETURN_FAIL,(ReturnCode,a5)
+		addq.l		#8,sp
+		bra		Exit0
+
+AllOKNow	Lar		Template,pc,a0,d1		; prende argomenti
+		Lar		Args,a5,a0,d2
+		moveq		#0,d3
+		Call2		DOS,ReadArgs
+		move.l		d0,(Argument,a5)
+		bne.s		AllOKAfter
+
+		Call		IoErr			; errore argomenti
+		move.l		d0,d1
+		Lar		MyName,pc,a0,d2
+		Call		PrintFault
+		move.l		#RETURN_FAIL,(ReturnCode,a5)
+		bra		Exit0
+
+AllOKAfter
+	;------ Per prima cosa, ci aspettiamo di dover fare molte piccole
+	;	allocazioni di seguito, ergo usiamo i pool.
+
+		move.l		#MEMF_ANY!MEMF_CLEAR,d0
+		move.l		#PUDDLE_SIZE,d1
+		move.l		#THRESH_SIZE,d2
+		ExecBase
+		Call		CreatePool
+		move.l		d0,(PoolHeader,a5)
+		bne.s		PoolOK
+
+		lea		(NoPoolText,pc),a0
+		bsr		GenError
+		bra		Exit
+
+PoolOK
+	;------ Abbiamo MUI e DOS, e gli argomenti.... analizziamoli per decidere
+	;	che fare.
+
+		bsr		InitList		; inizializza lista
+		bne.s		ListOK
+
+		lea		(NoMemText,pc),a0	; ERR no list
+		bsr		GenError
+		bra		Exit
+
+ListOK		move.l		(ListArg,a5),a3		; prepariamoci l'elenco
+
+		tst.l		(FromFileArg,a5)	; lista da costruire da
+		bne		AnalizeFiles		; file(s)
+
+	;------ Abbiamo un elenco di parole da inserire in una lista...
+
+ListLoop	move.l		(a3)+,d0
+		beq.s		ListDone
+		bsr		AddInList
+	;tst.l		d0			; (*) ERRORI IGNORATI... AL PIU`
+	;beq		AddIn_Err		; SUCCEDE DI AVERE UNA LISTA VUOTA!
+		bra.s		ListLoop	; OPPURE INCOMPLETA....
+ListDone
+		bsr		DoMain		; dealloca solo i parziali
+		move.l		d0,(ReturnCode,a5)
+		bra		Exit
+
+AnalizeFiles
+FilesLoop	move.l		(a3)+,d1
+		beq.s		ListDone	; abbiamo la lista completa.
+		bsr		OpenThisFile
+		beq.s		FileError
+	;move.l		d0,d0
+		bsr		GetListFromFile
+		bsr		CloseThisFile
+		tst.l		d4		; cfr GetListFromFile
+		bne.s		FilesLoop
+
+		lea		(NoMemText,pc),a0
+		bra.s		FE_in
+
+FileError
+		lea		(FileErrText,pc),a0
+FE_in		bsr		GenError
+		bra		Exit
+
+;=================
+; GetListFromFile
+;=================
+GetListFromFile
+GLFF_ListLoop	ExecBase
+		move.l		(PoolHeader,a5),a0
+		moveq		#MAXSTRINGLEN+2,d0
+		Call		AllocPooled
+		move.l		d0,d4
+		beq		GLFF_None
+		move.l		d0,d2
+		move.l		#MAXSTRINGLEN,d3
+		move.l		(TheFile,a5),d1
+		Call2		DOS,FGets
+		tst.l		d0		; errore o fine file, non fa nulla
+		beq		GLFF_None	; CFR (*)
+		move.l		d0,a0
+
+		moveq		#MAXSTRINGLEN-1,d1
+GLFF_StrLoop	cmp.b		#10,(a0)+	; fa terminare con 0 la stringa
+		beq.s		GLFF_StrEnd
+		tst.b		(-1,a0)
+		beq.s		GLFF_StrEnd0
+		dbf		d1,GLFF_StrLoop
+GLFF_StrEnd	clr.b		(-1,a0)
+GLFF_StrEnd0
+		bsr		AddInList	; (d0 conservato da prima) anche
+						; qui non controlliamo errori, cfr (*)
+		bra		GLFF_ListLoop
+
+GLFF_None	rts
+
+;==============
+; OpenThisFile
+;==============
+; IN d1 = file name
+OpenThisFile
+		move.l		#MODE_OLDFILE,d2
+		Call2		DOS,Open
+		move.l		d0,(TheFile,a5)
+		rts
+
+;===============
+; CloseThisFile
+;===============
+CloseThisFile
+		move.l		(TheFile,a5),d1
+		Call2		DOS,Close
+		rts
+
+;==========
+; InitList
+;==========
+InitList
+		move.l		(PoolHeader,a5),a0
+		move.l		#LH_SIZE,d0
+		Call		AllocPooled
+		move.l		d0,(ListHeader,a5)
+		beq.s		IL_None
+		move.l		d0,a0
+		NEWLIST		a0
+IL_None		rts
+
+;=============
+; ListToArray
+;=============
+; dalla lista ListHeader all'array ListArg0
+ListToArray
+		moveq		#0,d0
+		move.w		(ListElements,a5),d0
+		move.w		d0,d3
+		move.l		(PoolHeader,a5),a0
+		addq.w		#1,d0		; una long in piu` (il terminatore)
+		lsl.l		#2,d0
+		ExecBase
+		Call		AllocPooled
+		move.l		d0,(ListArg0,a5)
+		move.l		d0,a2
+		subq.w		#1,d3
+		move.l		(ListHeader,a5),a1
+LTA_Loop	SUCC		a1,a1
+		move.l		(LN_NAME,a1),(a2)+
+		dbf		d3,LTA_Loop
+		rts
+		
+		
+
+;==========
+; GenError
+;==========
+; IN a0 = error text
+GenError
+		move.l		a0,-(sp)
+		Lar		ErrText,pc,a0,d1
+		Lar		MyName0,pc,a0,-(sp)
+		move.l		sp,d2
+		Call2		DOS,VPrintf
+		addq.l		#8,sp
+		move.l		#RETURN_FAIL,(ReturnCode,a5)
+		rts
+
+;===========
+; AddInList
+;===========
+; IN d0 = ptr to a string
+AddInList
+		move.l		d0,-(sp)
+		move.l		(PoolHeader,a5),a0
+		move.l		#LN_SIZE,d0
+		ExecBase
+		Call		AllocPooled
+		tst.l		d0
+		beq.s		AIL_None
+		move.l		d0,a1
+		move.l		(ListHeader,a5),a0
+		move.l		(sp),(LN_NAME,a1)
+		ADDTAIL
+		add.w		#1,(ListElements,a5)
+AIL_None	addq.l		#4,sp
+		rts
+
+
+;===========
+; DoMethodA
+;===========
+; da amiga.lib
+; a0 = object
+; a1 = msg
+DoMethodA	move.l		a2,-(sp)
+		move.l		a0,a2
+		move.l		a2,d0
+		beq.s		dma_null
+		move.l		(-4,a2),a0		;dispacther hook
+		pea		(dma_return,pc)
+		move.l		(h_Entry,a0),-(sp)
+		rts
+dma_null	moveq		#0,d0
+dma_return	move.l		(sp)+,a2
+		rts
+
+
+;========
+; DoMain
+;========
+; My first MUI interface, I hope it will work
+;
+DoMain
+
+	;------ Creaiamo l'interfaccia MUI !!!!!!!!!!
+	;
+	; NOTA: l'oggetto MUI list non ha bisogno di una lista ma al piu` di
+	;	un array di ptr a stringhe.... quindi ho fatto molto lavoro
+	;	inutile, salve nel caso in cui faro` la versione GADTOOLS.
+	;	ERGO lascio cosi` tutto...
+
+		bsr		ListToArray
+		
+DM_OK0		Base		MUI
+
+	;------ creazione LIST
+		InitTagList	a3
+		tst.l		(SelectedArg,a5)
+		beq.s		DM_Nextt
+		move.l		(SelectedArg,a5),a0
+		Tag		MUIA_List_Active,(a0)
+DM_Nextt	tst.l		(LabelArg,a5)
+		beq.s		DM_Nextt2
+		Tag		MUIA_List_Title,<(LabelArg,a5)>
+DM_Nextt2	
+		Tag		MUIA_List_SourceArray,<(ListArg0,a5)>
+		GetTagList	a1
+
+		lea		(MUIC_List,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(ListObj,a5)
+		beq		DM_ErrEnd0
+
+
+	;------ Coppie EndTagList / InitTagList 8in ordine) generano codice ridondante
+	;	infatti vengono espanse in (nel caso particolare)
+	;	move.l	a3,sp
+	;	move.l	sp,a3		che è ovviamente una operazione inutile,
+	; visto che a3 rimane inalterato.... AGGIUSTARE QUANDO FUNZIONA!!!
+
+	;------ creazione LISTVIEW
+DM_OK1		InitTagList	a3
+		Tag		MUIA_Listview_List,<(ListObj,a5)>
+		Tag		MUIA_Frame,#MUIV_Frame_ReadList
+		Tag		MUIA_Listview_DoubleClick,#1
+		GetTagList	a1
+		lea		(MUIC_Listview,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(ListviewObject,a5)
+		beq		DM_ErrEnd1
+
+	;------ creazione GADGET OK
+		InitTagList	a3
+		Tag		MUIA_Background,#MUII_ButtonBack
+		Tag		MUIA_Frame,#MUIV_Frame_Button
+		lea		(OKText,pc),a0
+		Tag		MUIA_Text_Contents,a0
+		lea		(PrepaTxt,pc),a0
+		Tag		MUIA_Text_PreParse,a0
+	;lea		(OKChar,pc),a0			; NON FUNZIONA!!!
+	;Tag		MUIA_Text_HiChar,a0
+	;Tag		MUIA_ControlChar,a0
+		Tag		MUIA_InputMode,#MUIV_InputMode_RelVerify
+		GetTagList	a1
+		lea		(MUIC_Text,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(OKButton,a5)
+		beq		DM_ErrEnd2
+
+	;------ creazione GADGET CANCEL
+		InitTagList	a3
+		Tag		MUIA_Background,#MUII_ButtonBack
+		Tag		MUIA_Frame,#MUIV_Frame_Button
+		lea		(CancelText,pc),a0
+		Tag		MUIA_Text_Contents,a0
+		lea		(PrepaTxt,pc),a0
+		Tag		MUIA_Text_PreParse,a0
+	;lea		(CancelChar,pc),a0		; NON FUNZIONA!!!
+	;Tag		MUIA_Text_HiChar,a0
+	;Tag		MUIA_ControlChar,a0
+		Tag		MUIA_InputMode,#MUIV_InputMode_RelVerify
+		GetTagList	a1
+		lea		(MUIC_Text,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(CancelButton,a5)
+		beq		DM_ErrEnd3
+
+	;------ creazione gruppo orizzontale
+		InitTagList	a3
+		Tag		MUIA_Group_Horiz,#1
+		move.l		(OKButton,a5),d0
+		Tag		MUIA_Group_Child,d0
+		move.l		(CancelButton,a5),d0
+		Tag		MUIA_Group_Child,d0
+		GetTagList	a1
+		lea		(MUIC_Group,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(HorizGroup,a5)
+		beq		DM_ErrEnd4
+
+	;------ creazione gruppo verticale
+		InitTagList	a3
+		move.l		(HorizGroup,a5),d0
+		Tag		MUIA_Group_Child,d0
+		move.l		(ListviewObject,a5),d0
+		Tag		MUIA_Group_Child,d0
+		GetTagList	a1
+		lea		(MUIC_Group,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(VertGroup,a5)
+		beq		DM_ErrEnd5
+
+	;------ creazione WINDOW
+		InitTagList	a3
+		lea		(DefaultTitle,pc),a0
+		tst.l		(TitleArg,a5)
+		beq.s		DM_Ung
+		move.l		(TitleArg,a5),a0
+DM_Ung		Tag		MUIA_Window_Title,a0
+		Tag		MUIA_Window_Activate,#1
+		Tag		MUIA_Window_CloseGadget,#1
+		move.l		(VertGroup,a5),d0
+		Tag		MUIA_Window_RootObject,d0
+		GetTagList	a1
+		lea		(MUIC_Window,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(MWindow,a5)
+		beq		DM_ErrEnd6
+
+	;------ creazione applicazione
+		InitTagList	a3
+		Tag		MUIA_Application_Window,<(MWindow,a5)>
+		lea		(ApplicName,pc),a0
+		Tag		MUIA_Application_Author,a0
+		lea		(AppTitle,pc),a0
+		Tag		MUIA_Application_Title,a0
+		lea		(AppVer,pc),a0
+		Tag		MUIA_Application_Version,a0
+		GetTagList	a1
+		lea		(MUIC_Application,pc),a0
+		Call		MUI_NewObjectA
+		EndTagList	a3
+		move.l		d0,(App,a5)
+		beq		DM_ErrEnd7
+
+
+DM_Vai
+	;------ Ora abbiamo l'interfaccia e non rimane che attendere che
+	;	l'utente prema ok oppure cancel (ovvero il closegadget)
+
+	;------ NOTIFICHE
+		move.l		(OKButton,a5),a0
+		lea		(WinMsg1,pc),a1		; premuto OK?
+		bsr		DoMethodA
+
+		move.l		(CancelButton,a5),a0	: premuto Cancel?
+		lea		(WinMsg2,pc),a1
+		bsr		DoMethodA
+
+		move.l		(MWindow,a5),a0
+		lea		(WinMsg3,pc),a1
+		bsr		DoMethodA
+
+		move.l		(ListviewObject,a5),a0
+		lea		(LV_not,pc),a1
+		bsr		DoMethodA
+
+		tst.l		(SortArg,a5)	; invoca metodo SORT
+		beq.s		DM_NoSort
+		move.l		(ListObj,a5),a0
+		move.l		#MUIM_List_Sort,-(sp)
+		move.l		sp,a1
+		bsr		DoMethodA
+		addq.l		#4,sp
+
+DM_NoSort	move.l		(MWindow,a5),a0
+		clr.l		-(sp)
+		move.l		#-1,-(sp)
+		move.l		#MUIA_Window_Open,-(sp)
+		move.l		sp,a1
+		Call2		Int,SetAttrsA
+		add.l		#12,sp
+
+DM_WLoop	move.l		(App,a5),a0
+		lea		(AppMsg,pc),a1
+		lea		(Signal,a5),a2
+		move.l		a2,(4,a1)
+		bsr		DoMethodA
+		cmp.l		#MUIV_Application_ReturnID_Quit,d0
+		beq		WindowClosed
+		cmp.l		#2,d0		; selezionato Cancel
+		beq		WindowClosed
+		cmp.l		#1,d0
+		bne		DM_CheckB
+
+	;------ E` stato premuto OK, prendiamo la stringa selezionata e la
+	;	scriviamo allo std output.
+		move.l		(ListObj,a5),a0
+		lea		(getentry_tag,pc),a1
+		lea		(thestring,a5),a2
+		move.l		a2,(8,a1)
+		bsr		DoMethodA
+
+		Base		DOS
+
+		tst.l		(NoQuotesArg,a5)
+		bne.s		DM_NoQuotes0
+
+		lea		(QuoteTxt,pc),a0
+		move.l		a0,d1
+		Call		PutStr
+
+DM_NoQuotes0	move.l		(thestring,a5),d1
+		Call		PutStr
+
+		tst.l		(NoQuotesArg,a5)
+		bne.s		DM_NoQuotes1
+
+		lea		(QuoteTxt,pc),a0
+		move.l		a0,d1
+		Call		PutStr
+
+DM_NoQuotes1	lea		(accapo,pc),a0
+		move.l		a0,d1
+		Call		PutStr
+
+		moveq		#0,d0
+		rts
+
+DM_CheckB	tst.l		(Signal,a5)
+		beq		DM_WLoop
+		move.l		(Signal,a5),d0
+		or.l		#SIGBREAKF_CTRL_C,d0
+		ExecBase
+		Call		Wait
+		move.l		d0,(Signal,a5)
+		and.l		#SIGBREAKF_CTRL_C,d0
+		beq		DM_WLoop
+
+WindowClosed
+		move.l		#RETURN_WARN,d0		; la liberazione degli
+		rts					; oggetti avviene alla fine
+
+
+DM_ErrEnd7	move.l		(MWindow,a5),a0
+		Call		MUI_DisposeObject
+		bra.s		DM_ErrEnd0
+DM_ErrEnd6	move.l		(VertGroup,a5),a0
+		Call		MUI_DisposeObject
+		bra.s		DM_ErrEnd0
+DM_ErrEnd5	move.l		(HorizGroup,a5),a0
+		Call		MUI_DisposeObject
+		bra.s		DM_ErrEnd2
+DM_ErrEnd4	move.l		(CancelButton,a5),a0
+		Call		MUI_DisposeObject
+DM_ErrEnd3	move.l		(OKButton,a5),a0
+		Call		MUI_DisposeObject
+DM_ErrEnd2	move.l		(ListviewObject,a5),a0
+		Call		MUI_DisposeObject
+		bra.s		DM_ErrEnd0
+DM_ErrEnd1	move.l		(ListObj,a5),a0
+		Call		MUI_DisposeObject
+DM_ErrEnd0	move.l		#RETURN_FAIL,d0
+		rts
+DM_AdjRC	move.l		#RETURN_WARN,d0
+		rts			; selezionato nulla.
+
+;* dispose window => dispose su vertgroup che dispone horizgroup e bottoni e listview
+;  cancella listobj, quindi tutto.
+;* dispose vertgroup => dispose listview (=> dispose list) e horizgroup e quindi
+;  bottoni
+;* dispose horizgroup => dispose bottoni, QUINDI a parte va cancellato oggetto
+;  listview => dispose su list
+
+
+;.............. USCITA GENERALE ............................
+
+Exit
+		move.l		(App,a5),d0
+		beq.s		XNoApp
+		move.l		d0,a0
+		Call2		MUI,MUI_DisposeObject
+
+XNoApp		move.l		(Argument,a5),d1
+		beq.s		XFreePool
+		Call2		DOS,FreeArgs
+
+XFreePool	ExecBase
+		move.l		(PoolHeader,a5),d0
+		beq.s		Exit0
+		move.l		d0,a0
+		Call		DeletePool
+
+Exit0		ExecBase
+		move.l		(MUIBase,a5),a1
+		Call		CloseLibrary
+		move.l		(DOSBase,a5),a1
+		Call		CloseLibrary
+		move.l		(IntBase,a5),a1
+		Call		CloseLibrary
+		move.l		(ReturnCode,a5),d0
+		move.l		(OldStack,a5),sp
+		rts
+
+
+
+
+;======================================================= Testi
+
+DOSName		dc.b	"dos.library",0
+MUIName		dc.b	"muimaster.library",0
+IntName		dc.b	"intuition.library",0
+
+IntErrTxt
+MUIErrTxt	dc.b	"You need %s version %ld !"
+accapo		dc.b	10,0
+ErrText		dc.b	"%s %s",10,0
+NoPoolText	dc.b	"allocating pool",0
+NoMemText	dc.b	"allocating a chunk of memory from pool",0
+FileErrText	dc.b	"opening file",0
+MUIErr		dc.b	"creating MUI interface",0
+
+AppTitle
+DefaultTitle
+MyName		dc.b	"RequestLV",0
+
+MyName0		dc.b	"RequestLV: error while",0
+
+Template	dc.b	"LIST/M/A,TITLE,LABEL,SEL=SELECTED/N/K,FROMFILE/S,SORT/S,NOQUOTES/S",0
+
+MUIC_List	dc.b	"List.mui",0
+MUIC_Listview	dc.b	"Listview.mui",0
+MUIC_Text	dc.b	"Text.mui",0
+MUIC_Group	dc.b	"Group.mui",0
+MUIC_Window	dc.b	"Window.mui",0
+MUIC_Application
+		dc.b	"Application.mui",0
+
+PrepaTxt	dc.b	27,"c",0
+OKChar		dc.b	"o",0
+CancelChar	dc.b	"c",0
+OKText		dc.b	"OK",0
+CancelText	dc.b	"Cancel",0
+QuoteTxt	dc.b	'"',0
+		even
+
+;=============================================== pressione tasto OK
+WinMsg1		dc.l	MUIM_Notify
+		dc.l	MUIA_Pressed,0
+		dc.l	MUIV_Notify_Application
+		dc.l	2
+		dc.l	MUIM_Application_ReturnID,1
+		dc.l	0
+
+;================================================= pressione tasto cancel
+WinMsg2		dc.l	MUIM_Notify
+		dc.l	MUIA_Pressed,0
+		dc.l	MUIV_Notify_Application
+		dc.l	2
+		dc.l	MUIM_Application_ReturnID,2
+		dc.l	0
+
+;============================================= chiusura finestra = cancel
+WinMsg3		dc.l	MUIM_Notify
+		dc.l	MUIA_Window_CloseRequest,1
+		dc.l	MUIV_Notify_Application
+		dc.l	2
+		dc.l	MUIM_Application_ReturnID,MUIV_Application_ReturnID_Quit
+		dc.l	0
+
+;========================================== notificazione doubleclick
+LV_not		dc.l	MUIM_Notify
+		dc.l	MUIA_Listview_DoubleClick,1
+		dc.l	MUIV_Notify_Application
+		dc.l	2
+		dc.l	MUIM_Application_ReturnID,1
+		dc.l	0
+
+AppMsg		dc.l	MUIM_Application_NewInput,0
+		dc.l	0
+
+getentry_tag	dc.l	MUIM_List_GetEntry
+		dc.l	MUIV_List_GetEntry_Active
+		dc.l	0
+
+
+
+
+	SECTION	store,BSS
+
+Stores		ds.b	stores_SIZE
+
+
+		END

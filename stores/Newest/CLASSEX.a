@@ -1,0 +1,456 @@
+;
+; Class Example v1.0
+; written by Mauro Panigada
+;
+; Opened: 1997.06.30
+;
+
+		incdir	"inc:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+		include	"intuition/intuition.i"
+		include	"intuition/intuition_lib.i"
+		include	"intuition/classes.i"
+		include	"intuition/gadgetclass.i"
+		include	"intuition/imageclass.i"
+		include	"intuition/cghooks.i"
+
+
+
+	STRUCTURE reserved,0
+
+		APTR	_execbase
+		APTR	_intuitionbase
+
+		APTR	_class
+		APTR	_gad
+		APTR	_window
+
+		APTR	_rp
+		LONG	_retval
+
+		LABEL	reserved_size
+
+
+call		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+
+
+	SECTION	classexcode,CODE
+
+		move.l	4.w,a6
+		move.l	#MEMF_PUBLIC|MEMF_CLEAR,d1
+		move.l	#reserved_size,d0
+		call	AllocMem
+		move.l	d0,a5
+		tst.l	d0
+		beq.s	ender
+		move.l	a6,(a5)
+		bsr	start
+		move.l	d0,-(sp)
+		move.l	(a5),a6
+		move.l	a5,a1
+		move.l	#reserved_size,d0
+		call	FreeMem
+		move.l	(sp)+,d0
+ender		rts
+
+		dc.b	"$VER: "
+		dc.b	"Class Example Internal v1.0 by Mithrandir "
+		dc.b	"(1997.06.30)",13,10,0
+		even
+
+start		lea	classbase(pc),a0
+		move.l	a5,(a0)
+
+		lea	intuitionname(pc),a1
+		moveq	#39,d0
+		call	OpenLibrary
+		move.l	d0,_intuitionbase(a5)
+		beq	s_end
+
+		move.l	d0,a6
+
+		bsr	initclass
+		move.l	d0,_class(a5)
+		beq	s_closeint
+
+		move.l	d0,a0
+		suba.l	a1,a1
+		lea	taggel(pc),a2
+		call	NewObjectA
+		move.l	d0,_gad(a5)
+		beq	s_killclass
+
+		suba.l	a0,a0
+		lea	wintag(pc),a1
+		move.l	d0,r_gad(a1)
+		call	OpenWindowTagList
+		move.l	d0,_window(a5)
+		beq	s_dispobj
+
+		move.l	d0,a4
+		move.l	wd_UserPort(a4),a4
+		move.l	(a5),a6
+looper		move.l	a4,a0
+		call	WaitPort
+		move.l	a4,a0
+		call	GetMsg
+		move.l	d0,a1
+		move.l	im_Class(a1),d3
+		call	ReplyMsg
+
+		cmp.l	#IDCMP_CLOSEWINDOW,d3
+		bne.s	looper
+
+luppi		move.l	a4,a0		* reply all messages not
+		call	GetMsg		* replyed... if a long
+		tst.l	d0		* queue is present, this is safety!
+		beq.s	finished
+		move.l	d0,a1
+		call	ReplyMsg
+		bra.s	luppi
+finished
+
+s_closewin	move.l	_intuitionbase(a5),a6
+		move.l	_window(a5),a0
+		call	CloseWindow
+
+s_dispobj	move.l	_gad(a5),a0
+		call	DisposeObject
+
+s_killclass	move.l	_class(a5),a0
+		call	FreeClass
+
+s_closeint	move.l	(a5),a6
+		move.l	_intuitionbase(a5),a1
+		call	CloseLibrary
+
+s_end		rts
+
+
+********************************************************************* G
+**
+** Initialize a private class. This class should trace a box
+** (frameiclass) using boopsi
+**
+********************************************************************* G
+
+; G stands for Gandalf who's Mithrandir who's Olorin and so on
+
+initclass	move.l	_intuitionbase(a5),a6		; not needed
+		suba.l	a0,a0
+		lea	superclassname(pc),a1
+		suba.l	a2,a2
+		moveq	#0,d0
+		move.l	d0,d1
+		call	MakeClass
+		tst.l	d0
+		beq	ic_hello
+
+		move.l	d0,a0
+		clr.l	h_SubEntry(a0)
+		lea	dispatcher(pc),a1
+		move.l	a1,h_Entry(a0)
+		clr.l	h_Data(a0)
+ic_hello
+		rts
+
+
+*********************************************************************
+**
+** dispatcher
+**
+***********************************************************G*********
+
+retval		EQUR	d7
+newobj		EQUR	d6
+
+dispatcher	movem.l	d2-d7/a2-a6,-(sp)
+		moveq	#1,retval
+		lea	classbase(pc),a5
+		move.l	(a5),a5		;-> same of the main. i think
+				; it is not so correct, but it is a private
+				; class so i can do it!
+
+		move.l	_intuitionbase(a5),a6
+
+		; a0  ptr class
+		; a1  (ptr) message (classusr)
+		; a2  ptr object
+
+		movem.l	a0-a2,-(sp)
+
+		cmp.l	#OM_NEW,msg_MethodID(a1)
+		beq	d_new
+		cmp.l	#GM_RENDER,msg_MethodID(a1)
+		beq	d_render
+		cmp.l	#GM_GOACTIVE,msg_MethodID(a1)
+		beq	d_goactive
+		cmp.l	#GM_HANDLEINPUT,msg_MethodID(a1)
+		beq	d_handleinput
+		cmp.l	#OM_DISPOSE,msg_MethodID(a1)
+		beq	d_dispose
+
+		bsr	_DoSuperMethodA
+		move.l	d0,retval
+
+exit_case
+		add.l	#4*3,sp
+		move.l	retval,d0
+		movem.l	(sp)+,d2-d7/a2-a6
+		rts
+
+d_new		bsr	_DoSuperMethodA
+		move.l	d0,newobj
+		move.l	d0,retval
+		beq.s	d_n_noobj
+
+		lea	framename(pc),a1
+		lea	frametag(pc),a2
+		move.l	d0,a0
+		moveq	#0,d0
+		move.w	egg_Width(a0),txdim+2
+		move.w	egg_Height(a0),tydim+2
+		sub.l	a0,a0
+		call	NewObjectA
+		move.l	newobj,a0
+		move.l	d0,egg_GadgetRender(a0)
+		tst.l	d0
+		bne.s	d_n_goon
+
+		move.l	(sp),a0		; class (a0)
+		move.l	newobj,a2
+		move.l	#OM_DISPOSE,-(sp)
+		move.l	sp,a1
+		bsr	_CoerceMethodA
+		addq.l	#4,sp
+		moveq	#0,retval
+
+d_n_noobj
+d_n_goon	bra.s	exit_case
+
+d_render	move.l	8(sp),a0	;sp: (class msg) obj
+		move.l	4(sp),a2	;sp: (class) msg
+		move.l	gpr_RPort(a2),a1
+		move.l	gpr_GInfo(a2),a2
+		bsr	render_me
+		bra.s	exit_case
+
+d_goactive	moveq	#GMR_MEACTIVE,retval
+		bra.s	exit_case
+
+d_handleinput
+		move.l	8(sp),a0	; object
+		move.l	4(sp),a1	; message
+		bsr	handle_input
+		move.l	d0,retval
+		bra	exit_case
+
+d_dispose	move.l	8(sp),a0
+		move.l	egg_GadgetRender(a0),a0
+		call	DisposeObject
+		move.l	(sp),a0
+		move.l	4(sp),a1
+		move.l	8(sp),a2
+		bsr	_DoSuperMethodA
+		move.l	d0,retval
+		bra	exit_case
+
+
+render_me	movem.l	a0-a1,-(sp)
+		move.l	a0,a1		; gadget
+		move.l	4(sp),a0	; rastport
+		move.w	egg_LeftEdge(a1),d0
+		move.w	egg_TopEdge(a1),d1
+		moveq	#IDS_NORMAL,d2
+		move.w	egg_Flags(a1),d4
+		and.w	#GFLG_SELECTED,d4
+		beq.s	notsel
+		moveq	#IDS_SELECTED,d2
+notsel		move.l	egg_GadgetRender(a1),a1
+		move.l	a2,d4
+		beq.s	drinull
+		move.l	ggi_DrInfo(a2),a2
+drinull		call	DrawImageState
+
+		move.l	(sp)+,a1
+		move.l	(sp)+,a0
+		move.w	egg_LeftEdge(a1),d0
+		move.w	egg_TopEdge(a1),d1
+		move.l	egg_GadgetText(a1),a1
+		call	PrintIText
+		rts
+
+selected	EQUR	d5
+
+handle_input	movem.l	a0-a2,-(sp)
+		move.l	#GMR_MEACTIVE,_retval(a5)
+		clr.w	selected
+		move.w	gpi_MouseX(a1),d0
+		bge.s	cond1ok
+		bra.s	nocond
+cond1ok		move.w	egg_Width(a0),d1
+		cmp.w	d1,d0
+		blt.s	cond2ok
+		bra.s	nocond
+cond2ok		move.w	gpi_MouseY(a1),d0
+		bge.s	cond3ok
+		bra.s	nocond
+cond3ok		move.w	egg_Height(a0),d1
+		cmp.w	d1,d0
+		blt.s	allcondok
+		bra.s	nocond
+allcondok	move.w	#GFLG_SELECTED,selected
+nocond
+		move.l	gpi_IEvent(a1),a2
+		cmp.b	#IECLASS_RAWMOUSE,ie_Class(a2)
+		bne.s	nocond0
+		cmp.w	#SELECTUP,ie_Code(a2)
+		bne.s	nocond0
+
+*gadgetup, time to go*
+
+		tst.w	selected
+		beq.s	noseleo
+		move.l	#GMR_NOREUSE|GMR_VERIFY,_retval(a5)
+		bra.s	endiffe
+noseleo		move.l	#GMR_NOREUSE,_retval(a5)
+endiffe		clr.w	selected
+nocond0
+		move.l	(sp),a0
+		move.w	egg_Flags(a0),d0
+		and.w	#GFLG_SELECTED,d0
+		cmp.w	selected,d0
+		beq.s	jumpthese
+
+		eor.w	#GFLG_SELECTED,egg_Flags(a0)
+		move.l	4(sp),a0
+		move.l	gpi_GInfo(a0),a0
+		call	ObtainGIRPort
+		move.l	d0,_rp(a5)
+		beq.s	jumpthese
+
+		move.l	(sp),a0
+		move.l	4(sp),a1
+		move.l	#GREDRAW_UPDATE,-(sp)
+		move.l	d0,-(sp)
+		move.l	gpi_GInfo(a1),-(sp)
+		move.l	#GM_RENDER,-(sp)
+		move.l	sp,a1
+		bsr	_DoMethodA
+		add.l	#16,sp
+		move.l	_rp(a5),a0
+		call	ReleaseGIRPort
+jumpthese
+		movem.l	(sp)+,a0-a2
+		move.l	_retval(a5),d0
+		rts
+
+
+*=====================================================================
+
+; obj,msg
+; a0,a1
+;
+_DoMethodA
+		move.l	a0,d0
+		move.l	a0,a2
+		beq.s	sss_void
+		move.l	-4(a0),a0	; dispatcher hook
+sss_method	move.l	h_Entry(a0),-(sp)
+		rts
+sss_void	moveq	#0,d0
+		rts
+
+
+; cl,obj,msg
+; a0,a2, a1
+;
+_DoSuperMethodA
+		move.l	a2,d0
+		beq.s	sss_void
+		move.l	a0,d0
+		beq.s	sss_void
+		move.l	cl_Super(a0),a0
+		bra.s	sss_method
+
+; cl,obj,msg
+; a0,a2,a1
+;
+_CoerceMethodA
+		move.l	a2,d0
+		beq.s	sss_void
+		move.l	a0,d0
+		beq.s	sss_void
+		bra.s	sss_method
+
+superclassname	dc.b	"gadgetclass",0
+		even
+framename	dc.b	"frameiclass",0
+		even
+frametag	dc.l	IA_FrameType,FRAME_BUTTON
+		dc.l	IA_DoubleEmboss,TRUE
+		dc.l	IA_Width
+txdim
+		dc.l	0
+		dc.l	IA_Height
+tydim
+		dc.l	0
+		dc.l	TAG_END
+
+*-------------------------------------------------------------------*
+
+intuitionname	dc.b	"intuition.library",0
+		even
+
+taggel		dc.l	GA_Left,20
+		dc.l	GA_Top,20
+		dc.l	GA_Width,100
+		dc.l	GA_Height,20
+		dc.l	GA_RelVerify,TRUE
+		dc.l	GA_Immediate,TRUE
+		dc.l	GA_IntuiText,testo
+		dc.l	TAG_END
+
+testo		dc.b	1,0,RP_JAM1,0
+		dc.w	4,5
+		dc.l	0		; font:0 default system (topaz)
+		dc.l	testos
+		dc.l	testo2
+testo2		dc.b	2,0,RP_JAM1,0
+		dc.w	3,4
+		dc.l	0
+		dc.l	testos,0
+
+testos		dc.b	"Questo e`..",0
+		even
+title		dc.b	"Titolo",0
+		even
+
+wintag		dc.l	WA_Title,title
+		dc.l	WA_CloseGadget,TRUE
+		dc.l	WA_DepthGadget,TRUE
+		dc.l	WA_DragBar,TRUE
+		dc.l	WA_SizeGadget,FALSE
+r_gad		EQU	(*-wintag)+4
+		dc.l	WA_Gadgets,0
+		dc.l	WA_Activate,TRUE
+		dc.l	WA_IDCMP,IDCMP_CLOSEWINDOW|IDCMP_GADGETDOWN|IDCMP_GADGETUP
+		dc.l	WA_Width,400
+		dc.l	WA_Height,200
+		dc.l	TAG_END
+
+classbase	dc.l	0
+
+
+
+		END

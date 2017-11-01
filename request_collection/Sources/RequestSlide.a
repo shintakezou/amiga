@@ -1,0 +1,1364 @@
+;
+; $VER: RequestSlide.a 1.0 [020] (c) 2003 by Mauro Panigada
+;
+; RequestSlide 1.0
+; written by Mauro Panigada
+;
+; PURPOSE
+;  Choose a value between a range using slide
+;
+; TEMPLATE
+;  TO/N/A,FROM,VALUE,HEX/S,HEXPREFIX/K,VERT/S,TITLE/K,TEXT/K,MOUSEPOS/S,
+;  CENTER/S,PUBLICSCREEN/K
+;
+; TO            the max value of the range.
+; FROM          the min value of the range (default is 0)
+; VALUE         the position of the knob at the beginning
+; HEX           output value in hex
+; HEXPREFIX     choose a prefix for hex output (force HEX switch)
+; VERT          the slider is vertical
+; TITLE         window title
+; TEXT          a text written in the window
+; MOUSEPOS      open window under mouse
+; CENTER        center the window in the screen
+; PUBLICSCREEN  choose a public screen where it stays
+;
+; HISTORY
+;  1998         first start. Never ending story...
+;  2003.06.11   second start. Renewed (new style, boopsi)
+;  2003.07.04   third start.
+;  2003.07.07   exam
+;  2003.07.09   first working but unfinished version
+;
+; BUGS
+;  - RelVerify doesn't work...
+;  - from features doesn't work properly...
+;  - loses bytes of memory. Why?? 
+;
+
+		incdir	"inc:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/screens.i"
+		include	"intuition/gadgetclass.i"
+		include	"intuition/imageclass.i"
+		include	"intuition/icclass.i"
+		include	"intuition/intuition_lib.i"
+		include	"graphics/text.i"
+		include	"utility/utility.i"
+		include	"utility/utility_lib.i"
+
+		opt	p=68020
+		opt	nodebug
+
+call		MACRO
+		jsr	(_LVO\1,a6)
+		ENDM
+
+execbase	MACRO
+		movea.l	(4).w,a6
+		ENDM
+
+getbase		MACRO
+	IFEQ	'\1','dos'
+		move.l	(a5),a6
+	ELSE
+		move.l	(\1base,a5),a6
+	ENDC
+		ENDM
+
+COUPLE		MACRO
+		BYTE	\1_w
+		BYTE	\1
+		ENDM
+
+WCOUPLE		MACRO
+		WORD	\1_l
+		WORD	\1
+		ENDM
+
+taglist		MACRO
+		move.l	a4,-(sp)
+		move.l	sp,a4
+		clr.l	-(sp)
+		ENDM
+
+tag		MACRO
+		move.l	\2,-(sp)
+		move.l	#\1,-(sp)
+		ENDM
+
+tagend		MACRO
+		move.l	sp,\1
+		ENDM
+
+freetaglist	MACRO
+		move.l	a4,sp
+		move.l	(sp)+,a4
+		ENDM
+
+DEF_SIZEG_Y	EQU	12
+DEF_SIZEG_X	EQU	12
+
+FAR_FROM_BORD	EQU	1
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+PROP_ID		EQU	1
+AUG_ID		EQU	2
+DIM_ID		EQU	3
+OK_ID		EQU	4
+CANCEL_ID	EQU	5
+STR_ID		EQU	6
+
+	STRUCTURE miamemo,0
+		LONG	dosbase
+		LONG	intbase
+		LONG	utilbase
+
+		BYTE	returncode_l
+		BYTE	pad0
+		BYTE	pad1
+		BYTE	returncode
+
+		LABEL	args
+		LONG	to_a
+		LONG	from_a
+		LONG	value_a
+		LONG	hex_a
+		LONG	hexprefix_a
+		LONG	vert_a
+		LONG	title_a
+		LONG	text_a
+		LONG	mousepos_a
+		LONG	center_a
+		LONG	publicscreen_a
+
+		LONG	readarg
+
+		LONG	thescreen
+		LONG	dri
+
+		LONG	thefont
+		WORD	fontheight
+
+		LONG	thetitle
+		WORD	title_len
+
+		COUPLE	wbortop
+		COUPLE	wborleft
+		COUPLE	wborright
+		COUPLE	wborbottom
+		COUPLE	barheight
+
+		WORD	scr_width
+		WORD	scr_height
+
+		WORD	last_x
+		WORD	last_y
+
+		WORD	winoffset_y
+		WORD	dimi_y
+		WORD	dimi_x
+
+		LONG	thewindow
+		LONG	theport
+		WORD	win_minx
+		WORD	win_miny
+
+		WCOUPLE	sizesize_y
+
+		LONG	dim_gad
+		LONG	aug_gad
+		LONG	prop_gad
+
+		LONG	string_gad
+		LONG	strframe
+
+		LONG	ok_gad
+		LONG	cancel_gad
+
+		WCOUPLE	closeg_x
+
+		WORD	prop_len
+		WORD	cancel_len
+		WORD	ok_len
+		WCOUPLE	aug_gad_x	;siamo confidenti che aug x/y = dim x/y
+		WCOUPLE	aug_gad_y	;rispettivamente, ma tanto per essere
+		WCOUPLE	dim_gad_x	;ridondanti al max...
+		WCOUPLE	dim_gad_y
+
+		STRUCT	itesto,it_SIZEOF
+
+		LONG	from
+		LONG	to
+		LONG	range
+		LONG	value
+
+		LONG	i_class
+		WORD	i_code
+		LONG	i_iaddress
+
+		LONG	gadid
+
+		LONG	storage
+
+		STRUCT	mappa,12
+
+		LABEL	miamemo_SIZEOF
+
+
+	SECTION	codice,CODE
+
+		execbase
+		move.l		#miamemo_SIZEOF,d0
+		move.l		#MEMF_ANY|MEMF_CLEAR,d1
+		call		AllocMem
+		move.l		d0,a5
+		tst.l		d0
+		bne.s		inizio
+		moveq		#RETURN_FAIL,d0
+		rts
+
+		dc.b	"$VER: RequestSlide 1.0 (c) 2003 Mauro Panigada",13,10,0
+		even
+
+inizio
+		move.b		#RETURN_FAIL,(returncode,a5)
+
+		lea		(dosname,pc),a1
+		moveq		#39,d0
+		call		OpenLibrary
+		move.l		d0,(a5)
+		beq		fine0
+
+		lea		(intname,pc),a1
+		moveq		#39,d0
+		call		OpenLibrary
+		move.l		d0,(intbase,a5)
+		beq		fine0
+
+		lea		(utilname,pc),a1
+		moveq		#39,d0
+		call		OpenLibrary
+		move.l		d0,(utilbase,a5)
+		beq		fine0
+
+		getbase		dos
+		move.l		#template,d1
+		lea		(args,a5),a0
+		move.l		a0,d2
+		moveq		#0,d3
+		call		ReadArgs
+		move.l		d0,(readarg,a5)
+		bne.s		argok
+
+		call		IoErr
+		move.l		d0,d1
+		move.l		#myname,d2
+		call		PrintFault
+		bra		fine0
+
+argok
+
+	;------ Preleva lo screen (default, workbench)
+
+		bsr		getscreen
+		move.l		d0,(thescreen,a5)
+
+		;getbase	int
+		move.l		d0,a0
+		call		GetScreenDrawInfo
+		move.l		d0,(dri,a5)
+
+
+	;------ Prendiamo informazioni varie dallo schermo... Potevo farlo
+	; "al volo", ma ho preferito così per snellezza delle parti di
+	; calcolo.
+
+		move.l		(thescreen,a5),a0
+		move.w		(sc_Width,a0),(scr_width,a5)
+		move.w		(sc_Height,a0),(scr_height,a5)
+		move.b		(sc_WBorTop,a0),(wbortop,a5)
+		move.b		(sc_WBorBottom,a0),(wborbottom,a5)
+		move.b		(sc_WBorLeft,a0),(wborleft,a5)
+		move.b		(sc_WBorRight,a0),(wborright,a5)
+		move.b		(sc_BarHeight,a0),(barheight,a5)
+		move.l		(sc_Font,a0),(thefont,a5)
+
+	;------ Calcola dimensioni interne della finestra
+
+		move.w		([thefont,a5],ta_YSize),d0
+		move.w		d0,(fontheight,a5)
+		move.w		(barheight_w,a5),d1
+		add.w		(wbortop_w,a5),d1
+		bsr		max
+		move.w		d0,(winoffset_y,a5)
+		move.w		(wborbottom_w,a5),d1
+		add.w		d0,d1
+		move.w		d1,(dimi_y,a5)
+
+		move.w		(wborleft_w,a5),d0
+		add.w		(wborright_w,a5),d0
+		move.w		d0,(dimi_x,a5)
+
+	;------ Crea immagine size gadget per i conti del fondo...
+
+		move.w		#DEF_SIZEG_Y,(sizesize_y,a5)
+		moveq		#SIZEIMAGE,d0
+		bsr		NewImageObj
+		tst.l		d0
+		beq.s		nosize
+		move.l		d0,a3
+		move.l		d0,a0
+		move.l		#IA_Height,d0
+		lea		(sizesize_y_l,a5),a1
+		call		GetAttr
+		move.l		a3,a0
+		call		DisposeObject
+nosize
+
+		move.w		(sizesize_y,a5),d0
+		add.w		d0,(dimi_y,a5)
+
+	;------ Calcola dim iniziali della finestra basandosi sui valori
+	; dati di FROM e TO e dimensioni dello screen
+
+		moveq		#0,d0
+		moveq		#0,d1
+		tst.l		(from_a,a5)
+		beq.s		nofromdato
+		move.l		([from_a,a5]),d0
+nofromdato
+		move.l		([to_a,a5]),d1
+
+		cmp.l		d0,d1
+		bgt.s		ehmcosa
+		exg.l		d0,d1	;from>to, scambio valori
+
+ehmcosa		move.l		d0,(from,a5)
+		move.l		d0,(value,a5)
+		move.l		d1,(to,a5)
+		sub.l		d0,d1
+		move.l		d1,(range,a5)
+
+		tst.l		(value_a,a5)
+		beq.s		novalue_g
+
+		move.l		([value_a,a5]),d0
+		cmp.l		(from,a5),d0
+		blt.s		novalue_g
+		move.l		d0,(value,a5)
+		cmp.l		(to,a5),d0
+		blt.s		novalue_g
+		move.l		(to,a5),(value,a5)
+
+novalue_g
+		move.l		(value,a5),d0
+		sub.l		(from,a5),d0
+		move.l		d0,(value,a5)
+
+		moveq		#0,d0
+		move.w		(scr_width,a5),d0
+		tst.l		(vert_a,a5)
+		beq.s		okvertis
+		move.w		(scr_height,a5),d0
+okvertis
+		move.w		d0,d3
+		divu.l		d1,d0	;scr_h o w / range
+
+	;------ Se il rapporto (d0) > 2 usa la versione "lunga", altrimenti
+	; la versione corta... del tutto arbitrario...
+
+		move.w		(scr_width,a5),d1
+		tst.l		(vert_a,a5)
+		beq.s		vertsel
+		move.w		(scr_height,a5),d1
+vertsel
+		move.w		d1,d2
+		lsr.w		#1,d1
+		lsr.w		#2,d2
+
+		cmp.l		#2,d0
+		bhi.s		noverlun
+
+		add.w		d2,d1
+
+noverlun
+		move.w		d1,(prop_len,a5)
+
+	;------ Ancora abbiamo bisogno di
+	; ok_len
+	; cancel_len
+	; aug_gad_ x,y
+	; dim_gad_ x,y
+	;
+
+		lea		(ok_t,pc),a0
+		bsr		textlength
+		move.w		d0,(ok_len,a5)
+
+	*lea		(itesto,a5),a0
+	*move.l		a0,a2
+	*move.l		(thefont,a5),(it_ITextFont,a0)
+	*move.l		#ok_t,(it_IText,a0)
+	*call		IntuiTextLength
+	*move.w		d0,(ok_len,a5)
+
+		lea		(cancel_t,pc),a0
+		bsr		textlength
+		move.w		d0,(cancel_len,a5)
+
+	*move.l		a2,a0
+	*move.l		#cancel_t,(it_IText,a0)
+	*call		IntuiTextLength
+	*move.w		d0,(cancel_len,a5)
+
+		tst.l		(vert_a,a5)
+		bne.s		vert_ad
+
+horiz_ad	moveq		#LEFTIMAGE,d0
+		bsr		NewImageObj
+		move.l		d0,(dim_gad,a5)
+		sne		d2
+		moveq		#RIGHTIMAGE,d0
+		bsr		NewImageObj
+		move.l		d0,(aug_gad,a5)
+		sne		d3
+		bra.s		ad_done
+
+vert_ad		moveq		#UPIMAGE,d0
+		bsr		NewImageObj
+		move.l		d0,(aug_gad,a5)
+		sne		d3
+		moveq		#DOWNIMAGE,d0
+		bsr		NewImageObj
+		move.l		d0,(dim_gad,a5)
+		sne		d2
+
+ad_done		and.b		d2,d3
+		beq		fine
+
+		lea		(aug_gad_x_l,a5),a1
+		move.l		(aug_gad,a5),a0
+		move.l		#IA_Width,d0
+		call		GetAttr
+		move.w		(aug_gad_x,a5),(dim_gad_x,a5)
+
+		lea		(aug_gad_y_l,a5),a1
+		move.l		(aug_gad,a5),a0
+		move.l		#IA_Height,d0
+		call		GetAttr
+		move.w		(aug_gad_y,a5),(dim_gad_y,a5)
+
+		move.w		#DEF_SIZEG_X,(closeg_x,a5)
+		moveq		#CLOSEIMAGE,d0
+		bsr		NewImageObj
+		move.l		d0,a2
+		tst.l		d0
+		beq.s		nocloseimago
+
+		move.l		a2,a0
+		lea		(closeg_x_l,a5),a1
+		move.l		#IA_Width,d0
+		call		GetAttr
+
+		move.l		a2,a0
+		call		DisposeObject
+
+nocloseimago	lea		(myname,pc),a0
+		move.l		(title_a,a5),d0
+		beq.s		okcosi
+		move.l		d0,a0
+okcosi
+		move.l		a0,(thetitle,a5)
+		bsr		textlength
+		move.w		d0,(title_len,a5)
+
+		bsr		getwindim
+		move.w		d0,(win_minx,a5)
+		move.w		d1,(win_miny,a5)
+
+	;------
+	;------ Pronti ad aprire la finestra...
+	;------
+
+		taglist
+		moveq		#0,d0
+		move.w		(win_minx,a5),d0
+		tag		WA_Width,d0
+		tag		WA_MinWidth,d0
+		move.w		(win_miny,a5),d0
+		tag		WA_Height,d0
+		tag		WA_MinHeight,d0
+
+		move.w		(scr_width,a5),d0
+		tag		WA_MaxWidth,d0
+		move.w		(scr_height,a5),d0
+		tag		WA_MaxHeight,d0
+
+		tag		WA_Title,<(thetitle,a5)>
+		tag		WA_ScreenTitle,#expt
+
+		tag		WA_PubScreen,<(thescreen,a5)>
+
+		tag		WA_SizeGadget,#TRUE
+		tag		WA_DragBar,#TRUE
+		tag		WA_DepthGadget,#TRUE
+		tag		WA_CloseGadget,#TRUE
+		tag		WA_Activate,#TRUE
+		tag		WA_RMBTrap,#TRUE
+		tag		WA_SizeBBottom,#TRUE
+
+	;------ Qui calcoliamo la posizione ----
+
+		moveq		#0,d0
+		move.l		d0,d1
+
+		tst.l		(mousepos_a,a5)
+		beq		no_mousepos
+
+		move.w		(win_minx,a5),d0
+		lsr.w		#1,d0
+		sub.w		([thescreen,a5],sc_MouseX),d0
+		neg.w		d0
+
+		move.w		(win_miny,a5),d1
+		lsr.w		#1,d1
+		sub.w		([thescreen,a5],sc_MouseY),d1
+		neg.w		d1
+
+		bra		no_center
+
+no_mousepos	tst.l		(center_a,a5)
+		beq		no_center0
+
+		move.w		(scr_width,a5),d0
+		sub.w		(win_minx,a5),d0
+		lsr.w		#1,d0
+
+		move.w		(scr_height,a5),d1
+		sub.w		(win_miny,a5),d1
+		lsr.w		#1,d1
+
+no_center	tag		WA_Left,d0
+		tag		WA_Top,d1
+
+no_center0
+
+MYIDCMP		EQU	IDCMP_CLOSEWINDOW|IDCMP_IDCMPUPDATE
+
+		tag		WA_IDCMP,#MYIDCMP
+
+		tagend		a1
+		suba.l		a0,a0
+		call		OpenWindowTagList
+		freetaglist
+		move.l		d0,(thewindow,a5)
+		beq		fine
+
+		move.l		d0,a0
+		move.l		(wd_UserPort,a0),(theport,a5)
+
+	;------ Creazione dei vari gadget
+
+		*** TEXT SE PRESENTE ***
+
+		; in verità non è un gadget ma un testo clippato...
+
+		moveq		#0,d0
+		move.w		(winoffset_y,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+
+		tst.l		(text_a,a5)
+		beq.s		m_notesto
+		add.w		#FAR_FROM_BORD,d0
+		add.w		(fontheight,a5),d0
+		add.w		#3*FAR_FROM_BORD,d0
+m_notesto
+		move.w		d0,(last_y,a5)
+
+	;------ Per ora non fa nulla effettivamente
+
+		*** PROP GAD ***
+
+		suba.l		a0,a0
+		lea		(propclass,pc),a1
+
+		taglist
+		moveq		#0,d0
+		move.w		(last_y,a5),d0
+
+		tag		GA_Top,d0
+
+		move.w		(wborleft_w,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+		tag		GA_Left,d0
+
+		tag		PGA_NewLook,#TRUE
+
+		move.l		#FREEHORIZ,d0
+		tst.l		(vert_a,a5)
+		beq.s		f_ok
+		move.l		#FREEVERT,d0
+f_ok
+		tag		PGA_Freedom,d0
+
+		move.w		(prop_len,a5),d0
+		moveq		#0,d1
+		move.w		(aug_gad_y,a5),d1
+		tst.l		(vert_a,a5)
+		beq.s		f_v
+		move.w		(aug_gad_x,a5),d1
+		exg		d0,d1
+
+f_v		tag		GA_Width,d0
+		tag		GA_Height,d1
+
+		tag		PGA_Visible,#1
+		tag		PGA_Total,<(range,a5)>
+		tag		PGA_Top,<(value,a5)>
+
+		tag		GA_DrawInfo,<(dri,a5)>
+
+		tag		GA_ID,#PROP_ID
+		tag		ICA_TARGET,#ICTARGET_IDCMP
+		
+
+		tagend		a2
+		call		NewObjectA
+		freetaglist
+		move.l		d0,(prop_gad,a5)
+		beq		fine
+
+
+		*** STRING GAD ***
+
+		*suba.l		a0,a0
+		*lea		(frameclass,pc),a1
+		*taglist
+		*tag		IA_FrameType,#FRAME_BUTTON
+		*tag		IA_Recessed,#TRUE
+		*tag		GA_DrawInfo,<(dri,a5)>
+		*tagend		a2
+		*call		NewObjectA
+		*freetaglist
+		*move.l		d0,(strframe,a5)
+		*beq		fine
+
+		suba.l		a0,a0
+		lea		(strclass,pc),a1
+
+		taglist
+		*tag		GA_Image,<(strframe,a5)>
+
+		moveq		#0,d0
+		move.l		d0,d1
+
+		move.w		(wborleft_w,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+
+		move.w		(winoffset_y,a5),d1
+		add.w		#FAR_FROM_BORD,d1
+		tst.l		(text_a,a5)
+		beq.s		n_sim_not
+		add.w		(fontheight,a5),d1
+		add.w		#3*FAR_FROM_BORD,d1
+n_sim_not
+		tst.l		(vert_a,a5)
+		beq.s		str_tuttof
+
+		add.w		(aug_gad_x,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+
+		move.w		(prop_len,a5),d2
+		lsr.w		#1,d2
+		add.w		d2,d1
+
+str_tuttof
+		add.w		(aug_gad_y,a5),d1
+		add.w		#FAR_FROM_BORD,d1
+
+		tag		GA_Left,d0
+		tag		GA_Top,d1
+
+		move.w		(win_minx,a5),d0
+		sub.w		(dimi_x,a5),d0
+		sub.w		#2*FAR_FROM_BORD,d0
+
+		move.w		(fontheight,a5),d1
+		add.w		#2*FAR_FROM_BORD,d1
+
+		tst.l		(vert_a,a5)
+		beq.s		str_dimok
+
+		sub.w		(aug_gad_x,a5),d0
+		sub.w		#3*FAR_FROM_BORD,d0
+
+str_dimok
+		tag		GA_Width,d0
+		tag		GA_Height,d1
+
+
+		tag		GA_ID,#STR_ID
+
+		*UN BUG DI SISTEMA O UNA COSA SIMILE RENDE
+		*IMPOSSIBILE L'USO DI QUESTO TAG
+		*tag		STRINGA_Font,<(thefont,a5)>
+		tag		STRINGA_Justification,#STRINGCENTER
+
+		tag		STRINGA_MaxChars,#12
+		move.l		(value,a5),d0
+		add.l		(from,a5),d0
+		tag		STRINGA_LongVal,d0
+
+		tag		ICA_TARGET,#ICTARGET_IDCMP
+
+		*tag		ICA_TARGET,<(prop_gad,a5)>
+		*lea		(mappa,a5),a2
+		*tag		ICA_MAP,a2
+		*move.l		#STRINGA_LongVal,(a2)+
+		*move.l		#PGA_Top,(a2)
+		tagend		a2
+		call		NewObjectA
+		freetaglist
+		move.l		d0,(string_gad,a5)
+		beq		fine
+
+		*** CREIAMO l'OK ***
+
+		suba.l		a0,a0
+		lea		(frameclass,pc),a1
+		taglist
+		tag		IA_FrameType,#FRAME_BUTTON
+		tag		GA_DrawInfo,<(dri,a5)>
+		tagend		a2
+		call		NewObjectA
+		freetaglist
+		move.l		d0,(strframe,a5)
+		beq		fine
+
+		suba.l		a0,a0
+		lea		(frbuttonclass,pc),a1
+		taglist
+
+		tag		GA_Immediate,#TRUE
+		tag		GA_RelVerify,#TRUE
+
+		moveq		#0,d0
+		move.w		(ok_len,a5),d0
+		add.w		#2*FAR_FROM_BORD,d0
+		tag		GA_Width,d0
+		move.w		(fontheight,a5),d0
+		add.w		#2*FAR_FROM_BORD,d0
+		tag		GA_Height,d0
+		move.w		(wborleft_w,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+		tag		GA_Left,d0
+
+		move.w		(winoffset_y,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+
+		tst.l		(text_a,a5)
+		beq.s		ok_notext
+
+		add.w		(fontheight,a5),d0
+		add.w		#3*FAR_FROM_BORD,d0
+
+ok_notext	add.w		(aug_gad_y,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+		add.w		(fontheight,a5),d0
+		add.w		#3*FAR_FROM_BORD,d0
+
+		tst.l		(vert_a,a5)
+		beq.s		ok_horiz
+
+		sub.w		(fontheight,a5),d0
+		sub.w		#2*FAR_FROM_BORD,d0
+		add.w		(prop_len,a5),d0
+		add.w		(dim_gad_y,a5),d0
+
+ok_horiz	tag		GA_Top,d0
+
+		tag		GA_Image,<(strframe,a5)>
+
+		lea		(ok_t,pc),a2
+		tag		GA_Text,a2
+		tag		GA_DrawInfo,<(dri,a5)>
+
+		tag		GA_ID,#OK_ID
+
+		tag		ICA_TARGET,#ICTARGET_IDCMP
+
+		tagend		a2
+		call		NewObjectA
+		freetaglist
+		move.l		d0,(ok_gad,a5)
+
+	; Qui possiamo aggiungere i vari gadget creati...
+
+		move.l		(prop_gad,a5),a1
+		move.l		(thewindow,a5),a0
+		moveq		#-1,d0
+		call		AddGadget
+
+		move.l		(string_gad,a5),a1
+		move.l		(thewindow,a5),a0
+		moveq		#-1,d0
+		call		AddGadget
+
+		move.l		(ok_gad,a5),a1
+		move.l		(thewindow,a5),a0
+		moveq		#-1,d0
+		call		AddGadget
+
+	; Alla fine, rinfreschiamo il tutto.
+
+		move.l		(thewindow,a5),a1
+		move.l		(wd_FirstGadget,a1),a0
+		suba.l		a2,a2
+		moveq		#-1,d0
+		call		RefreshGList
+
+
+***********          ****
+*********** LOOP MSG ****
+***********          ****
+msg_loop
+		move.l		(theport,a5),a0
+		move.l		a0,a2
+		execbase
+		call		WaitPort
+
+		move.l		a2,a0
+		call		GetMsg
+		tst.l		d0
+		beq.s		msg_loop
+
+		move.l		d0,a1
+
+		move.w		(im_Code,a1),(i_code,a5)	 ;anche se non servono
+		move.l		(im_IAddress,a1),(i_iaddress,a5) ;li prendo
+
+		move.l		(im_Class,a1),d0
+		move.l		d0,(i_class,a5)
+
+
+		cmp.l		#IDCMP_IDCMPUPDATE,d0
+		bne.s		no_upda
+		move.l		a1,a2
+		bsr		getgadid
+		move.l		d0,(gadid,a5)
+		move.l		a2,a1
+
+no_upda
+		call		ReplyMsg
+
+	;------ Se è richiesta una chiusura, è lo stesso che fare un cancel
+	; non ci sono propriamente errori, ma consideriamo un warn
+	; per il fatto che l'utente abbia abortito l'azione.
+
+		move.l		(i_class,a5),d0
+
+		cmp.l		#IDCMP_CLOSEWINDOW,d0
+		beq		msg_quit
+
+		cmp.l		#IDCMP_NEWSIZE,d0
+		beq		msg_newsize
+
+		cmp.l		#IDCMP_IDCMPUPDATE,d0
+		bne		msg_loop
+
+		move.l		(gadid,a5),d0
+
+		cmp.l		#CANCEL_ID,d0
+		beq		msg_quit
+
+		pea		(msg_loop,pc)
+
+		lea		(tabletta,pc),a0
+		move.l		(a0,d0.w*4),a0
+		jmp		(a0)
+
+tabletta	dc.l		impossibile
+		dc.l		prop_md
+		dc.l		aug_md
+		dc.l		dim_md
+		dc.l		ok_md
+		dc.l		impossibile
+		dc.l		str_md
+
+prop_md
+		move.l		(prop_gad,a5),a0
+		lea		(storage,a5),a1
+		move.l		#PGA_Top,d0
+		getbase		int
+		call		GetAttr
+
+prop_setv	move.l		(string_gad,a5),a0
+		move.l		a0,a2
+		taglist
+		move.l		(storage,a5),d0
+		add.l		(from,a5),d0
+		tag		STRINGA_LongVal,d0
+		tagend		a1
+		call		SetAttrsA
+		freetaglist
+
+		move.l		a2,a0
+		bsr		refreshgad
+
+		rts
+
+aug_md
+		rts
+
+dim_md
+		rts
+
+ok_md
+		addq.l		#4,sp
+
+		bsr		getval
+
+		bsr		removegads
+		bsr		close_gui
+
+		getbase		dos
+
+		move.l		sp,a4
+		move.l		#out_t,d1
+		tst.l		(hex_a,a5)
+		beq.s		nohex1
+		move.l		#outh_t,d1
+nohex1		tst.l		(hexprefix_a,a5)
+		beq.s		nohex2
+		move.l		#outp_t,d1
+		move.l		(storage,a5),-(sp)
+		move.l		(hexprefix_a,a5),-(sp)
+		bra.s		hexpr
+nohex2
+		move.l		(storage,a5),-(sp)
+hexpr		move.l		sp,d2
+		call		VPrintf
+		move.l		a4,sp
+
+		clr.b		(returncode,a5)
+		bra		fine0
+
+str_md
+		bsr		getval
+
+		move.l		(from,a5),d1
+		move.l		(storage,a5),d0
+
+		bsr		max
+
+		move.l		(to,a5),d1
+		bsr		min
+
+		sub.l		(from,a5),d0
+		move.l		d0,(storage,a5)
+
+		move.l		(prop_gad,a5),a0
+		move.l		a0,a2
+		taglist
+		tag		PGA_Top,d0
+		tagend		a1
+		call		SetAttrsA
+		freetaglist
+
+		move.l		a2,a0
+		bsr		refreshgad
+
+		bra		prop_setv
+
+
+msg_newsize
+		bra		msg_loop
+
+msg_quit	bsr		removegads
+		move.b		#RETURN_WARN,(returncode,a5)
+
+;====
+;================================================= FINE ===================
+;====
+fine
+		bsr		close_gui
+
+fine0
+		getbase		dos
+		move.l		(readarg,a5),d1
+		beq.s		fine0_noarg
+		call		FreeArgs
+
+fine0_noarg
+		execbase
+		move.l		(a5),d0			; se è fallito, versione OS
+		beq.s		nodos			; < 36 ?? perciò controllo ci
+		move.l		d0,a1			; vuole.
+		call		CloseLibrary
+
+nodos		move.l		(intbase,a5),d0
+		beq.s		noint
+		move.l		d0,a1
+		call		CloseLibrary
+noint
+		move.l		(utilbase,a5),d0
+		beq.s		noutil
+		move.l		d0,a1
+		call		CloseLibrary
+noutil
+
+		move.l		a5,a1
+		move.l		(returncode_l,a5),d2
+		move.l		#miamemo_SIZEOF,d0
+		call		FreeMem
+		move.l		d2,d0
+impossibile
+		rts
+
+
+;========================================= SUBROUTINES =============
+
+;
+; getwindim
+; > d0 dim x
+; > d1 dim y
+;
+getwindim
+		tst.l		(vert_a,a5)
+		beq.s		calchoriz
+		bsr		windim_vert
+		bra.s		windimfatte
+calchoriz	bsr		windim_horiz
+windimfatte	rts
+
+;
+; windim_horiz
+; >d0,d1
+;
+windim_horiz
+
+*** IL SETUP ORIZZONTALE E` (default)
+***
+***  #==TITLE===========##
+***  | --- TEXT -------- |
+***  | ---%-----------<> |
+***  | ----VAUE--------- |
+***  | -OK-     -CANCEL- |
+***  L===================+
+***
+*** FOR CLEAR'S SAKE ALL IS NOT OPTIMIZED
+
+		move.w		(dimi_y,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+		move.w		(fontheight,a5),d1
+		add.w		#2*FAR_FROM_BORD,d1	;2 per altezza e 2 per dist
+		tst.l		(text_a,a5)
+		beq.s		wh_notxt
+		add.w		d1,d0			;text
+wh_notxt	add.w		#FAR_FROM_BORD,d0
+		add.w		(aug_gad_y,a5),d0	;alt gad freccia
+		add.w		#FAR_FROM_BORD,d0
+		add.w		d1,d0			;value
+		add.w		#FAR_FROM_BORD,d0
+		add.w		d1,d0			;ok e cancel
+		add.w		#FAR_FROM_BORD,d0
+		move.l		d0,-(sp)
+
+		move.w		(dimi_x,a5),d1
+		move.w		d1,d0
+		add.w		(prop_len,a5),d1
+		add.w		(aug_gad_x,a5),d1
+		add.w		(dim_gad_x,a5),d1
+
+		add.w		(ok_len,a5),d0
+		add.w		(cancel_len,a5),d0
+		add.w		(prop_len,a5),d0
+		add.w		#7*FAR_FROM_BORD,d0
+
+		bsr		max
+
+		pea		(ch_ret,pc)	;strano eh!!!! (stange I know..)
+
+ch_tit		move.w		(closeg_x,a5),d1
+		lsl.w		#2,d1
+		add.w		(title_len,a5),d1
+		add.w		#2*FAR_FROM_BORD,d1
+		bra		max
+
+ch_ret
+		move.l		(sp)+,d1
+		rts
+
+;
+; windim_vert
+; >d0,d1
+;
+windim_vert
+
+*** IL SETUP VERTICALE E` (meno indicativo per l'uso)
+***
+*** #==TITLE==========##
+*** | --- TEXT ------- |
+*** | !                |
+*** | !                |
+*** | *  ---VALUE----- |
+*** | !                |
+*** | !                |
+*** | A                |
+*** | V                |
+*** | -OK-    -CANCEL- |
+*** L==================+
+***
+
+		move.w		(dimi_y,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+		move.w		(fontheight,a5),d1
+		add.w		#2*FAR_FROM_BORD,d1
+		tst.l		(text_a,a5)
+		beq.s		wv_notxt
+		add.w		d1,d0
+wv_notxt	add.w		#FAR_FROM_BORD,d0
+		add.w		(prop_len,a5),d0
+		add.w		(aug_gad_y,a5),d0
+		add.w		(dim_gad_y,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+		add.w		d1,d0
+		add.w		#FAR_FROM_BORD,d0
+		move.l		d0,-(sp)
+
+		move.w		(dimi_x,a5),d0
+		add.w		#FAR_FROM_BORD,d0
+		add.w		(ok_len,a5),d0
+		add.w		#2*FAR_FROM_BORD,d0
+		add.w		#FAR_FROM_BORD,d0
+		add.w		(cancel_len,a5),d0
+		add.w		#2*FAR_FROM_BORD,d0
+		add.w		#FAR_FROM_BORD,d0
+
+		bsr		ch_tit
+
+		move.l		(sp)+,d1
+		rts
+
+;
+; getscreen
+; >d0 = screen
+;
+getscreen
+		move.l		(publicscreen_a,a5),a0
+		getbase		int
+		call		LockPubScreen
+		rts
+
+;
+; max (unsigned word)
+; d0,d1 = values
+; >d0 = max
+;
+max
+		cmp.w		d1,d0
+		bhi.s		max_end
+		exg.l		d0,d1
+max_end		rts
+
+;
+; min
+; d0,d1 = values
+; >d0 = min
+;
+min		cmp.w		d0,d1
+		bhi.s		min_end
+		exg.l		d0,d1
+min_end		rts
+
+;
+; SysISize
+; > d0
+;
+SysISize	moveq		#SYSISIZE_MEDRES,d0
+		move.l		(thescreen,a5),a0
+		move.w		(sc_Flags,a0),d1
+		and.w		#SCREENHIRES,d1
+		tst.w		d1
+		bne.s		SIS_Hai
+		moveq		#SYSISIZE_LOWRES,d0
+SIS_Hai		rts
+
+;
+; NewImageObj - create a new image object
+; IN: d0=which
+;
+NewImageObj	movem.l		a2/a6,-(sp)
+		move.l		d0,-(sp)
+		bsr		SysISize
+		move.l		d0,d1
+		getbase		int
+		suba.l		a0,a0
+		lea		(SysClass,pc),a1
+		move.l		(sp)+,d0
+		taglist
+		tag		SYSIA_DrawInfo,<(dri,a5)>
+		tag		SYSIA_Which,d0
+		tag		SYSIA_Size,d1
+		tagend		a2
+		call		NewObjectA
+		freetaglist
+		movem.l		(sp)+,a2/a6
+		rts
+
+
+;
+; textlength
+; a0 = text
+; >d0 = pixel length
+;
+textlength
+		move.l		a6,-(sp)
+		move.l		a0,a1
+		lea		(itesto,a5),a0
+		move.l		(thefont,a5),(it_ITextFont,a0)
+		move.l		a1,(it_IText,a0)
+		getbase		int
+		call		IntuiTextLength
+		move.l		(sp)+,a6
+		rts
+
+;
+; getgadid
+; >d0 = gadid
+;
+getgadid
+		move.l		a6,-(sp)
+		move.l		(i_iaddress,a5),a0
+		move.l		#GA_ID,d0
+		moveq		#0,d1
+		getbase		util
+		call		GetTagData
+		move.l		(sp)+,a6
+		rts
+
+
+;
+; removegads
+;
+removegads	move.l		(thewindow,a5),a0
+		move.l		(wd_FirstGadget,a0),a1
+		moveq		#-1,d0
+		getbase		int
+		call		RemoveGList
+		rts
+
+;
+; refreshgad
+; a0 = gad
+;
+refreshgad
+		move.l		(thewindow,a5),a1
+		suba.l		a2,a2
+		moveq		#1,d0
+		call		RefreshGList	;SUPPONE INTUITION!!!
+		rts
+
+;
+; getval
+;
+getval
+		move.l		(string_gad,a5),a0
+		lea		(storage,a5),a1
+		move.l		#STRINGA_LongVal,d0
+		getbase		int
+		call		GetAttr
+		rts
+
+;
+;close_gui
+;
+close_gui
+		getbase		int
+
+		move.l		(strframe,a5),d0
+		beq.s		fine_nofr
+		move.l		d0,a0
+		call		DisposeObject
+fine_nofr
+		move.l		(ok_gad,a5),d0
+		beq.s		fine_nook
+		move.l		d0,a0
+		call		DisposeObject
+fine_nook
+		move.l		(prop_gad,a5),d0
+		beq.s		fine_noprop
+		move.l		d0,a0
+		call		DisposeObject
+
+fine_noprop	move.l		(string_gad,a5),d0	;BASTA eliminare questo
+		beq.s		fine_nostr		;per eliminare pure il
+		move.l		d0,a0			;frame...???
+		call		DisposeObject
+
+fine_nostr
+
+		move.l		(thewindow,a5),d0
+		beq.s		nowindo
+		move.l		d0,a0
+		call		CloseWindow
+
+nowindo		move.l		(aug_gad,a5),d0
+		beq.s		noaugg
+		move.l		d0,a0
+		call		DisposeObject
+
+noaugg		move.l		(dim_gad,a5),d0
+		beq.s		nodimg
+		move.l		d0,a0
+		call		DisposeObject
+nodimg
+		move.l		(thescreen,a5),a0
+		move.l		(dri,a5),a1
+		call		FreeScreenDrawInfo
+
+		move.l		(thescreen,a5),a1	;unlock
+		suba.l		a0,a0
+		getbase		int
+		call		UnlockPubScreen
+		rts
+
+
+;========================================= DATA ====================
+
+myname		dc.b	"RequestSlide",0
+dosname		dc.b	"dos.library",0
+intname		dc.b	"intuition.library",0
+utilname	dc.b	"utility.library",0
+
+expt		dc.b	"RequestSlide v1.0 (c)2003 by Mauro Panigada",0
+
+template	dc.b	"TO/N/A,FROM/N,VALUE/N,HEX/S,HEXPREFIX/K,VERT/S,TITLE/K,TEXT/K,"
+		dc.b	"MOUSEPOS/S,CENTER/S,PUBLICSCREEN/K",0
+
+out_t		dc.b	"%ld",10,0
+outh_t		dc.b	"%lx",10,0
+outp_t		dc.b	"%s%lx",10,0
+
+ok_t		dc.b	"OK",0
+cancel_t	dc.b	"Cancel",0
+
+SysClass	dc.b	"sysiclass",0
+propclass	dc.b	"propgclass",0
+buttonclass	dc.b	"buttongclass",0
+frbuttonclass	dc.b	"frbuttonclass",0
+strclass	dc.b	"strgclass",0
+frameclass	dc.b	"frameiclass",0
+
+
+	END

@@ -1,0 +1,37 @@
+
+
+                                     FreeX
+                                    =======
+
+                           written by Mauro Panigada
+
+
+
+Too easy to be explaned!
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+	Just type it, you'll see what happens. Simply you now know
+some information about a volume-device. Try with "FreeX ?" for a DOS-like
+help (DEVICE: ). Specify it or not: default is sys: ... A tipical output:
+
+
+	Volume name:  Workbench
+	Filesystem:   FFS
+	Total blocks: 42118
+	Free blocks:  3615
+	Total bytes:  21564416
+	Free bytes:   1850880
+
+
+	The idea is not mine. I found a program, called "Free" which
+gave the same informations (not in the same order, and it used the bold
+for the volume name) but it was too long. So I decided to rewrite it into
+assembler, ATTENTION: without original sources, and I did NOT resourced
+it. Simply I was looking at the output: that's all.
+
+	I would like regarding the author, but I didn't find any name
+into program (research done by using HEX, great N. Salmoria, a man of
+my lands, ie Italy!). I thank you however, dear! Tell me your name...
+Never forget to write it everywhere: you have to make the people know who
+are you, where you live, what you eat, the name of your dog.
+The best way to be known: to be stupid! (wack! I'm laughing of myself)

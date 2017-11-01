@@ -1,0 +1,205 @@
+;
+; getcom v1.0
+; written by Mauro Panigada
+;
+; $VER: getcom.a v1.0 (c) 1997 by Mauro Panigada
+;
+; Opened: 1997-04-10
+; Closed: 1997-04-10
+;
+; History: 1997-04-10   v1.0 finished.
+;
+; Note: it is pure. It needs OS3.0
+;
+; Purpose: get a comment and print it in the stdout
+;
+; Template: FILE/A
+;
+; FILE/A: the file of which you want to know the comment
+;
+; Note: Use the redirection to a file to put it into a var. I can be
+;       useful in a script file
+;
+; OF COURSE, it is pure.
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+
+
+stov		MACRO
+		move.\0	\1,_\2(a5)
+		ENDM
+
+putv		MACRO
+		move.\0	_\1(a5),\2
+		ENDM
+
+clrv		MACRO
+		clr.\0	_\1(a5)
+		ENDM
+
+tstv		MACRO
+		tst.\0	_\1(a5)
+		ENDM
+
+
+openlib		MACRO
+		lea	\1name(pc),a1
+		moveq	#\2,d0
+		call	OpenLibrary
+		stov.l	d0,\1base
+		beq	exit
+		ENDM
+
+closelib	MACRO
+		putv.l	\1base,a1
+		call	CloseLibrary
+		ENDM
+
+
+call		MACRO
+		IFEQ	NARG-1
+		jsr	_LVO\1(a6)
+		ELSE
+		putv.l	\2base,a6
+		jsr	_LVO\1(a6)
+		ENDC
+		ENDM
+
+
+
+
+	STRUCTURE reserved,0
+		LONG	_execbase
+		LONG	_dosbase
+
+		LABEL	_array
+		LONG	_fileT
+
+		LABEL	reserved_size
+
+
+	SECTION	getcom,CODE
+
+		moveq	#0,d7
+		move.l	4.w,a6
+		moveq	#reserved_size,d0
+		move.l	#MEMF_ANY|MEMF_CLEAR,d1
+		call	AllocMem
+		move.l	d0,a5
+		tst.l	d0
+		beq.s	fexit
+		move.l	a6,(a5)
+
+		bsr	start
+
+		move.l	a5,a1
+		moveq	#reserved_size,d0
+		call	FreeMem,exec
+		move.l	d7,d0
+		rts
+fexit		moveq	#RETURN_FAIL,d0
+		rts
+
+		dc.b	"$VER: "
+		dc.b	"getcom v1.0 (c) 1997 by Mauro Panigada",10,13
+		dc.b	0
+		even
+
+start
+		moveq	#0,d6
+		move.l	d6,d5
+		move.l	d5,d4
+
+		moveq	#RETURN_FAIL,d7
+		openlib	dos,39
+		moveq	#RETURN_OK,d7
+		move.l	d0,a6
+
+		lea	template(pc),a0
+		move.l	a0,d1
+		move.l	a5,d2
+		addq.l	#_array,d2
+		moveq	#0,d3
+		call	ReadArgs
+		move.l	d0,d6		; d6=args
+		bne.s	goon
+
+error0		call	IoErr
+		;move.l	d0,d1
+		lea	tasky(pc),a0
+		move.l	a0,d2
+		call	PrintFault
+exiterr		moveq	#RETURN_ERROR,d7
+		bra	exit
+
+goon
+		putv.l	fileT,d1
+		moveq	#SHARED_LOCK,d2
+		call	Lock
+		move.l	d0,d5		; d5=lock
+		beq.s	error0
+
+		moveq	#DOS_FIB,d1
+		moveq	#0,d2
+		call	AllocDosObject
+		move.l	d0,d4		; d4=fib
+		beq.s	exiterr
+
+		move.l	d4,d2
+		move.l	d5,d1
+		call	Examine
+		tst.l	d0
+		beq.s	error0
+
+		move.l	d4,d1
+		add.l	#fib_Comment,d1
+		move.l	d1,a0
+		tst.b	(a0)
+		beq.s	fullo
+		call	PutStr
+
+		lea	accapo(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		bra.s	exit
+
+fullo		moveq	#RETURN_WARN,d7
+
+exit
+		move.l	d4,d1
+		beq.s	ex1
+		call	FreeDosObject,dos
+ex1
+		move.l	d5,d1
+		beq.s	ex2
+		call	UnLock,dos
+ex2
+
+		move.l	d6,d1
+		beq.s	ex0
+		call	FreeArgs,dos
+ex0
+
+		move.l	(a5),a6
+		closelib dos
+		rts
+
+
+
+dosname		dc.b	"dos.library",0
+		even
+template	dc.b	"FILE/A",0
+		even
+tasky		dc.b	"getcom",0
+		even
+accapo		dc.b	10,0
+
+
+		END

@@ -1,0 +1,10 @@
+FROM LIB:c.o "work:-LAVORO/Mauro/Research/ERequestSlide.o"
+TO "ERequestSlide"
+LIB LIB:scm.lib
+    LIB:sc.lib LIB:amiga.lib
+SMALLCODE
+SMALLDATA
+NODEBUG
+QUIET
+define ___main=___tinymain
+

@@ -1,0 +1,941 @@
+*
+* $VER: feval.a (c)2003 by Mauro Panigada
+*
+* + * / - neg % ^ sin cos exp log ln pop swap sqrt abs
+*
+* abs mul (same as *, for avoid CLI special behavior for *)
+* sto rcl dup
+*
+*
+
+                incdir  "inc:"
+                include "exec/types.i"
+                include "exec/libraries.i"
+                include "exec/memory.i"
+                include "exec/exec_lib.i"
+                include "exec/execbase.i"
+                include "dos/dos.i"
+                include "dos/dosextens.i"
+                include "dos/dos_lib.i"
+                include "math/mathieeesingbas_lib.i"
+                include "math/mathieeesingtrans_lib.i"
+
+
+execbase        MACRO
+                move.l          (4).w,a6
+                ENDM
+
+base            MACRO
+                move.l          (\1base,a5),a6
+                ENDM
+
+taglist         MACRO
+                move.l          sp,\1
+                clr.l           -(sp)
+                ENDM
+
+tag             MACRO
+                move.l          \2,-(sp)
+                move.l          #\1,-(sp)
+                ENDM
+
+tagend          MACRO
+                move.l          sp,\1
+                ENDM
+
+freetaglist     MACRO
+                move.l          \1,sp
+                ENDM
+
+call            MACRO
+                jsr             (_LVO\1,a6)
+                ENDM
+
+TRUE            EQU     -1
+FALSE           EQU     0
+
+COUPLE          MACRO
+                WORD    \1_l
+                WORD    \1
+                ENDM
+
+MAXSTACK        EQU     2047
+
+
+        STRUCTURE interna,0
+                LONG    dosbase
+                LONG    mathbasebase
+                LONG    mathtransbase
+
+                BYTE    libflag
+                BYTE    libcount
+
+                WORD    retval
+                BYTE    retvalw
+                BYTE    retvalb
+
+                LONG    rargs
+
+                LABEL   arglist
+                APTR    expr_a
+
+                WORD    si
+                STRUCT  stakk,(MAXSTACK+1)*2    ;*2 per double, qui singolo, ma sempre
+                                                ;512 bytes sono...
+                STRUCT  minibuf,256
+
+                LONG    sto_buf
+
+                LABEL   interna_SIZEOF
+
+
+        opt     p=68020
+        *opt     p=68882
+        *opt     nodebug
+
+        SECTION codice,CODE
+
+                bra.s           startit
+
+                dc.b    "$VER: feval v1.0 [020+] (2003-07-23) (c)2003 "
+                dc.b    "Mauro Panigada",13,10,0
+                even
+
+startit
+                execbase
+                move.w          (AttnFlags,a6),d0
+                and.w           #AFF_68020,d0
+                bne.s           ok020
+                moveq           #RETURN_FAIL,d0
+                rts
+
+ok020
+                bsr             allocworkarea
+                move.l          d0,a5
+                tst.l           d0
+                bne.s           okws
+                moveq           #RETURN_FAIL,d0
+                rts
+
+okws
+                move.b          #RETURN_FAIL,(retvalb,a5)
+
+********************************
+**
+** MAIN
+**
+********************************
+
+                bsr             openlibs
+                tst.l           d0
+                beq             main_exit0
+
+                move.l          #template,d1
+                move.l          a5,d2
+                add.l           #arglist,d2
+                moveq           #0,d3
+                base            dos
+                call            ReadArgs
+                move.l          d0,(rargs,a5)
+                bne.s           main_okarg
+
+                call            IoErr
+                move.l          d0,d1
+                move.l          #myname,d2
+                call            PrintFault
+                bra             main_exit0
+
+main_okarg
+                move.b          #RETURN_OK,(retvalb,a5)
+
+                bsr             cfunc
+
+                bsr             outputdec
+
+                lea             (accapo,pc),a0
+                bsr             cout
+
+;****************************************************** EXIT
+
+
+main_exit1
+        ; freeargs
+                move.l          (rargs,a5),d1
+                beq.s           main_exit0
+                base            dos
+                call            FreeArgs
+
+main_exit0
+                bsr             closelibs
+                move.l          (retval,a5),-(sp)
+                bsr             freeworkarea
+                move.l          (sp)+,d0
+                rts
+
+
+;**************************************************** SUBROUTINE
+
+
+
+**
+** cfunc
+**
+cfunc
+                movem.l         d1-d7/a0-a6,-(sp)
+                clr.w           (si,a5)
+                move.l          (expr_a,a5),a0
+                bsr             compute
+                bsr             pop
+
+*                move.l          d0,d2
+*                moveq           #2,d0
+*                call            IEEESPFlt
+*                move.l          d0,d3
+*                moveq           #1,d0
+*                call            IEEESPFlt
+*                move.l          d3,d1
+*                call            IEEESPDiv
+*                move.l          d2,d1
+*                call            IEEESPAdd
+*                call            IEEESPCeil
+
+                movem.l         (sp)+,d1-d7/a0-a6
+                rts
+
+**
+** outputdec(d0)
+**
+outputdec
+                base            mathbase
+
+                move.l          d0,d6
+                call            IEEESPTst
+                bpl.s           od_iepos
+
+                move.l          d6,d0
+                call            IEEESPNeg
+                move.l          d0,d6
+
+                lea             (meno,pc),a0
+                bsr             cout
+od_iepos
+                move.l          d6,d0
+                call            IEEESPFloor
+                call            IEEESPFix
+                move.l          d0,d5
+
+od_noneg
+                lea             (minibuf,a5),a1
+                add.l           #16,a1
+                clr.b           (a1)
+od_loop
+
+                bsr             testbreak
+
+                divsl.l         #10,d1:d0
+
+                add.b           #"0",d1
+                move.b          d1,-(a1)
+
+                tst.l           d0
+                bne.s           od_loop
+
+                move.l          a1,a0
+                bsr             cout
+
+                move.l          d5,d0
+                call            IEEESPFlt
+                move.l          d0,d1
+                move.l          d6,d0
+                call            IEEESPSub       ;solo parte dec.
+                move.l          d0,d3
+
+                call            IEEESPTst
+                beq             od_end
+                bvs             od_end
+
+                lea             (punto,pc),a0
+                bsr             cout
+
+                moveq           #10,d0
+                call            IEEESPFlt
+                move.l          d0,d4
+
+                moveq           #4,d7
+od_loop0
+
+                bsr             testbreak
+
+                move.l          d4,d1
+                move.l          d3,d0
+                call            IEEESPMul
+                move.l          d0,d3
+                call            IEEESPFloor
+                move.l          d0,d2
+                call            IEEESPFix
+
+                add.b           #"0",d0
+                lea             (minibuf,a5),a0
+                move.b          d0,(a0)
+                clr.b           (1,a0)
+                bsr             cout
+
+                move.l          d3,d0
+                move.l          d2,d1
+                call            IEEESPSub
+                move.l          d0,d3
+
+                call            IEEESPTst
+                beq             od_end
+                bvs             od_end
+                dbf             d7,od_loop0
+
+od_end
+                rts
+
+expcept
+
+
+**
+** cout(a0)
+**
+cout
+                movem.l         d0-d1/a6,-(sp)
+                move.l          a0,d1
+                base            dos
+                call            PutStr
+                movem.l         (sp)+,d0-d1/a6
+                rts
+
+**
+** allocworkarea
+**
+allocworkarea
+                move.l          #interna_SIZEOF,d0
+                move.l          #MEMF_ANY|MEMF_CLEAR,d1
+                call            AllocMem
+                rts
+
+**
+** freeworkarea
+**
+freeworkarea
+                move.l          a5,d0
+                beq.s           fwa_no
+                move.l          d0,a1
+                move.l          #interna_SIZEOF,d0
+                execbase
+                call            FreeMem
+fwa_no
+                rts
+
+**
+** openlibs
+**
+openlibs
+                execbase
+                lea             (liblist,pc),a2
+ol_loop
+                move.l          (a2)+,d0
+                beq.s           ol_end
+                move.l          d0,a1
+                move.l          (a2)+,d0
+                call            OpenLibrary
+                move.w          (a2)+,d1
+                add.b           #1,(libcount,a5)
+                move.l          d0,(a5,d1.w)
+                beq.s           ol_loop
+                add.b           #1,(libflag,a5)
+                bra.s           ol_loop
+ol_end
+                moveq           #1,d0
+                move.b          (libflag,a5),d0
+                cmp.b           (libcount,a5),d0
+                beq.s           ol_ok
+                moveq           #0,d0
+ol_ok
+                rts
+
+**
+** closelibs
+**
+closelibs
+                execbase
+                move.l          a5,a2
+                move.b          (libcount,a5),d2
+                ext.w           d2
+                sub.w           #1,d2
+cl_loop
+                move.l          (a2)+,a1
+                call            CloseLibrary
+                dbf             d2,cl_loop
+                rts
+
+
+testbreak
+                movem.l         d0-d6/a0-a6,-(sp)
+                execbase
+                moveq           #0,d0
+                move.l          #SIGBREAKF_CTRL_C,d1
+                call            SetSignal
+                and.l           #SIGBREAKF_CTRL_C,d0
+                bne.s           tb_break
+                movem.l         (sp)+,d0-d6/a0-a6
+                rts
+tb_break
+                movem.l         (sp)+,d0-d6/a0-a6
+                addq.l          #4,sp
+                rts
+
+
+**************************************************************************
+**************************************************************************
+*
+* STAND ALONE RPN PARSER (S.A.R.P.)
+*
+* (c)2003 by Mauro Panigada
+*
+* version  1
+* revision 3
+*
+**************************************************************************
+*
+* NEED:
+*   a5     base of global vars
+*   global WORD index called "si"
+*   global FLOAT/DOUBLE array called "stakk"
+*   global minibuf array of 256 bytes
+*   math libraries
+*
+***************************************************************************
+
+;
+; compute(a0)
+; a0 = ptr to rpn string
+;
+compute
+                move.l          a0,a4
+cpu_mloop
+                bsr             skipblank
+                tst.b           d0
+                beq             cpu_end
+
+                moveq           #0,d6           ;d6=lastkey false
+                lea             (minibuf,a5),a1
+                move.l          a1,a2
+                move.w          #252,d1
+
+cpu_keyrl
+                move.b          (a4)+,d0
+                move.b          d0,(a1)+
+
+                cmp.b           #" ",d0
+                beq.s           cpu_spacef
+
+                cmp.b           #9,d0
+                beq.s           cpu_spacef
+
+                cmp.b           #10,d0
+                beq.s           cpu_spacef
+
+                tst.b           d0
+                seq             d6
+                beq.s           cpu_lastkey
+
+                dbf             d1,cpu_keyrl
+
+                clr.b           (a1)+
+cpu_spacef
+                suba.l          #1,a1
+                clr.b           (a1)
+cpu_lastkey
+                move.l          a2,a1
+                move.b          (a1)+,d0
+
+                cmp.b           #"0",d0
+                blo             cpu_nonum0
+                cmp.b           #"9",d0
+                bhi             cpu_nonum0
+
+        ; e` un numero!!
+cpu_num
+                move.l          a2,a0
+                bsr             atof
+                bsr             push
+
+                tst.b           d6
+                beq             cpu_mloop
+                bra             cpu_end
+
+cpu_nonum0
+                cmp.b           #"-",d0
+                beq.s           cpu_checkno2
+                cmp.b           #".",d0         ; DO NOT recognize number such as
+                beq.s           cpu_checkno2    ; -.52. WRITE -0.52 instead.
+
+        ; e` un keyword
+cpu_keyword
+                lea             (keywords,pc),a3
+cpu_keyloop
+                move.l          (a3)+,d0
+                beq             cpu_keyend
+                move.l          d0,a0
+                move.l          a2,a1
+                bsr             cmpstr
+                tst.b           d0
+                beq.s           cpu_keyok
+                addq.l          #4,a3
+                bra.s           cpu_keyloop
+
+cpu_keyend
+                tst.b           d6
+                beq             cpu_mloop
+                bra             cpu_end
+
+cpu_checkno2
+                move.b          (a1)+,d0
+                cmp.b           #"0",d0
+                blo.s           cpu_keyword
+                cmp.b           #"9",d0
+                bhi.s           cpu_keyword
+                bra.s           cpu_num
+
+cpu_keyok
+                pea             (cpu_keyend,pc)
+                move.l          (a3),a0
+                base            mathbase
+                jmp             (a0)
+
+
+cpu_end
+                rts
+
+keyd            MACRO
+                dc.l    \1_s,\1_f
+                ENDM
+
+keywords
+                keyd    add
+                keyd    addcli
+                keyd    sub
+                keyd    mul
+                keyd    mulcli
+                keyd    div
+                keyd    pow
+                keyd    log
+                keyd    ln
+                keyd    sin
+                keyd    cos
+                keyd    sqrt
+                keyd    abs
+                keyd    neg
+                keyd    mod
+                keyd    exp
+                keyd    pop
+                keyd    swap
+                keyd    sto
+                keyd    rcl
+                keyd    dup
+                keyd    floor
+                keyd    ceil
+                dc.l    0
+
+
+;
+; pop()
+;
+pop
+                move.l          d1,-(sp)
+                tst.w           (si,a5)
+                bne.s           pop_ok
+                move.w          #MAXSTACK+1,(si,a5)
+pop_ok          sub.w           #1,(si,a5)
+                move.w          (si,a5),d1
+                move.l          (stakk,a5,d1.w*4),d0
+                move.l          (sp)+,d1
+                rts
+
+;
+; push(d0)
+; d0 = value to push
+;
+push
+                move.l          d1,-(sp)
+                move.w          (si,a5),d1
+                move.l          d0,(stakk,a5,d1.w*4)
+                add.w           #1,d1
+                ext.l           d1
+                divu.w          #MAXSTACK+1,d1
+                swap            d1
+                move.w          d1,(si,a5)
+                move.l          (sp)+,d1
+                rts
+
+;
+; skipblank
+; a4 = buf ptr
+;
+skipblank
+sb_adlo
+                move.b          (a4)+,d0
+sb_getn
+                tst.b           d0
+                beq.s           sb_end
+                cmp.b           #" ",d0
+                beq.s           sb_adlo
+                cmp.b           #9,d0
+                beq.s           sb_adlo
+                cmp.b           #10,d0
+                beq.s           sb_adlo
+sb_end
+                subq.l          #1,a4
+                rts
+
+;
+; cmpstr(a0,a1)
+; d0 = 0 -> same str.
+;
+; case sensitive (like postscript)
+;
+cmpstr
+cp_loop
+                move.b          (a0)+,d0
+                move.b          (a1)+,d1
+                cmp.b           d1,d0
+                bne.s           cp_div
+                tst.b           d0
+                bne.s           cp_loop
+cp_div          sub.b           d1,d0
+                rts
+
+;
+; d0=atof(a0)
+;
+; BEWARE: DO NOT recognize numbers in the form -.1234. WRITE -0.1234 instead
+; BEWARE: DO NOT recognize numbers in the forma 1.23e-4 ... NOT NEEDED for this
+;         application.
+;
+atof
+                movem.l         d2-d7/a2-a6,-(sp)
+                base            mathbase
+                move.l          a0,a4
+                moveq           #0,d0
+                call            IEEESPFlt
+                move.l          d0,d3
+                moveq           #10,d0
+                call            IEEESPFlt
+                move.l          d0,d4           ;d4=10
+
+                moveq           #0,d5
+
+                move.b          (a4)+,d2
+                cmp.b           #"-",d2
+                seq             d5
+                beq.s           af_loop1
+                sub.l           #1,a4
+
+af_loop1
+                move.b          (a4)+,d2
+                beq.s           af_end
+
+                cmp.b           #".",d2
+                beq.s           af_decpart
+
+        ;e` un numero... la parte intera.
+
+                move.b          d2,d0
+                sub.b           #"0",d0
+                extb.l          d0
+                call            IEEESPFlt
+                move.l          d3,d1
+                call            IEEESPAdd
+                move.l          d4,d1
+                call            IEEESPMul
+                move.l          d0,d3
+                bra             af_loop1
+
+af_decpart
+                move.l          d3,d0
+                move.l          d4,d1
+                call            IEEESPDiv
+                move.l          d0,d3
+
+                move.l          d4,d6
+
+af_loop2
+                move.b          (a4)+,d2
+                beq.s           af_end0
+                sub.b           #"0",d2
+                extb.l          d2
+                move.l          d2,d0
+                call            IEEESPFlt
+                move.l          d6,d1
+                call            IEEESPDiv
+                move.l          d3,d1
+                call            IEEESPAdd
+                move.l          d0,d3
+                move.l          d6,d0
+                move.l          d4,d1
+                call            IEEESPMul
+                move.l          d0,d6
+                bra.s           af_loop2
+
+af_end
+                move.l          d3,d0
+                move.l          d4,d1
+                call            IEEESPDiv
+                move.l          d0,d3
+af_end0
+                move.l          d3,d0
+                tst.b           d5
+                beq.s           af_end1
+                call            IEEESPNeg
+af_end1
+                movem.l         (sp)+,d2-d7/a2-a6
+                rts
+
+
+** FUNZIONI **
+
+addcli_f
+add_f
+                bsr             pop
+                move.l          d0,d1
+                bsr             pop
+                call            IEEESPAdd
+                bsr             push
+                rts
+
+sub_f
+                bsr             pop
+                move.l          d0,d1
+                bsr             pop
+                call            IEEESPSub
+                bsr             push
+                rts
+
+mulcli_f
+mul_f
+                bsr             pop
+                move.l          d0,d1
+                bsr             pop
+                call            IEEESPMul
+                bsr             push
+                rts
+
+
+div_f
+                bsr             pop
+                move.l          d0,d2
+                call            IEEESPTst
+                beq.s           div_noo
+                move.l          d2,d1
+                bsr             pop
+                call            IEEESPDiv
+div_noo
+                bsr             push
+                rts
+
+mod_f
+                bsr             pop
+                bsr             round
+                move.l          d0,d1
+                bsr             pop
+                bsr             round
+                divsl.l         d1,d2:d0
+                move.l          d2,d0
+                call            IEEESPFlt
+                bsr             push
+                rts
+
+pow_f
+                bsr             pop
+                move.l          d0,d1
+                bsr             pop
+                base            mathtrans
+                call            IEEESPPow
+                bsr             push
+                rts
+
+log_f
+                bsr             pop
+                move.l          d0,d2
+                call            IEEESPTst
+                beq.s           log_noo
+                bmi.s           log_noo
+                move.l          d2,d0
+                base            mathtrans
+                call            IEEESPLog10
+log_noo
+                bsr             push
+                rts
+
+ln_f
+                bsr             pop
+                move.l          d0,d2
+                call            IEEESPTst
+                beq.s           log_noo
+                bmi.s           log_noo
+                move.l          d2,d0
+                base            mathtrans
+                call            IEEESPLog
+                bsr             push
+                rts
+
+exp_f
+                bsr             pop
+                base            mathtrans
+                call            IEEESPExp
+                bsr             push
+                rts
+
+sin_f
+                bsr             pop
+                base            mathtrans
+                call            IEEESPSin
+                bsr             push
+                rts
+
+cos_f
+                bsr             pop
+                base            mathtrans
+                call            IEEESPCos
+                bsr             push
+                rts
+
+sqrt_f
+                bsr             pop
+                base            mathtrans
+                call            IEEESPSqrt
+                bsr             push
+                rts
+
+abs_f
+                bsr             pop
+                call            IEEESPAbs
+                bsr             push
+                rts
+
+neg_f
+                bsr             pop
+                call            IEEESPNeg
+                bsr             push
+                rts
+
+pop_f
+                bsr             pop
+                rts
+
+swap_f
+                bsr             pop
+                move.l          d0,d1
+                bsr             pop
+                exg.l           d0,d1
+                bsr             push
+                move.l          d1,d0
+                bsr             push
+                rts
+
+dup_f
+                bsr             pop
+                bsr             push
+                bsr             push
+                rts
+
+sto_f
+                bsr             pop
+                move.l          d0,(sto_buf,a5)
+                bsr             push
+                rts
+
+rcl_f
+                move.l          (sto_buf,a5),d0
+                bsr             push
+                rts
+
+ceil_f
+                bsr             pop
+                call            IEEESPCeil
+                bsr             push
+                rts
+
+floor_f
+                bsr             pop
+                call            IEEESPFloor
+                bsr             push
+                rts
+
+
+round
+                base            mathbase
+                call            IEEESPFix
+                rts
+
+
+
+** STRINGHE **
+
+add_s           dc.b    "+",0
+addcli_s        dc.b    "add",0
+meno
+sub_s           dc.b    "-",0
+mul_s           dc.b    "*",0
+mulcli_s        dc.b    "mul",0
+div_s           dc.b    "/",0
+mod_s           dc.b    "%",0
+pow_s           dc.b    "^",0
+log_s           dc.b    "log",0
+ln_s            dc.b    "ln",0
+exp_s           dc.b    "exp",0
+sin_s           dc.b    "sin",0
+cos_s           dc.b    "cos",0
+sqrt_s          dc.b    "sqrt",0
+abs_s           dc.b    "abs",0
+neg_s           dc.b    "neg",0
+pop_s           dc.b    "pop",0
+swap_s          dc.b    "swap",0
+sto_s           dc.b    "sto",0
+rcl_s           dc.b    "rcl",0
+dup_s           dc.b    "dup",0
+floor_s         dc.b    "floor",0
+ceil_s          dc.b    "ceil",0
+
+                even
+
+
+*********************************************************************
+*********************************************************************
+*
+* END OF S.A.R.P.
+*
+*********************************************************************
+
+
+;************************************************* DATI
+
+DECLARELIB      MACRO
+                dc.l    \1
+                dc.l    \2
+                dc.w    \3
+                ENDM
+
+liblist         DECLARELIB dosname,39,dosbase
+                DECLARELIB mathbasename,36,mathbasebase
+                DECLARELIB mathtransname,36,mathtransbase
+                dc.l    0
+
+
+;************************************************* STRINGHE
+
+dosname         dc.b    "dos.library",0
+mathbasename    dc.b    "mathieeesingbas.library",0
+mathtransname   dc.b    "mathieeesingtrans.library",0
+
+myname          dc.b    "feval",0
+punto           dc.b    ".",0
+accapo          dc.b    10,0
+
+template
+                dc.b    "EXPR/A/F",0
+
+        END

@@ -1,0 +1,24 @@
+
+                                AskErr v1.0
+                               =============
+
+                         written by Mauro Panigada
+
+
+
+
+	It requires OS2.0+.
+
+	Often it is happened you read on your console something
+like "Error 205". And you: "what is error 205?". Several programs
+also for old OS1.3 was written to overcome this problem. They kept
+all the strings error messages in their code as data. These programs
+were rather long and not useful for the future: in fact now there are
+new errors, eg the errors which deal with ReadArgs.
+But the Operating System 2.0 is almost wonderful: in it now appear
+the error strings you need, and easy dos function give you the
+string or print it.... So AskErr is born.
+
+	You can use it only form CLI, the argument is simply the number
+of the error. And the game is over.
+

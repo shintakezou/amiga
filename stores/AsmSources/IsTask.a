@@ -1,0 +1,105 @@
+;
+; IsTask  v1.0
+; written by Mauro Panigada
+;
+; $VER: IsTask.a v1.0 (1996-12-10) by Mauro Panigada
+;
+; STARTED: 1996-12-10
+; FINISHED: 1996-12-10
+;
+; PURPOSE: To know if a task exists with that name. It is only an
+;   example, whose code I will use for a possible more serious program,
+;   which monitors alloc/free mem for a particular task/process.
+;
+; NOTE: Unuseful. Need OS2.04 or upper...
+; COMMENT AFTER TEST: Work well but not as I hoped. If you put
+;   taskname=input.device, it is exists, but if you use a name of a
+;   "normal" process, result is nothing. I tried to use Artm (shareware
+;   unregistered version) to pass the name it write in "TASKS". Nothing.
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+
+
+
+		SECTION	ISTASKCODE,CODE
+
+		bra.s	Start
+
+		dc.b	"$VER: Istask v1.0 by Mauro Panigada"
+		even
+
+Start		lea	DOSName(pc),a1
+		moveq	#37,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,d7			; d7 = DOSBase
+		beq	Maramao
+
+		move.l	d7,a5
+		exg	a5,a6			; a6 = dos, a5 = exec
+
+		lea	Array(pc),a0		; to kill alloc32!
+		move.l	a0,d1
+		lea	Buffer(pc),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d6			; d6 = ReadArgs
+		beq	Maramao0
+
+		lea	Buffer(pc),a0
+		move.l	(a0),a1
+		exg	a5,a6			; now a6 = exec, a5 = dos
+		jsr	_LVOFindTask(a6)
+
+;! NOTE ! Doc say to use Forbid/Permit if we want that the returned
+; value is valid when we use it... But we want only to know if it exists
+; or not, so we do nothing about.
+
+		exg	a5,a6
+		lea	Aru(pc),a0
+		tst.l	d0
+		bne.s	Yeah
+		lea	Arimasen(pc),a0
+Yeah		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+
+		move.l	d6,d1
+		jsr	_LVOFreeArgs(a6)
+
+Maramao0	move.l	a6,a1
+		move.l	a5,a6
+		jsr	_LVOCloseLibrary(a6)
+
+; Do you know that in OS37 you can close a library not opened ('cause
+; system checks it)? Weel, but this way seem to be more powerful... (fast)
+
+Maramao		moveq	#0,d0
+		rts
+
+;================================================
+
+DOSName		dc.b	"dos.library",0
+		even
+
+Buffer		dc.l	0
+
+Array		dc.b	"TASKNAME/A",0
+		even
+
+Aru		dc.b	"Task found!",10
+		dc.b	"Task ga aru!",10,0
+		even
+
+Arimasen	dc.b	"Where is it?",10
+		dc.b	"Doko ni aru ka?",10,0
+		even
+
+
+		END

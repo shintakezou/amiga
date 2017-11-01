@@ -1,0 +1,9 @@
+LAST MINUTE BUGS
+
+RequestLV
+
+In the gadtools version, double-click is possible also between
+two different items!! E.g., if you click on the first item and then
+on the second as fast as you can (it should take less time than
+double-click threshold time) you will get the second item as you
+have double-clicked it! Beware!

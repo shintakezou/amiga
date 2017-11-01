@@ -1,0 +1,1080 @@
+;
+; Miseru v1.0
+; written by Mauro Panigada
+;
+; $VER: Miseru.a v1.0 (1996-07-29) by Mauro Panigada
+;
+; STARTED: 1996-07-29
+; FINISHED: 1996-07-xx
+;
+; STORY:    1996-07-29    started v0.9
+;
+; ABOUT: Translation from C to Asm by Mauro Panigada. Original C version
+;   by Vincenzo Gervasi (AmigaMagazine #62, "Usiamo i datatypes",
+;   [Using datatypes...], 'Dalle classi agli oggetti' [From classes
+;   to objects], pp 42-47)
+;   See also my translation from E, ScrollerWindow, that is important
+;   for understanding BOOPSI (object) (scroller, arrows...).
+;
+; PURPOSE: Example. Similar to MultiView (!) but semplified.
+;
+; NOTE: This version is a bit enhanced: original C code is semplified
+;   so I decided to use ScrollerWindow.a as base.
+;
+; FEATURES:
+;
+; In project:    * show with datatypes
+;                * wb start
+;                o  auto detach
+;                * drop icon! (app-icon) + AppMenu
+;                * commodity
+;                * arexx
+;                o  localized (given: english/italiano)
+;                o  pure
+;
+; Implemented:   * show with datatypes
+;                * wb start
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/exec.i"
+		include	"exec/exec_lib.i"
+
+		include	"datatypes/datatypes.i"
+		include	"datatypes/datatypesclass.i"
+		include	"datatypes/datatypes_lib.i"
+
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+
+		include	"intuition/intuition.i"
+		include	"intuition/imageclass.i"
+		include	"intuition/screens.i"
+		include	"intuition/classes.i"
+		include	"intuition/classusr.i"
+		include	"intuition/icclass.i"
+		include	"intuition/gadgetclass.i"
+		include	"intuition/intuition_lib.i"
+
+		include	"utility/utility.i"
+		include	"utility/utility_lib.i"
+		include	"utility/tagitem.i"
+
+		include	"libraries/commodities.i"
+		include	"libraries/commodities_lib.i"
+
+		include	"workbench/workbench.i"
+		include	"workbench/workbench_lib.i"
+		include	"workbench/icon.i"
+		include	"workbench/icon_lib.i"
+
+		include	"libraries/asl.i"
+		include	"libraries/asl_lib.i"
+
+		include	"rexx/rxslib.i"
+
+
+
+	STRUCTURE VarBase,0
+		LONG	_ExecBase
+		LONG	_DOSBase
+		LONG	_IntuitionBase
+		LONG	_UtilityBase
+		LONG	_CommodityBase
+		LONG	_WorkbenchBase
+		LONG	_IconBase
+		LONG	_AslBase
+		LONG	_DataTypesBase
+		LONG	_RexxSysBase
+		LONG	_GfxBase
+
+		LONG	_WBMsg
+		LONG	_Args
+
+		LABEL	_Array
+		LONG	_FileName
+		LONG	_CXHotKey
+		LONG	_CXPri
+		LONG	_CXPopFlag
+		LONG	_ReqFlag
+
+		WORD	_HTotal
+		WORD	_VTotal
+		WORD	_HVisible
+		WORD	_VVisible
+
+		LONG	_DTO
+
+		APTR	_Screen		; APTR = LONG...
+		APTR	_Dri
+
+		LONG	_HorizGadget
+		LONG	_VertGadget
+		LONG	_LeftGadget
+		LONG	_RightGadget
+		LONG	_UpGadget
+		LONG	_DownGadget
+
+		LONG	_SizeImage
+		LONG	_LeftImage
+		LONG	_RightImage
+		LONG	_UpImage
+		LONG	_DownImage
+
+		LONG	_Window
+
+		LONG	_Resolution
+		WORD	_TopBorder
+		LONG	_SF
+		WORD	_W
+		WORD	_H
+		WORD	_BW
+		WORD	_BH
+		WORD	_RW
+		WORD	_RH
+		WORD	_GW
+		WORD	_GH
+		WORD	_Gap
+
+		LONG	_CX_HotKey
+		WORD	_CX_Pri
+
+		LONG	_SignalWaiting
+
+		LABEL	Var_SIZEOF
+
+
+;
+; Gadget ids
+;
+HORIZ_GID	EQU	1
+VERT_GID	EQU	2
+LEFT_GID	EQU	3
+RIGHT_GID	EQU	4
+UP_GID		EQU	5
+DOWN_GID	EQU	6
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+
+*=======================================================================*
+
+
+		SECTION MiseruCODE,CODE
+
+		bra.s	Start
+
+		dc.b	"$VER: Miseru v1.0 (1996-07-29) "
+		dc.b	"by Mauro Panigada",0
+		even
+
+Start		move.l	4.w,a6
+		move.w	LIB_VERSION(a6),d0
+		cmp.w	#39,d0
+		blo.s	NoOSVer
+		move.l	#Var_SIZEOF,d0
+		move.l	#MEMF_PUBLIC|MEMF_CLEAR,d1
+		jsr	_LVOAllocVec(a6)
+		move.l	d0,a5
+		tst.l	d0
+		bne.s	StartGO
+
+		lea	MemEnoughM(pc),a0
+		bra	PrintError
+
+NoOSVer		lea	NoOSVerM(pc),a0
+		bra	PrintError
+
+StartGO		move.l	4.w,a6
+		move.l	a6,(a5)
+		suba.l	a1,a1
+		jsr	_LVOFindTask(a6)
+		move.l	d0,a3
+		tst.l	pr_CLI(a3)
+		bne.s	MainS
+FromWB		lea	pr_MsgPort(a3),a0
+		jsr	_LVOWaitPort(a6)
+		lea	pr_MsgPort(a3),a0
+		jsr	_LVOGetMsg(a6)
+		move.l	d0,_WBMsg(a5)
+
+		bsr	Main
+
+		move.l	(a5),a6
+		jsr	_LVOForbid(a6)
+		move.l	_WBMsg(a5),a1
+		jsr	_LVOReplyMsg(a6)
+
+FreeVar		move.l	(a5),a6
+		move.l	a5,a1
+		jmp	_LVOFreeVec(a6)
+
+MainS		bsr	Main
+		bra.s	FreeVar
+
+
+Main		clr.w	_CX_Pri(a5)
+		move.l	#ControlKey,_CX_HotKey(a5)
+
+		lea	DOSName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_DOSBase(a5)
+		beq	FatalNoDOS	; weh! where's DOS?
+
+		lea	UtilityName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_UtilityBase(a5)
+		beq	NeedUtility
+
+		lea	CommodityName(pc),a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_CommodityBase(a5)
+		beq	NeedCommodity
+
+		lea	IntName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_IntuitionBase(a5)
+		beq	FatalInt
+
+		lea	WorkbenchName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_WorkbenchBase(a5)
+
+		lea	IconName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_IconBase(a5)
+
+		lea	AslName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_AslBase(a5)
+		beq	NeedAsl
+
+		lea	RexxSysName(pc),a1
+		moveq	#0,d0			; ???
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_RexxSysBase(a5)
+
+		lea	GraphicsName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_GfxBase(a5)
+		beq	FatalGfx
+
+
+		tst.l	_WBMsg(a5)
+		beq.s	FromCLI
+
+		;
+		; prende argomenti dal wb...!
+		;
+
+		nop
+
+FromCLI		move.l	_DOSBase(a5),a6
+		move.l	#Template,d1
+		lea	_Array(a5),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,_Args(a5)
+		beq	NoArguments
+
+ArgumentCheck	move.l	_CXPri(a5),d0
+		beq.s	AC_NoPri
+		move.l	d0,a0
+		move.l	(a0),d0
+		bpl.s	AC_PriOK
+		neg.l	d0		; non so se e` necessario. Credo
+		neg.b	d0		; che non lo sia...
+AC_PriOK	move.b	d0,_CX_Pri(a5)
+AC_NoPri	move.l	_CXHotKey(a5),d0
+		beq.s	AC_NoKey
+		move.l	d0,_CX_HotKey(a5)
+AC_NoKey	tst.l	_FileName(a5)
+		beq.s	AC_NoFileName
+		;
+		; file name dato
+		;
+		nop
+AC_NoFileName	tst.l	_ReqFlag(a5)
+		beq.s	NoArguments
+		;
+		; fa uscire il requester
+		;
+		nop
+
+NoArguments	;bsr	MakeArexxFace
+		;bsr	InstallBrokers
+		tst.l	_WBMsg(a5)
+		;beq.s	NoWBNoApp
+		;bsr	MakeAppIcon
+		;bsr	MakeAppMenu
+NoWBNoApp	; wait
+
+
+
+;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<
+;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> EXIT >>>>>><<
+;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<
+
+Exit
+
+FreeArgument	move.l	_DOSBase(a5),a6
+		move.l	_Args(a5),d1
+		beq.s	E_CloseLib
+		jsr	_LVOFreeArgs(a6)
+
+E_CloseLib	move.l	(a5),a6
+		move.l	_DOSBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_IntuitionBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_WorkbenchBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_IconBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_CommodityBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_UtilityBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_AslBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_DataTypesBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_GfxBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+
+FatalNoDOS	rts
+
+
+NeedUtility	lea	NeedUtilityM(pc),a0
+		bsr	PrintError0
+		bra.s	Exit
+
+NeedCommodity	lea	NeedCommodityM(pc),a0
+		bsr	PrintError0
+		bra.s	Exit
+
+FatalInt	lea	FatalIntM(pc),a0
+		bsr	PrintError0
+		bra.s	Exit
+
+FatalGfx	lea	FatalGfxM(pc),a0
+		bsr	PrintError0
+		bra.s	Exit
+
+NeedAsl		lea	NeedAslM(pc),a0
+		bsr	PrintError0
+		bra.s	Exit
+
+
+
+;====================================================== SUBS ============
+
+;
+; Max - output: maximum.
+; IN: d0=x, d1=y
+; OUT: d0=maximum
+;
+Max		cmp.w	d1,d0
+		bgt.s	MAX_Hai		;bhi.s	MAX_Hai
+		move.w	d1,d0
+MAX_Hai		rts
+
+;
+; Min - output: minimum.
+; IN: d0=x, d1=y
+; OUT: d0=minimum
+;
+Min		cmp.w	d1,d0
+		blt.s	MIN_Hai		;blo.s	MIN_Hai
+		move.w	d1,d0
+MIN_Hai		rts
+
+;
+; SysISize - ?
+; OUT: d0
+;
+SysISize	moveq	#SYSISIZE_MEDRES,d0
+		move.l	_Screen(a5),a0
+		move.w	sc_Flags(a0),d1
+		and.w	#SCREENHIRES,d1
+		tst.w	d1
+		bne.s	SIS_Hai
+		moveq	#SYSISIZE_LOWRES,d0
+SIS_Hai		rts
+
+;
+; NewImageObj - create a new image object
+; IN: d0=which
+;
+NewImageObj	movem.l	a2/a6,-(sp)
+		move.l	d0,-(sp)
+		bsr	SysISize
+		move.l	d0,d1
+		move.l	_IntuitionBase(a5),a6
+		suba.l	a0,a0
+		lea	SysClass(pc),a1
+		lea	SysTag(pc),a2
+		move.l	_Dri(a5),4(a2)
+		move.l	(sp)+,d0
+		move.l	d0,12(a2)
+		move.l	d1,20(a2)
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+;
+; NewPropObj - create a new prop object
+; IN: d0=freedom, a0=taglist
+;
+NewPropObj	movem.l	a2/a6,-(sp)
+		move.l	_IntuitionBase(a5),a6
+		lea	PropClass(pc),a1
+		lea	PropTag(pc),a2
+		move.l	d0,4(a2)
+		move.l	a0,28(a2)
+		move.l	_Dri(a5),a0
+		moveq	#0,d1
+		move.l	dri_Flags(a0),d0
+		and.l	#DRIF_NEWLOOK,d0
+		beq.s	NPO_NoNewLook		; no new look set!
+		cmp.w	#1,dri_Depth(a0)
+		beq.s	NPO_NoNewLook
+		moveq	#-1,d1
+NPO_NoNewLook	move.l	d1,20(a2)
+		suba.l	a0,a0
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+;
+; NewButtonObj - create a new button-image object
+; IN: a0=ptr to image, a1=taglist
+;
+NewButtonObj	movem.l	a2/a6,-(sp)
+		move.l	_IntuitionBase(a5),a6
+		lea	ButtonTag(pc),a2
+		move.l	a1,20(a2)
+		lea	ButtonClass(pc),a1
+		move.l	a0,12(a2)
+		suba.l	a0,a0
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+;
+; OpenWindow - open window
+; IN: a0=taglist
+;
+OpenWindow	move.l	a0,-(sp)
+		bsr	SysISize
+		move.l	d0,_Resolution(a5)
+		move.l	_Screen(a5),a0
+		move.l	sc_Font(a0),_SF(a5)
+		moveq	#0,d0
+		move.b	sc_WBorTop(a0),d0
+		move.l	_SF(a5),a1
+		move.w	ta_YSize(a1),d1
+		addq.w	#1,d1
+		add.w	d1,d0
+		move.w	d0,_TopBorder(a5)
+
+		move.l	_SizeImage(a5),a0
+		move.w	ig_Width(a0),d0
+		move.w	d0,_W(a5)
+		move.w	ig_Height(a0),d0
+		move.w	d0,_H(a5)
+
+		moveq	#1,d0
+		cmp.l	#SYSISIZE_LOWRES,_Resolution(a5)
+		beq.s	OSW_Skip0
+		moveq	#2,d0
+OSW_Skip0	move.w	d0,_BW(a5)
+
+		moveq	#2,d0
+		cmp.l	#SYSISIZE_HIRES,_Resolution(a5)
+		beq.s	OSW_Skip1
+		moveq	#1,d0
+OSW_Skip1	move.w	d0,_BH(a5)
+
+		moveq	#3,d0
+		cmp.l	#SYSISIZE_HIRES,_Resolution(a5)
+		beq.s	OSW_Skip2
+		moveq	#2,d0
+OSW_Skip2	move.w	d0,_RW(a5)
+
+		moveq	#2,d0
+		cmp.l	#SYSISIZE_HIRES,_Resolution(a5)
+		beq.s	OSW_Skip3
+		moveq	#1,d0
+OSW_Skip3	move.w	d0,_RH(a5)
+
+		move.l	_LeftImage(a5),a0
+		move.w	ig_Height(a0),d0
+		move.w	_H(a5),d1
+		bsr	Max
+		move.w	d0,_GH(a5)
+
+		move.l	_RightImage(a5),a0
+		move.w	d0,d1
+		move.w	ig_Height(a0),d0
+		bsr	Max
+		move.w	d0,_GH(a5)
+
+		move.l	_UpImage(a5),a0
+		move.w	ig_Width(a0),d0
+		move.w	_W(a5),d1
+		bsr	Max
+		move.w	d0,_GW(a5)
+
+		move.l	_DownImage(a5),a0
+		move.w	d0,d1
+		move.w	ig_Width(a0),d0
+		bsr	Max
+		move.w	d0,_GW(a5)
+
+		move.w	#1,_Gap(a5)
+
+		moveq	#FREEHORIZ,d0
+		lea	HorizTag(pc),a0
+		move.w	_RW(a5),d1
+		add.w	_Gap(a5),d1
+		move.w	d1,6(a0)
+		move.w	_BH(a5),d1
+		sub.w	_GH(a5),d1
+		add.w	#2,d1
+		move.w	d1,14(a0)
+		move.w	_GW(a5),d1
+		neg.w	d1
+		sub.w	_Gap(a5),d1
+		move.l	_LeftImage(a5),a1
+		sub.w	ig_Width(a1),d1
+		move.l	_RightImage(a5),a1
+		sub.w	ig_Width(a1),d1
+		sub.w	_RW(a5),d1
+		sub.w	_RW(a5),d1
+		move.w	d1,22(a0)
+		move.w	_GH(a5),d1
+		sub.w	_BH(a5),d1
+		sub.w	_GH(a5),d1
+		sub.w	#2,d1
+		move.w	d1,30(a0)
+		move.w	_HTotal(a5),54(a0)
+		move.w	_HVisible(a5),62(a0)
+		move.l	_DTO(a5),68(a0)
+		bsr	NewPropObj
+		move.l	d0,_HorizGadget(a5)
+
+		lea	VertTag(pc),a0
+		move.w	_BW(a5),d1	; calc value
+		sub.w	_GW(a5),d1
+		addq.w	#3,d1
+		move.w	d1,6(a0)
+		move.w	_TopBorder(a5),d1
+		add.w	_RH(a5),d1
+		move.w	d1,14(a0)
+		move.w	_GW(a5),d1
+		sub.w	_BW(a5),d1
+		sub.w	_BW(a5),d1
+		subq.w	#4,d1
+		move.w	d1,22(a0)
+		move.w	_TopBorder(a5),d1
+		neg.w	d1
+		sub.w	_H(a5),d1
+		move.l	_UpImage(a5),a1
+		move.w	ig_Height(a1),d2
+		sub.w	d2,d1
+		move.l	_DownImage(a5),a1
+		move.w	ig_Height(a1),d2
+		sub.w	d2,d1
+		sub.w	_RH(a5),d1
+		sub.w	_RH(a5),d1
+		move.w	d1,30(a0)
+		move.l	d0,44(a0)
+		move.w	_VTotal(a5),62(a0)
+		move.w	_VVisible(a5),70(a0)
+		move.l	#FREEVERT,d0
+		move.l	_DTO(a5),76(a0)
+		bsr	NewPropObj
+		move.l	d0,_VertGadget(a5)
+
+		move.l	_LeftImage(a5),a0
+		lea	LButtonTag(pc),a1
+		moveq	#1,d1
+		move.w	ig_Width(a0),d2
+		sub.w	d2,d1
+		move.l	_RightImage(a5),a2
+		move.w	ig_Width(a2),d2
+		sub.w	d2,d1
+		sub.w	_GW(a5),d1
+		move.w	d1,6(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.w	d2,d1
+		move.w	d1,14(a1)
+		move.l	d0,28(a1)
+		bsr	NewButtonObj
+		move.l	d0,_LeftGadget(a5)
+
+		move.l	_RightImage(a5),a0
+		lea	RButtonTag(pc),a1
+		moveq	#1,d1
+		move.w	ig_Width(a0),d2
+		sub.w	d2,d1
+		sub.w	_GW(a5),d1
+		move.w	d1,6(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.w	d2,d1
+		move.w	d1,14(a1)
+		move.l	d0,28(a1)
+		move.l	#RIGHT_GID,36(a1)
+		bsr	NewButtonObj
+		move.l	d0,_RightGadget(a5)
+
+		move.l	_UpImage(a5),a0
+		lea	UButtonTag(pc),a1
+		moveq	#1,d1
+		move.w	ig_Width(a0),d2
+		sub.w	d2,d1
+		move.w	d1,6(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.w	d2,d1
+		move.l	_DownImage(a5),a2
+		move.w	ig_Height(a2),d2
+		sub.w	d2,d1
+		sub.w	_H(a5),d1
+		move.w	d1,14(a1)
+		move.l	d0,28(a1)
+		move.l	#UP_GID,36(a1)
+		bsr	NewButtonObj
+		move.l	d0,_UpGadget(a5)
+
+		move.l	_DownImage(a5),a0
+		lea	DButtonTag(pc),a1
+		moveq	#1,d1
+		move.w	ig_Width(a0),d2
+		sub.w	d2,d1
+		move.w	d1,6(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.w	d2,d1
+		sub.w	_H(a5),d1
+		move.w	d1,14(a1)
+		move.l	d0,28(a1)
+		move.l	#DOWN_GID,36(a1)
+		bsr	NewButtonObj
+		move.l	d0,_DownGadget(a5)
+
+		beq	OSW_FError
+
+		lea	SWindow(pc),a1
+		moveq	#80,d0
+		move.w	_GW(a5),d1
+		add.w	_Gap(a5),d1
+		move.l	_LeftImage(a5),a0
+		move.w	ig_Width(a0),d2
+		add.w	d2,d1
+		move.l	_RightImage(a5),a0
+		move.w	ig_Width(a0),d2
+		add.w	d2,d1
+		add.w	_RW(a5),d1
+		add.w	_RW(a5),d1
+		addq.w	#KNOBHMIN,d1
+		bsr	Max
+		move.w	d0,14(a1)
+		moveq	#50,d0
+		move.w	_TopBorder(a5),d1
+		add.w	_H(a5),d1
+		move.l	_UpImage(a5),a0
+		move.w	ig_Height(a0),d2
+		add.w	d2,d1
+		move.l	_DownImage(a5),a0
+		move.w	ig_Height(a0),d2
+		add.w	d2,d1
+		add.w	_RH(a5),d1
+		add.w	_RH(a5),d1
+		addq.w	#KNOBVMIN,d1
+		bsr	Max
+		move.w	d0,22(a1)
+		move.l	_HorizGadget(a5),4(a1)
+		move.l	(sp),28(a1)
+		suba.l	a0,a0
+		move.l	_IntuitionBase(a5),a6
+		jsr	_LVOOpenWindowTagList(a6)
+
+OSW_FError	addq.l	#4,sp
+		rts
+
+
+;
+; CloseWindow - close opened window and kill objects
+;
+CloseWindow	move.l	_IntuitionBase(a5),a6
+		move.l	_Window(a5),d0
+		beq.s	CSW_NoWindow
+		move.l	d0,a0
+		jsr	_LVOCloseWindow(a6)
+CSW_NoWindow	move.l	_HorizGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_VertGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_LeftGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_RightGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_UpGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_DownGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		rts
+
+;
+; UpdateProp - update prop object
+; IN: a0=gadget, d0=attr,d1=value
+;
+UpdateProp	movem.l	a2-a3/a6,-(sp)
+		move.l	_Window(a5),a1
+		suba.l	a2,a2
+		move.l	_IntuitionBase(a5),a6
+		clr.l	-(sp)
+		move.l	d1,-(sp)
+		move.l	d0,-(sp)
+		move.l	sp,a3
+		jsr	_LVOSetGadgetAttrsA(a6)
+		lea	12(sp),sp
+		movem.l	(sp)+,a2-a3/a6
+		rts
+
+;
+; PrintError - write an error to output (works from 1.3)
+; IN: a0=message
+;
+PrintError	move.l	a0,d2
+		lea	DOSName(pc),a1
+		moveq	#0,d0		; 1.3 qual'e`?
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	PE_Fatal
+		move.l	d0,a6
+		jsr	_LVOOutput(a6)
+		move.l	d0,d1
+		beq.s	PE_GetOut
+PE_Go		move.l	d2,a0
+		moveq	#0,d3
+PE_Loop		tst.b	(a0)+
+		beq.s	PE_LoopEnd
+		addq.w	#1,d3
+		bra.s	PE_Loop
+PE_LoopEnd	addq.w	#1,d3
+		move.b	#10,-1(a0)
+		jsr	_LVOWrite(a6)
+PE_CloseLib	move.l	a6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+PE_Fatal	rts
+
+PE_GetOut	move.l	#PE_OutName,d1		; this output won't be
+		move.l	#MODE_NEWFILE,d2	; closed.
+		jsr	_LVOOpen(a6)
+		move.l	d0,d1
+		bne.s	PE_Go
+		bra.s	PE_CloseLib
+
+;
+; PrintError0 - see above, but for #39
+; IN: a0=message
+;
+PrintError0	move.l	_DOSBase(a5),a6
+		move.l	a0,d1
+		jmp	_LVOPutStr(a6)
+
+;
+; DoWindow - startup for opening window
+;
+DoWindow	move.l	_IntuitionBase(a5),a6
+		suba.l	a0,a0
+		jsr	_LVOLockPubScreen(a6)
+		move.l	d0,_Screen(a5)
+		beq	DW_Fail
+		move.l	d0,a0
+		move.w	sc_Width(a0),_HTotal(a5)
+		move.w	_HTotal(a5),_HVisible(a5)
+		move.w	sc_Height(a5),_VVisible(a5)
+		move.w	_VVisible(a5),_VTotal(a5)
+
+		move.l	_GfxBase(a5),a6
+		move.l	_Screen(a5),a0
+		jsr	_LVOGetScreenDrawInfo(a6)
+		move.l	d0,_Dri(a5)
+		beq	DW_Fail
+
+		moveq	#SIZEIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_SizeImage(a5)
+		beq	DW_Image
+		moveq	#LEFTIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_LeftImage(a5)
+		beq	DW_Image
+		moveq	#RIGHTIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_RightImage(a5)
+		beq	DW_Image
+		moveq	#UPIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_UpImage(a5)
+		beq	DW_Image
+		moveq	#DOWNIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,Image(a5)
+		beq	DW_Image
+
+		lea	WinTag(pc),a0
+		move.l	_Screen(a5),4(a0)
+		move.w	_HTotal(a5),38(a0)
+		move.w	_VTotal(a5),46(a0)
+		bsr	OpenWindow
+		move.l	d0,_Window(A5)
+		beq	DW_NoWindow
+
+		moveq	#PERROR_NO_ERROR,d0
+
+		rts
+
+
+DW_Exit		move.l	d0,-(sp)
+		bsr	DW_Kill
+		move.l	(sp)+,d0
+		rts
+
+
+
+PERROR_NO_ERROR		EQU	0
+PERROR_NO_IMAGE_OBJ	EQU	-9
+PERROR_NO_WINDOW	EQU	-10
+PERROR_FAIL		EQU	-8
+
+DW_Image	moveq	#PERROR_NO_IMAGE_OBJ,d0
+		bra.s	DW_Exit
+
+DW_NoWindow	moveq	#PERROR_NO_WINDOW,d0
+		bra.s	DW_Exit
+
+DW_Fail		moveq	#PERROR_FAIL,d0
+		bra.s	DW_Exit
+
+DW_Kill		move.l	_IntuitionBase(a5),a6
+		move.l	_SizeImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_LeftImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_RightImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_UpImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_DownImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+
+		move.l	_GfxBase(a5),a6
+
+		move.l	_Screen(a5),d0
+		beq.s	DW_NoScr
+		move.l	d0,a0
+		move.l	_Dri(a5),d0
+		beq.s	DW_NoScr
+		move.l	d0,a1
+		jsr	_LVOFreeScreenDrawInfo(a6)
+
+DW_NoScr	move.l	_IntuitionBase(a5),a6
+		suba.l	a0,a0
+		move.l	_Screen(a5),d0
+		beq.s	DW_NoScreen
+		move.l	d0,a1
+		jsr	_LVOUnlockPubScreen(a6)
+
+DW_NoScreen	rts
+
+
+
+
+;
+; UpdateProp - update prop object
+; IN: a0=gadget, d0=attr,d1=value
+;
+UpdateProp	movem.l	a2-a3/a6,-(sp)
+		move.l	_Window(a5),a1
+		suba.l	a2,a2
+		move.l	_IntBase(a5),a6
+		clr.l	-(sp)
+		move.l	d1,-(sp)
+		move.l	d0,-(sp)
+		move.l	sp,a3
+		jsr	_LVOSetGadgetAttrsA(a6)
+		lea	12(sp),sp
+		movem.l	(sp)+,a2-a3/a6
+		rts
+
+
+
+;======================================================== DATA ============
+
+IntName		dc.b	"intuition.library",0
+		even
+DOSName		dc.b	"dos.library",0
+		even
+UtilityName	dc.b	"utility.library",0
+		even
+CommodityName	dc.b	"commodity.library",0
+		even
+WorkbenchName	dc.b	"workbench.library",0
+		even
+IconName	dc.b	"icon.library",0
+		even
+LocaleName	dc.b	"locale.library",0
+		even
+AslName		dc.b	"asl.library",0
+		even
+DataTypesName	dc.b	"datatypes.library",0
+		even
+RexxSysName	dc.b	"rexxsyslib.library",0
+		even
+GraphicsName	dc.b	"graphics.library",0
+		even
+
+PE_OutName	dc.b	"CON:0/0/640/50/Miseru Error",0
+		even
+
+
+Template	dc.b	"FILENAME/M,CX_POPKEY/K,CX_PRIORITY/N/K,CX_POPUP/S,REQ/S",0
+		even
+
+ButtonClass	dc.b	"buttongclass",0
+		even
+PropClass	dc.b	"propgclass",0
+		even
+SysClass	dc.b	"sysiclass",0
+		even
+
+PropTag		dc.l	PGA_FREEDOM,0
+		dc.l	PGA_NewLook,TRUE
+		dc.l	PGA_BORDERLESS,0
+		dc.l	TAG_MORE,0
+
+ButtonTag	dc.l	ICA_TARGET,ICTARGET_IDCMP
+		dc.l	GA_IMAGE,0
+		dc.l	TAG_MORE,0
+
+SysTag		dc.l	SYSIA_DrawInfo,0
+		dc.l	SYSIA_Which,0
+		dc.l	SYSIA_Size,0
+		dc.l	TAG_END
+
+VertTag		dc.l	GA_RELRIGHT,0
+		dc.l	GA_TOP,0
+		dc.l	GA_WIDTH,0
+		dc.l	GA_RELHEIGHT,0
+		dc.l	GA_RIGHTBORDER,TRUE
+		dc.l	GA_PREVIOUS,0
+		dc.l	GA_ID,VERT_GID
+		dc.l	PGA_TOTAL,0
+		dc.l	PGA_VISIBLE,0
+		dc.l	ICA_TARGET,0
+		dc.l	ICA_MAP,VertMapping
+		dc.l	TAG_END
+
+HorizTag	dc.l	GA_LEFT,0
+		dc.l	GA_RELBOTTOM,0
+		dc.l	GA_RELWIDTH,0
+		dc.l	GA_HEIGHT,0
+		dc.l	GA_BOTTOMBORDER,TRUE
+		dc.l	GA_ID,HORIZ_GID
+		dc.l	PGA_TOTAL,0
+		dc.l	PGA_VISIBLE,0
+		dc.l	ICA_TARGET,0
+		dc.l	ICA_MAP,HorizMapping
+		dc.l	TAG_END
+
+UButtonTag
+DButtonTag
+		dc.l	GA_RELRIGHT,0
+		dc.l	GA_RELBOTTOM,0
+		dc.l	GA_RIGHTBORDER,TRUE
+		dc.l	GA_PREVIOUS,0
+		dc.l	GA_ID,0
+		dc.l	TAG_END
+
+RButtonTag
+LButtonTag	dc.l	GA_RELRIGHT,0
+		dc.l	GA_RELBOTTOM,0
+		dc.l	GA_BOTTOMBORDER,TRUE
+		dc.l	GA_PREVIOUS,0
+		dc.l	GA_ID,LEFT_GID
+		dc.l	TAG_END
+
+SWindow		dc.l	WA_Gadgets,0
+		dc.l	WA_MinWidth,0
+		dc.l	WA_MinHeight,0
+		dc.l	TAG_MORE,0
+
+WinTag		dc.l	WA_PubScreen,0
+		dc.l	WA_Title,Title
+		dc.l	WA_Flags,WFLG_DEPTHGADGET|WFLG_CLOSEGADGET!WFLG_DRAGBAR!WFLG_ACTIVATE
+		dc.l	WA_IDCMP,IDCMP_CLOSEWINDOW!IDCMP_IDCMPUPDATE
+		dc.l	WA_InnerWidth,0
+		dc.l	WA_InnerHeight,0
+		dc.l	WA_MaxWidth,-1
+		dc.l	WA_MaxHeight,-1
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	WA_NoCareRefresh,TRUE
+		dc.l	WA_AutoAdjust,TRUE
+		dc.l	TAG_END
+
+VertMapping	dc.l	PGA_Top,DTA_TopVert
+		dc.l	PGA_Visible,DTA_VisibleVert
+		dc.l	PGA_Total,DTA_TotalVert
+		dc.l	TAG_END
+
+HorizMapping	dc.l	PGA_Top,DTA_TopVert
+		dc.l	PGA_Visible,DTA_VisibleVert
+		dc.l	PGA_Total,DTA_TotalHoriz
+		dc.l	TAG_END
+
+Title		dc.b	"Miseru v1.0",0
+		even
+
+ControlKey	dc.b	"rawkey lcommand d",0
+		even
+
+;----------------------------------------------------- STRINGS ----------
+
+MemEnoughM	dc.b	"There is not enough memory!",0
+		even
+NoOSVerM	dc.b	"You need OS v3.0+!",0
+		even
+NeedUtilityM	dc.b	"I need utility.library V39!",10,0
+		even
+NeedCommodityM	dc.b	"I need commodity.library!",10,0
+		even
+FatalIntM	dc.b	"FATAL: No intuition.library V39!",10,0
+		even
+NeedAslM	dc.b	"I need asl.library V39!",10,0
+		even
+FatalGfxM	dc.b	"FATAL: No graphics.library V39!",10,0
+		even
+
+
+
+		END

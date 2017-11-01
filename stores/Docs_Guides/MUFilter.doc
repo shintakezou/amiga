@@ -1,0 +1,56 @@
+
+
+                                 MUFilter v1.0
+                                ===============
+
+                           written by Mauro Panigada
+
+
+Introduction
+~~~~~~~~~~~~
+
+	I remember when I began to learn assembly language. Because
+I think (I believe right) that learning is based on imitation, I used to
+type many lines of code already written by others. So it was easier
+to understand it. I remember Enigma, an Italian magazine, which
+used to publish short assembly sources. One of these was "Il filtro che
+uccide" (ricordo bene, amici "enigmatici"?) [The filter that kills; 
+do I remember well, aenigmatic friends?; translation by MP, all right
+reserved!], an article on intuition, but also useful.
+
+	Remembering "The filter that kills" I wrote MUFilter. In the
+same time I was studing on G. Nikl's program to make a tool a commodity.
+So MUFilter is born.
+
+MUFilter v1.0
+~~~~~~~~~~~~~
+
+	MUFilter allows you to control the power-led (and filter) of
+Amiga. I wanted to call it "MUPLCTRL" but it is rather uncommon.
+When you run it, it shows you its interface: two simple "checkers" (do you
+call so these buttons with the tick?)... I don't remember their name!
+One of these is ghosted. In fact the Protection feature is not available
+yet. Problems with CIA! The first mirrors the state of the power-led.
+When you kills MUFilter via Commodity Exchange my program sets the filter
+as it was before. Now by clicking on that button (push push) you can
+control the power-led, that little light in the night.
+
+	There is another way you can control the filter through. Disabling
+and Enabling via CX MUFilter when you keep the filter in a different
+state respect the state it was before running MUFilter itself. Try to
+understand...
+
+	That's all. Never forget: all my programs are Freeware, or, if
+specified, PD (Freeware overcome PD if there are declarations in contrast),
+but I would be happy if you send me something ... postcard or what...
+Why not?
+
+	ATTENTION: I know words like these above need a public space, not
+in a documentation of a single program, where you can not read it if you
+hate the program... so please spread it! Why not? Be serious, Mauro!
+I declared what I declared in the public space (read me). There it lay,
+the Truth is over there...... 
+
+	I am saying non-sense words.......... why not?
+
+	Thanks to CS for "why not".

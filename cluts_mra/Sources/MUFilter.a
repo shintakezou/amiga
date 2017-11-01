@@ -1,0 +1,731 @@
+;-----------------------------------------------------------------------
+; $VER: MUFilter.a  v1.0  (c) 1996 by Mauro Panigada
+;-----------------------------------------------------------------------
+;
+; MUFilter v1.0
+; written by Mauro Panigada
+;
+; Started:  1996-06-17     NEED OS LIBS v39
+; Finished: 1996-06-18
+; Released: ....-..-..     ??? 1998-11(Nov)-06 fisr Aminet release ???
+;
+; Description: a simple commodity to enhance the handling of Amiga filter
+;   (power led). Done just as example (to use commodity).
+;   Now only on/off, but in the future there will be Protection mode.
+;
+; Great thanks to Gunther Nikl for FrontPub, which is my source while
+; writing my first commodity-program.
+;
+; * RUN IT ONLY FROM CLI *
+;
+; BUGS: I tried to run it with "mufilter -10" and the system crashed...
+;      Why? 
+;
+; TO DO: * hotkey (appear by pressing a key combination)
+;        * running under WB (with getting args by icon).
+;        * error messages
+;
+; HISTORY:
+;    1996-06-17         started
+;    1996-06-18         finished base minimum code (see above)
+;    1996-06-19         added CX_PRI and HIDDEN arguments
+;    1998-11-06         (first Aminet release)
+;    1999-02-22         fixed a bug about calc of win height...
+;
+
+
+DEBUG		EQU	0
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/intuition_lib.i"
+		include	"intuition/screens.i"
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i"
+		include	"libraries/commodities.i"
+		include	"libraries/commodities_lib.i"
+		include	"dos/dostags.i"
+
+
+MVERSION	MACRO
+		dc.b	"$VER: "
+		dc.b	"MUFilter v1.0  (c) 1996 by Mauro Panigada (MU)",0
+		even
+		ENDM
+
+
+NEWGAD		MACRO
+		dc.w	\1,\2,\3,\4
+		dc.l	\5,0
+		dc.w	0
+		dc.l	\6,0,\7
+		ENDM
+
+DEFGAD		MACRO
+		IFEQ	NARG-1
+		dc.l	-1
+		ELSE
+		dc.l	\1,\2,\3,0
+		ENDC
+		ENDM
+
+
+sfont		EQU	0	; no custom font... sys font!
+
+
+
+	STRUCTURE MUFilterS,0
+		LONG	_execbase	; fanno tutti cosi`, tanto
+		LONG	_userport	; che mi viene il so-
+		LONG	_intbase		; spetto che sia meglio...
+		LONG	_gadtoolsbase
+		LONG	_cxbase
+		LONG	_broker
+		BYTE	_fstatus
+		BYTE	_fstatusp
+		BYTE	_cxenable
+		BYTE	_panel
+		WORD	_cxcommand
+		STRUCT	_newbroker,NewBroker_SIZEOF
+		LONG	_usersignal
+		LONG	_cxsignal
+
+			LONG	tag0	; queste si possono
+			LONG	newp	; riutilizzare...
+			LONG	tag1	; Se servono (cosi`
+			LONG	fsl	; occupa meno memoria, ma
+			LONG	tag2	; in definitiva, per 58
+			LONG	pname	; byte...)
+			LONG	tagend		; deve stare a zero!
+
+		LONG	_dosbase
+
+		LONG	_visualinfo
+		LONG	_window
+		LONG	_publock
+		LONG	_glist
+		LONG	_sfont
+		LONG	_barheight
+		LONG	_rastport
+		LONG	_class
+		WORD	_code
+		WORD	_qualifier
+		LONG	_iaddress
+
+		LONG	_kura0
+
+		LONG	_rdarg
+		LABEL	_rdarray
+		LONG	_cxpriptr
+		LONG	_hidden
+
+		BYTE	_cxpri
+		BYTE	_pad0
+
+		LABEL	MUFilter_SIZEOF
+
+
+
+		SECTION	MUFilterST,CODE
+
+pseg
+		bra.s	stcode
+
+		MVERSION
+
+stcode		move.l	4.w,a6
+		move.l	#MUFilter_SIZEOF,d0
+		move.l	#MEMF_PUBLIC!MEMF_CLEAR,d1
+		jsr	_LVOAllocMem(a6)
+		tst.l	d0
+		beq	fexit
+
+		move.l	d0,a5
+		move.l	a5,_memory
+		move.l	a6,(a5)		; _execbase=0, quindi 0(a5)=(a5) meglio!
+
+		IFEQ	DEBUG-1		; questo e` il codice minimo che
+		;move.l	(a5),a6		; fa in modo che non venga creato un
+		lea	dosname(pc),a1	; nuovo processo, che altrimenti non
+		moveq	#39,d0			; sarebbe debuggabile...
+		jsr	_LVOOpenLibrary(a6)	; contiene delle parti
+		move.l	d0,_dosbase(a5)		; ridondanti, ovviamente,
+		beq.s	dbret		; ne` ho fatto in modo che non
+		;move.l	d0,a6		; venisse compilato il codice che
+		;lea	template(pc),a0	; non serve... tanto serve solo per
+		;move.l	a0,d1		; il debug!
+		;lea	_rdarray(a5),a0
+		;move.l	a0,d2
+		;moveq	#0,d3		; in debug non funziona la readargs!
+		;jsr	_LVOReadArgs(a6)
+		;move.l	d0,_rdarg(a5)
+		;beq.s	go_nod
+		;move.l	d0,d1
+		;jsr	_LVOFreeArgs(a6)
+go_nod		jmp	main
+dbret		rts
+		ENDC
+
+		;move.l	(a5),a6
+		lea	dosname(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_dosbase(a5)
+		beq	fexit
+
+		move.l	d0,a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		lea	_rdarray(a5),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,_rdarg(a5)
+		beq.s	go_detac
+
+		move.l	_cxpriptr(a5),a0
+		move.l	a0,d0
+		beq.s	mum_farg
+		move.l	(a0),d0
+		move.b	d0,_cxpri(a5)
+
+mum_farg	move.l	d0,d1
+		jsr	_LVOFreeArgs(a6)
+
+
+
+go_detac	move.l	(a5),a6
+		lea	pseg(pc),a4
+		move.l	-4(a4),d7
+		move.l	d7,newp(a5)	; now next = first of new one
+		clr.l	-4(a4)
+		jsr	_LVOForbid(a6)	; rough thing
+notal		move.l	a5,d1
+		add.l	#tag0,d1	; punta alla zona tag
+		move.l	_dosbase(a5),a6
+		moveq	#-1,d0
+		move.l	d0,fsl(a5)
+		move.l	d7,newp(a5)
+		move.l	#pnamen,pname(a5)	; init tags values
+		move.l	#NP_Seglist,tag0(a5)
+		move.l	#NP_FreeSeglist,tag1(a5)
+		move.l	#NP_Name,tag2(a5)
+		jsr	_LVOCreateNewProc(a6)	; go!
+		tst.l	d0
+		bne.s	wevenp
+		move.l	d7,-4(a4)	; if it fails, dos will free
+wevenp		move.l	4.w,a6		; this segment
+		jsr	_LVOPermit(a6)
+fexit		rts
+
+dosname		dc.b	"dos.library",0
+		even
+
+template	dc.b	"CX_PRI/N,HIDDEN/S",0
+		even
+
+
+
+
+;************************************************************************
+;************************************************************************
+
+		SECTION	MUFilterMAIN,CODE
+
+		move.l	_memory(pc),a5
+		bra.s	main
+
+pnamen		dc.b	"MUFilter_Task",0
+		even
+
+main		move.l	(a5),a6
+		lea	intname(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_intbase(a5)
+		beq	sexit
+		lea	cxname(pc),a1
+		moveq	#0,d0			; la prima che c'e`
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_cxbase(a5)
+		beq	exit
+		lea	gadtoolsname(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_gadtoolsbase(a5)
+		beq	exit
+
+installcx	jsr	_LVOCreateMsgPort(a6)
+		lea	_newbroker(a5),a0
+		move.l	d0,nb_Port(a0)
+		beq	exit
+		move.b	#NB_VERSION,nb_Version(a0)
+		lea	mufname(pc),a1
+		move.l	a1,nb_Name(a0)
+		lea	muftitle(pc),a1
+		move.l	a1,nb_Title(a0)
+		lea	mufdescr(pc),a1
+		move.l	a1,nb_Descr(a0)
+		move.w	#NBU_UNIQUE,nb_Unique(a0)
+		move.w	#COF_SHOW_HIDE,nb_Flags(a0)
+		move.b	_cxpri(a5),nb_Pri(a0)
+		moveq	#0,d0
+		move.l	_cxbase(a5),a6
+		jsr	_LVOCxBroker(a6)
+		move.l	d0,_broker(a5)
+		beq	exit		; 0=OK,1=CBERR_SYSERR,2=DUP,3=VERSION
+		move.l	d0,a0
+		moveq	#1,d0
+		jsr	_LVOActivateCxObj(a6)
+		move.b	#1,_cxenable(a5)
+
+		move.l	_newbroker+nb_Port(a5),a0
+		moveq	#0,d1
+		move.b	MP_SIGBIT(a0),d1
+		moveq	#1,d0
+		lsl.l	d1,d0
+		move.l	d0,_cxsignal(a5)
+
+		move.b	$bfe001,_fstatus(a5)
+		and.b	#$02,_fstatus(a5)	; interessa solo un bit!
+		move.b	_fstatus(a5),_fstatusp(a5)
+
+		lea	g0_tag(pc),a0
+		moveq	#-1,d0
+		tst.b	_fstatus(a5)	; 1=spento, 0=acceso
+		bne.s	f_on
+f_off		move.l	d0,4(a0)
+		bra.s	f_go
+f_on		clr.l	4(a0)
+
+f_go		clr.b	_panel(a5)
+		tst.l	_hidden(a5)
+		bne.s	wsignal
+
+		bsr	appear
+		tst.l	d0
+		bne	exit
+
+		move.b	#1,_panel(a5)
+
+wsignal		pea	wsignal(pc)
+		tst.b	_cxenable(a5)
+		bne.s	p_enabled
+p_disabled	move.b	$bfe001,d0
+		and.b	#$fd,d0		;% 1111 1101
+		or.b	_fstatus(a5),d0	; filtro come prima
+uusf_jm		move.b	d0,$bfe001
+		bra.s	p_knut
+p_enabled	move.b	$bfe001,d0
+		and.b	#$fd,d0
+		or.b	_fstatusp(a5),d0
+		move.b	d0,$bfe001	; bra.s uusf_jm e` shorter...
+p_knut		move.w	_cxcommand(a5),d1
+		clr.w	_cxcommand(a5)
+		cmp.w	#CXCMD_APPEAR,d1
+		beq	c_appear
+		cmp.w	#CXCMD_DISAPPEAR,d1
+		beq	c_disappear
+		cmp.w	#CXCMD_KILL,d1
+		beq	c_kill
+ws_go		move.l	_cxsignal(a5),d0
+		or.l	_usersignal(a5),d0
+		move.l	(a5),a6	; 0(a5) = (a5) optim.!
+		jsr	_LVOWait(a6)
+		move.l	d0,d1
+		and.l	_usersignal(a5),d0
+		bne	wop_idcmp
+		and.l	_cxsignal(a5),d1
+		bne.s	cx_command
+					; che segnale e` altrimenti?
+		rts
+
+c_appear	tst.b	_panel(a5)
+		bne.s	ca_pon
+		bsr	appear
+		move.b	#1,_panel(a5)
+ca_pon		bra	ws_go
+
+c_disappear	tst.b	_panel(a5)
+		beq.s	ca_poff
+		bsr	closet
+		clr.b	_panel(a5)
+ca_poff		bra	ws_go
+
+
+cx_command	move.l	_newbroker+nb_Port(a5),a0
+		move.l	(a5),a6
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	cx_nulle
+		move.l	d0,a2
+		move.l	d0,a0
+		move.l	_cxbase(a5),a6
+		jsr	_LVOCxMsgType(a6)
+		cmp.w	#CXM_COMMAND,d0
+		bne.s	cx_nocmd
+		move.l	a2,a0
+		jsr	_LVOCxMsgID(a6)
+		move.w	d0,_cxcommand(a5)
+		cmp.w	#CXCMD_KILL,d0
+		beq	qexit
+		moveq	#1,d1
+		cmp.w	#CXCMD_ENABLE,d0
+		beq.s	cx_enable
+		moveq	#0,d1
+		cmp.w	#CXCMD_DISABLE,d0
+		bne.s	cx_nocmd
+cx_enable	move.b	d1,_cxenable(a5)
+		move.l	d1,d0
+		move.l	_broker(a5),a0
+		jsr	_LVOActivateCxObj(a6)
+cx_nocmd	move.l	a2,a1
+		move.l	(a5),a6
+		jsr	_LVOReplyMsg(a6)
+		bra.s	cx_command
+cx_nulle	rts
+
+
+wop_idcmp	move.l	_userport(a5),a0
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOGT_GetIMsg(a6)
+		tst.l	d0
+		beq.s	wop_end
+		move.l	d0,a1
+		move.l	im_Class(a1),_class(a5)
+		move.w	im_Code(a1),_code(a5)
+		move.w	im_Qualifier(a1),_qualifier(a5)
+		move.l	im_IAddress(a1),_iaddress(a5)
+		jsr	_LVOGT_ReplyIMsg(a6)
+
+		move.l	_class(a5),d0
+		cmp.l	#IDCMP_CLOSEWINDOW,d0
+		beq	clwin
+		cmp.l	#CHECKBOXIDCMP,d0
+		beq	dofilter
+		bra.s	wop_idcmp
+wop_end		rts
+
+
+*==============================================================
+* GUI ROUTINES BY MAURO PANIGADA (MU)
+*==============================================================
+
+;---------------------------------------------------
+getvisual	move.l	_publock(a5),a0
+		sub.l	a1,a1
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOGetVisualInfoA(a6)
+		move.l	d0,_visualinfo(a5)
+		rts
+
+;----------------------------------------------------
+creategadgets	move.l	_publock(a5),a0
+		moveq	#0,d6
+		move.b	sc_BarHeight(a0),d6
+		ext.w	d6
+		ext.l	d6
+		move.l	d6,_barheight(a5)
+		move.l	_gadtoolsbase(a5),a6
+		lea	_glist(a5),a0
+		jsr	_LVOCreateContext(a6)
+		lea	glist(pc),a4
+		move.l	#sfont,_sfont(a5)		; no qui...
+		moveq	#0,d7		; gadgetID
+cgad_loop	tst.l	d0
+		beq	cgad_error
+		move.l	d0,a0
+		move.l	(a4),d0		; KIND
+		bmi.s	cgad_end
+		move.l	4(a4),a1	; NEWGAD
+		move.l	_visualinfo(a5),gng_VisualInfo(a1)
+		move.l	_sfont(a5),gng_TextAttr(a1)
+		add.w	d6,gng_TopEdge(a1)
+		move.w	d7,gng_GadgetID(a1)
+		addq.w	#1,d7
+		move.l	8(a4),a2	; TAGLIST
+		jsr	_LVOCreateGadgetA(a6)
+		move.l	d0,12(a4)
+		lea	16(a4),a4
+		bra.s	cgad_loop
+cgad_end	moveq	#0,d0
+		rts
+cgad_error	moveq	#-1,d0
+		rts
+
+;--------------------------------------------------
+freegadgets	move.l	_glist(a5),d0
+		beq.s	fg_end
+		move.l	d0,a0
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOFreeGadgets(a6)
+fg_end		rts
+
+;------------------------------------------------------
+freevisual	move.l	_gadtoolsbase(a5),a6
+		move.l	_visualinfo(a5),d0
+		beq.s	fv_end
+		move.l	d0,a0
+		jsr	_LVOFreeVisualInfo(a6)
+fv_end		rts
+
+
+;==========================================================
+openwindow	move.l	_intbase(a5),a6
+		move.l	_barheight(a5),d0
+		suba.l	a0,a0
+		lea	newwindowtag(pc),a1
+		add.l	d0,nwt_dimy+4
+		move.l	_glist(a5),nwt_gadgets(a1)
+		jsr	_LVOOpenWindowTagList(a6)
+		move.l	d0,_window(a5)
+		beq.s	ow_error
+		move.l	d0,a1
+		move.l	wd_UserPort(a1),_userport(a5)
+		move.l	wd_RPort(a1),_rastport(a5)
+		move.l	a1,a3
+		move.l	_glist(a5),a0
+		sub.l	a2,a2
+		moveq	#-1,d0
+		jsr	_LVORefreshGList(a6)
+		move.l	_gadtoolsbase(a5),a6
+		move.l	a3,a0
+		sub.l	a1,a1
+		jsr	_LVOGT_RefreshWindow(a6)
+		moveq	#0,d0
+		rts
+ow_error	moveq	#-1,d0
+		rts
+
+;------------------------------------------------
+closewindow	move.l	4.w,a6
+		tst.l	_userport(a5)
+		beq.s	cw_goon
+cw_msgloop	move.l	_userport(a5),a0	; reply pending msges
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	cw_goon
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+		bra.s	cw_msgloop
+cw_goon		move.l	_intbase(a5),a6
+		move.l	_window(a5),d0
+		beq.s	cw_end
+		move.l	d0,a0
+		jsr	_LVOCloseWindow(a6)
+cw_end		rts
+
+;---------------------------------------------------
+lockpubscr	suba.l	a0,a0
+s_lockpubscr	move.l	_intbase(a5),a6
+		jsr	_LVOLockPubScreen(a6)
+		move.l	d0,_publock(a5)
+		rts
+
+;-----------------------------------------------------
+unlockpubscr	move.l	_intbase(a5),a6
+		move.l	_publock(a5),d0
+		beq.s	ulps_end
+		move.l	d0,a1
+		sub.l	a0,a0
+		jsr	_LVOUnlockPubScreen(a6)
+ulps_end	rts
+
+;======================================================
+
+
+;-------------------------------------------------------
+c_kill
+qexit		move.l	(sp)+,d0
+
+
+;=======================================================
+exit		bsr	closet
+			;bsr	closewindow
+			;bsr	freegadgets
+			;bsr	freevisual
+			;bsr	unlockpubscr
+		bsr	removecx
+
+		move.l	(a5),a6
+		move.l	_newbroker+nb_Port(a5),d0
+		beq.s	ex_noport
+		move.l	d0,a0
+		jsr	_LVODeleteMsgPort(a6)
+
+ex_noport	move.l	_dosbase(a5),a1
+		move.l	(a5),a6
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_intbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_gadtoolsbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_cxbase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		;move.b	_fstatus(a5),$bfe001
+		;move.b	_lstatus(a5),$bfe201
+sexit		move.l	a5,a1
+		move.l	#MUFilter_SIZEOF,d0
+		jsr	_LVOFreeMem(a6)
+		moveq	#0,d0
+		rts
+;=====================================================
+
+
+;----------------------------------------------
+clwin		clr.b	_panel(a5)
+closet		bsr	closewindow
+		bsr	freegadgets
+		bsr	unlockpubscr
+		bsr	freevisual
+		moveq	#0,d0
+		move.l	d0,_window(a5)
+		move.l	d0,_userport(a5)
+		move.l	d0,_glist(a5)
+		move.l	d0,_publock(a5)
+		move.l	d0,_visualinfo(a5)
+		move.l	d0,_usersignal(a5)
+		lea	orig0(pc),a0
+		lea	gadget0(pc),a1
+		move.w	(a0)+,gng_TopEdge(a1)
+		lea	gadget1(pc),a1
+		move.w	(a0),gng_TopEdge(a1)
+		rts
+
+;----------------------------------------------
+appear		bsr	lockpubscr
+		bsr	getvisual
+		bsr	creategadgets
+		tst.l	d0
+		bne.s	a_exit
+		bsr	openwindow
+		tst.l	d0
+		bne.s	a_exit
+		bsr	getupsignal
+		moveq	#0,d0
+		rts
+a_exit		moveq	#-1,d0
+		rts
+
+;--------------------------------------------
+getupsignal	move.l	_userport(a5),a0
+		moveq	#0,d1
+		move.b	MP_SIGBIT(a0),d1
+		moveq	#1,d0
+		lsl.l	d1,d0
+		move.l	d0,_usersignal(a5)
+		rts
+
+;-------------------------------------------------
+removecx	move.l	_broker(a5),d2
+		beq.s	rc_no
+		move.l	d2,a0
+		moveq	#0,d0
+		move.l	_cxbase(a5),a6
+		jsr	_LVOActivateCxObj(a6)
+		move.l	d2,a0
+		jsr	_LVODeleteCxObjAll(a6)
+rc_no		rts
+
+
+;---------------------------------------------------
+dofilter	move.l	_iaddress(a5),a0
+		move.w	gg_GadgetID(a0),d0
+		tst.w	d0
+		bne.s	df_end
+		lea	glist(pc),a0
+		move.l	12(a0),a0
+		move.l	_window(a5),a1
+		lea	g0_tag(pc),a3
+		lea	_kura0(a5),a2
+		move.l	a2,4(a3)
+		suba.l	a2,a2
+		move.l	_gadtoolsbase(a5),a6
+		jsr	_LVOGT_GetGadgetAttrsA(a6)
+		move.l	_kura0(a5),d0
+		beq.s	df_false
+df_true		clr.b	_fstatusp(a5)		; acceso
+		bclr.b	#1,$bfe001
+		bra.s	df_go
+df_false	move.b	#$02,_fstatusp(a5)
+		bset.b	#1,$bfe001
+df_go		lea	g0_tag(pc),a0
+		move.l	d0,4(a0)
+		
+df_end		rts
+
+
+
+;===============================================================
+
+_memory		dc.l	0
+
+intname		dc.b	"intuition.library",0
+		even
+gadtoolsname	dc.b	"gadtools.library",0
+		even
+cxname		dc.b	"commodities.library",0
+		even
+
+mufname		dc.b	"MUFilter",0
+		even
+mufdescr	dc.b	"To control Amiga power led and filter",0
+		even
+
+muftitle	dc.b	"MUFilter v1.0"
+		even
+wintitle	dc.b	"MUFilter 10",0
+scrtitle	dc.b	"MUFilter v1.0  (1996-06-18) MU-Shareware by Mauro Panigada",0
+
+g0_text		dc.b	"Filter",0
+g1_text		dc.b	"Protection",0
+		even
+
+
+newwindowtag	dc.l	WA_Top,100
+		dc.l	WA_Left,100
+		dc.l	WA_Width,150
+nwt_dimy	dc.l	WA_Height,32
+		dc.l	WA_IDCMP,BUTTONIDCMP|IDCMP_CLOSEWINDOW|CHECKBOXIDCMP
+		dc.l	WA_SizeGadget,FALSE
+		dc.l	WA_DragBar,TRUE
+		dc.l	WA_DepthGadget,TRUE
+		dc.l	WA_CloseGadget,TRUE
+		dc.l	WA_Activate,TRUE
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	WA_ScreenTitle,scrtitle
+		dc.l	WA_Title,wintitle
+		dc.l	WA_Gadgets,0
+nwt_gadgets	EQU	(*-newwindowtag)-4
+		dc.l	TAG_END
+
+
+glist		DEFGAD	CHECKBOX_KIND,gadget0,g0_tag
+glist1		DEFGAD	CHECKBOX_KIND,gadget1,g1_tag
+		DEFGAD	END
+
+orig0		dc.w	2	; valori iniziali della pos gadget
+orig1		dc.w	14	; !!tenere uniti!! (orig1 non e` usata)
+
+gadget0		NEWGAD	6,2,10,11,g0_text,PLACETEXT_RIGHT,0
+g0_tag		dc.l	GTCB_Checked,FALSE
+		dc.l	TAG_END
+gadget1		NEWGAD	6,14,10,11,g1_text,PLACETEXT_RIGHT,0
+g1_tag		dc.l	GTCB_Checked,FALSE
+		dc.l	GA_Disabled,TRUE
+		dc.l	TAG_END
+
+
+
+*+-------------+
+*| SOURCE END! | Another master-piece by Mauro Panigada (!)
+*+-------------+
+
+		END

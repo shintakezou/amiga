@@ -1,0 +1,15 @@
+
+$VER: DFree.doc v1.2 (c) 1999 by Mauro Panigada
+
+DFree v1.2
+===========
+
+(c) 1999 by Mauro Panigada
+
+DFree show free work space on a device in bytes, kilo or mega, according to
+the amount of free space.
+As the Reboot tools, it is a short and better (!) translation from C source
+code by Max Francis. See also my FreeX and the source header (DFree2) for
+more. The usage, as you can think, is so easy that I do not spend many time
+explaining it...
+

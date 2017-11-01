@@ -1,0 +1,24 @@
+
+$VER: RequestChoice.doc 36.1 (c) 1999 by Mauro Panigada
+
+RequestChoice 36.1
+==================
+
+(c) 1999 by Mauro Panigada
+
+RequestChoice allow you to answer a question through easy request requester..
+Many kind of this program exist.. This one is the mine. Short, fast (!) and
+so on, of course original and mine.
+
+ 1> RequestChoice ?
+ TITLE/A,BODY/A,GADGETS,PUBSCREEN/K
+
+TITLE specifies the title of the request window, BODY the text, GADGETS the gadgets,
+(default Yes|No), use a pattern like: Ciao|Topo|Lino|Mauro and if the gadgets
+strings contain spaces, use quotes, please. PUBSCREEN is a public screen name
+The selected choice is outputted (if it can be said) to std output (!).
+Use redirection to store in a variable. Remember that the rightmost gadget is always
+zero, then from left to right, 1 2 3 ...
+Need 68020+, I am sorry (if you are worried about I am sorry because it means you
+still have 68000, so nice)
+

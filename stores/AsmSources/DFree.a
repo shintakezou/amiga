@@ -1,0 +1,209 @@
+;
+; $VER: DFree.a V1.0 recoded in 100% assembly
+;
+; Started: 02/12/1996 (month/day/year)
+;
+; Original by Max Francis, coded in C (6200 bytes!)
+; USAGE: dfree <device/name>
+;
+; 100% assembly recoded version by Mauro Panigada (FREEWARE)
+; USAGE: dfree <device/name>
+;
+; Semplified line parser. Shorter than original C version.
+;
+; STORY: DFree V1.0 (02/12/1996) simply a remake from C version.
+;
+; GOOD QUALITY: Differently from shorter DSpace V1.2 (freeware), DFree
+; works with 68000 (no odd addresses, and uses utility.library for
+; 32bit operations and not the 68020 mulu.l istruction), and it
+; calculate the best method to rapresent the free space (bytes, Kilo or
+; Mega). Is it enough?
+;
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"utility/utility_lib.i"
+
+
+		bra.b	start
+
+prg_version	dc.b	"$VER: DFree V1.0 recoded in 100% assembly "
+unknow_reauthor	dc.b	"by Mauro Panigada",0
+		even
+
+LIBVERSION	EQU	37		; 2.04 ? non ricordo mai!
+
+start		movem.l	d0/a0,-(sp)
+		moveq	#0,d7
+		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#LIBVERSION,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		bne.b	vaicosi
+		adda.w	#8,sp
+		rts
+
+closeall0	move.l	a5,a6
+		suba.l	a5,a5
+		bra	closeall
+
+vaicosi		move.l	d0,a5
+		lea	utilname(pc),a1
+		moveq	#LIBVERSION,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq.b	closeall0
+		move.l	d0,a6
+		exg.l	a5,a6		; a6=dos, a5=utility
+		movem.l	(sp)+,d0/a0
+		cmp.b	#1,d0
+		beq	helpscreen
+		cmp.b	#"?",(a0)
+		beq	helpscreen
+					; no with "HELP" or "help"...
+		clr.b	-1(a0,d0)
+		move.l	a0,a1		; line parser
+		move.w	d0,d1		; molto semplice e
+		subq.w	#1,d1		; rudimentale; capisce le
+spcloop0	cmp.b	#" ",(a1)+	; virgolette (") e salta
+		dbne	d1,spcloop0	; gli spazi...
+		cmp.b	#'"',-1(a1)
+		bne.b	nearpar
+		move.l	a1,a0
+spcloop		cmp.b	#'"',(a1)+
+		dbeq	d1,spcloop
+		clr.b	-1(a1)
+		bra.b	lineparsed
+nearpar		move.l	a1,a0
+		suba.w	#1,a0
+spcloop1	cmp.b	#" ",(a1)+
+		dbeq	d1,spcloop1
+		clr.b	-1(a1)
+
+lineparsed	lea	parg(pc),a1
+		move.l	a0,(a1)
+					; no to upper...
+		move.l	a0,d1
+		moveq	#ACCESS_READ,d2
+		jsr	_LVOLock(a6)
+		move.l	d0,d7		; d7=lock
+		beq	lockerror
+		lea	idstruct(pc),a0
+		move.l	a0,d2
+		move.l	d0,d1
+		jsr	_LVOInfo(a6)
+		tst.l	d0
+		beq	infoerror
+		lea	idstruct(pc),a4			; a4=info data
+		move.l	id_NumBlocks(a4),d3
+		move.l	id_NumBlocksUsed(a4),d4
+		move.l	id_BytesPerBlock(a4),d5
+		sub.l	d4,d3
+		exg.l	a5,a6			; a6=utility
+		move.l	d3,d0
+		move.l	d5,d1
+		jsr	_LVOUMult32(a6)
+		exg.l	a5,a6
+		move.l	d0,d6
+		lea	tharg(pc),a0
+		cmp.l	#(5*1048576),d6
+		bhi	megafree
+		cmp.l	#1024,d6
+		blo	bytefree
+kappafree	lea	kappa.msg(pc),a1
+		move.l	a1,(a0)
+		move.l	d6,d0
+		move.l	#1024,d1
+		bra.b	shwrite0
+bytefree	lea	byte.msg(pc),a1
+		move.l	a1,(a0)
+		bra.b	shwrite
+megafree	lea	mega.msg(pc),a1
+		move.l	a1,(a0)
+		move.l	#1048576,d1
+shwrite0	exg.l	a5,a6
+		move.l	d6,d0
+		jsr	_LVOUDivMod32(a6)
+		move.l	d0,d6
+		exg.l	a5,a6
+shwrite		lea	secarg(pc),a0
+		move.l	d6,(a0)
+		lea	string(pc),a0
+		move.l	a0,d1
+		lea	parg(pc),a0
+		move.l	a0,d2
+		jsr	_LVOVPrintf(a6)
+closeall	move.l	d7,d1
+		beq.b	closenext1
+		jsr	_LVOUnLock(a6)
+closenext1	move.l	a6,d0
+		beq.b	closenext2
+		move.l	d0,a1
+		movea.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+closenext2	move.l	a5,d0
+		beq.b	okciao
+		move.l	d0,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+okciao		rts
+
+helpscreen	lea	help.msg(pc),a0
+		lea	myarg(pc),a1
+		lea	arg.msg(pc),a2
+		move.l	a2,(a1)
+		move.l	a1,d2
+writerror	move.l	a0,d1
+		jsr	_LVOVPrintf(a6)
+		bra	closeall
+
+lockerror	lea	lock.msg(pc),a0
+		lea	parg(pc),a1
+		move.l	a1,d2
+		bra.b	writerror
+
+infoerror	lea	info.msg(pc),a0
+		lea	parg(pc),a1
+		move.l	a1,d2
+		bra.b	writerror
+
+;---------------------------------------------------------------------------
+dosname		dc.b	"dos.library",0
+		even
+utilname	dc.b	"utility.library",0
+		even
+help.msg	dc.b	"DFree V1.0 recoded in 100%% assembly"
+		dc.b	" by Mauro Panigada (02/12/1996)",10
+		dc.b	"Original version coded in C by Max Francis",10
+		dc.b	"USAGE: %s <DEVICE/DISK>",10
+		dc.b	"Show free disk space on DEVICE or DISK "
+		dc.b	"specified.",10,0
+		even
+lock.msg	dc.b	"Can't lock %s",10,0
+		even
+info.msg	dc.b	"Can't examine %s",10,0
+		even
+parg		dc.l	0
+secarg		dc.l	0
+tharg		dc.l	0
+myarg		dc.l	0
+arg.msg		dc.b	"DFree",0
+		even
+string		dc.b	"%s %ld%s free.",10,0
+		even
+byte.msg	dc.b	" bytes",0
+		even
+mega.msg	dc.b	"M",0
+		even
+kappa.msg	dc.b	"K",0
+		cnop	0,4		; doc dice longword alligned (!)
+idstruct	ds.b	id_SIZEOF
+
+		END

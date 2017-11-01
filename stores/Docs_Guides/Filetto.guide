@@ -1,0 +1,319 @@
+@DATABASE "Filetto.guide"
+@WIDTH 75
+@HEIGHT 255
+
+@NODE Main "General Index"
+
+                               Filetto V1.0
+
+                        Written by Mauro Panigada
+
+--------------------------------------------------------------------------
+
+                            @{"Introduction" link intro}
+                            @{"Menus" link menu}
+                            @{"How to play" link howtoplay}
+                            @{"Notes" link notes}
+
+                            @{"The Author" link author}
+
+--------------------------------------------------------------------------
+
+IMPORTANT: IT IS UNFINISHED, BUT THE .GUIDE ALREADY EXISTS!!!!!!!!!
+
+@ENDNODE
+
+@NODE intro "An introduction"
+
+ This project started in 1995. I was very interested about artificial
+ intelligence, and I read some interesting articles on "Personal Software",
+ an old computer magazine, about this argument. So I thought that it
+ could be very interesting to write an intelligent program.
+ But I have not enough time to spend in this way. Maybe this program
+ seem too simple...
+ I was (and I am) also interested to write using new functions of operative
+ system (2.04). So it is what you need. Link to @{"notes" link notes}  for more.
+ The idea itself is very simple, so I don't spend more lines to explain
+ it.
+
+  @{"PLAY PLAY PLAY PLAY PLAY PLAY PLAY PLAY PLAY PLAY PLAY PLAY PLAY PLAY" link ohh}
+
+@ENDNODE
+
+@NODE menu "Filetto's menus"
+
+         @{"Project" link progetto}
+
+         @{"Game" link gioco}
+
+         @{"Special" link speciale}
+
+         @{"Score" link punti}
+
+@ENDNODE
+
+@NODE punti "Score"
+@TOC menu
+
+ SCORE
+
+   Show                 : show your and his scores.
+   Reset                : clear scores.
+
+ See @{"how to play" link howtoplay} for score assignment.
+
+@ENDNODE
+
+@NODE progetto "Project Menu"
+@TOC menu
+
+ PROJECT
+
+   Load...              : load a saved game.
+   Save                 : save game with the same name, if it already
+                          exsists; otherwise it is the same for Save As.
+   Save As...           : save the game with specified path and name.
+   Quit                 : I hope you never use this too soon!
+
+@ENDNODE
+
+@NODE gioco "Game Menu"
+@TOC menu
+
+ GAME
+
+   Play,
+     Machine starts     : the computer starts. You always get the cross.
+     Human starts       : you start. Click on the box you want...
+     Regular            : If there's a previous played game, this function
+                          makes first player who lost it. Otherwise a
+                          random routine will do it...
+     Stop               : stop this game. You can restart and do a bluff!
+     Reset              : Clear the board and stop the game.
+
+@ENDNODE
+
+@NODE speciale "Special Menu"
+@TOC menu
+
+ SPECIAL
+
+   Suggest my move      : Suggest a move. It swaps your turn to computer
+                          which plays, then play for itself, then it's
+                          again your turn!
+   Skip my move         : Pass turn to computer... It is not very useful!
+   Undo last move       : Truly it undoes your last move, last computer
+                          move, and again your move... Then it is your
+                          turn.
+   Amigaguide           : Very useful informations to play...
+   About                : Short informations.
+@ENDNODE
+
+@NODE author "The Author: Gandalf"
+@TOC menu
+
+                                         *
+
+                                        |_/ /
+                                        |__/
+                                     *  |   *
+                                        |
+              
+                                        *
+
+                               
+
+                         
+
+@ENDNODE
+
+@NODE howtoplay "How to play"
+
+ HOW TO PLAY.
+ It is very simple to play this game. You must try to align five of your
+ "pieces" (cross) horizontal, vertical and oblique. The computer does
+ the same thing, too; of course you must try also to avoid the computer
+ aligns his pieces (dot). It seems to be very simple for human. But it
+ is different for a computer... Attention: you can only put your piece
+ in a box next to another piece (your or his).
+ Note that if no player win and the board is full, zero points are
+ assigned (!) to them. This is the chess-draw!
+ When a player wins, one point is given to the winner, and to
+ loser no points are given. Save-score is not implemented because of
+ its uselessness.
+
+ HOW DOES THE COMPUTER PLAY?
+ I wrote this game only for this important part. How can the computer
+ play well? It's a problem to do this. The actual algorythm is very simple.
+ It assigns to every possible move a value; then it puts the piece where
+ this value is higher. How does it calculate this value? It is simple, too.
+ Per each box it looks around. If there's a dot it counts two point. Then
+ it controls the box behind (in the same direction); if there are dots,
+ it adds increasing value: two (for the first), three, four and five.
+ If increased value arrives to five, it means that if it puts his piece
+ there, he win the game. Otherwise, it continues to controls until there
+ is a clear box (then it goes to control another adjacent box), or a
+ cross. In this case he subtracts two point to this box. This procedure
+ is used for all adjacent box (for clear one, no point is added), until
+ the examinated box has a point-value, then it searches the next possible
+ box (where a dot can be put) and so on. When all possible moves are
+ examinated, it chooses "the more pointed" box, namely the box which has
+ a value higher than each others. It should be the best move my algorythm
+ can calculate. If there is a cross, same procedure is used: two points
+ for the first, increasing value for the next ones until a clear-box or
+ a dot (and in this case two points are subtracted), but if the increased
+ value arrives to five, it waits to control if there is a winning-box,
+ and if there isn't, it must put dot in that box, to avoid a rout. If
+ two or more similar boxes are found, nothing can save it (only a
+ sure winning-box that makes the game finished), and cross (human) will
+ win! Now I'll do some examples; look at this situation:
+
+   ·····              00400
+   ·XXX·            * aXXXa *
+   ·OOO·         -->  aOOOa  <--
+   ·····              00400
+
+ The "·" marks the possible moves. It is dot (computer) turn. The numbers
+ are the points (a=10, b=11 and so on). We have a strange situation.
+ In fact (remember it is dot turn) if computer puts dot in marked position
+ (--> or <--) it surely will win. But the marked boxes have the same
+ points of the others ( * marker). A random routine will be used in this
+ version... so only lot will be your friend. I think this is a situation
+ that you will never see. I hope you understand this simple procedure.
+ Maybe the computer is not very strong; I will make it stronger in next
+ (future) versions... When I will have found better algorythm. For now
+ my mind can't think more... (Truly it is simple to correct this behavior
+ in this particular situation. Do it yourself!)
+
+ SAVE METHOD.
+ You can create strange situation modifying saved game. The save-format
+ is simple to change. Maybe I will write a setting-program which
+ puts cross and dot where you want, to study computer behavior in
+ pre-created situations (or else you never will see them).
+ It's a (long) array of bytes: X-position, Y-position, Cross/Dot ($00
+ is dot, $FF is cross). Now you can play more happy...
+
+ DO IT YOURSELF.
+ For developers. The algorythm is linked. There is (if there is) the
+ object file (Filetto.o). You can write your own algorythm, if you
+ can do it. So I tell you what you have to know about.
+ The function (procedure or what) is named _MakeMove (see further). It is
+ called for dot but also for cross when a suggestion is needed. So in D7
+ there is $00 (dot) or $FF (cross). In A5 there's pointer to game area.
+ It is an array of bytes. You can consider it like a 31x23 bytes area.
+ There are stored $00 for clear-box, $FF for cross and $80 for dot. It is
+ only for graphic, and it is not very useful (for me and for you). I
+ suggest to never use it... In A4 there's a pointer to done moves. It
+ is a structure:
+
+                0  L  ptr to next move
+                4  W  X-pos for this move
+                6  W  Y-pos for this move
+                8  L  Cross or dot ($...FF, $...80)
+
+ In A3 there is a pointer to (another structure) possible moves. You can
+ think new method to discover the best move using all what you want to
+ use, but you must remember that the law is law. A syntax-controller
+ will see if the move you have returned is a possible one. This is the
+ same routine used to check if human player click not in an adjacent
+ box. So you can't use my game to do a different game. Note that if
+ the move is impossible, the computer will request if you want to continue
+ (move is ignored and skipped, so computer lose a turn) or stop. This
+ structure is so structured (!):
+
+               0  L  ptr to next possible move
+               4  W  X-pos for this possible move
+               6  W  Y-pos for this possible move
+
+ In fact the possible moves for dot are possible also for cross, and
+ viceversa. In A3 there a pointer to an area (31x23 bytes) for your
+ own use. If it is insufficient, you can allocate your areas, but you
+ must deallocate them... (see further, in NOTE...)
+ In other registers there are spurious data, but maybe for future
+ versions you will find other useful and interesting things (maybe).
+ You must only return as result X position of the calculated move in D0
+ and Y position in D1. My program will do the rest.
+ NOTE: If you need memory areas, that you want not to deallocate and
+ lose stored data (useful to find a winning-move), and also if you don't,
+ you can remember how to link your routine. An example:
+
+
+_MakeMove	dc.l	initroutine
+		dc.l	freeroutine
+		; algorythms
+
+ The "initroutine" is called at the start, "freeroutine" at the end.
+ So you can initializate your own data you think they are useful.
+ If you don't need them, you will only put a "rts" to both.
+ I'm sorry for who want to write his routine in C or other similar
+ (or different: pascal, E...) language, because this link method is not
+ thought for them. However, it is not impossible!
+ Maybe I will do something like a extern module-program, so that link
+ is not requested. The form will be the same, but a "rts" will be
+ before the two long declarations (or do you prefer a crash?).
+ LAST NOTE: If your routine is called to play the first move, you must
+ remember that A4 and A3 will be 0. It means that all moves are possible
+ and that there are not done moves: you are the first.
+ That's all, folks.
+
+@ENDNODE
+
+@NODE notes "Some notes"
+
+ This program is 100% assembly. It is written by Mauro Panigada in 1996.
+ I hope to finish it for the end of this year!
+
+ WHAT YOU NEED.
+ You need absolutely OS2.04. My game uses dos.library, asl.library,
+ intuition.library, graphics.library, intuition.library and
+ gadtools.library. Asl is used for request; no more options are given.
+ Gadtools is used to make menues, but for messages is used exec.library.
+ (I forget it, but it is implied!).
+ I have an Amiga 500 with 20M harddisk (optional!), 4M of ram, the OCS
+ (old, too old), 68000, only half mega of chip... And the OS1.3 in Rom,
+ but I have kick 2.04 and 3.x (I don't remember..) that subtracts many
+ Kbytes (media is: 370K of chip, 2.5M of fast). So it is (in spite of
+ unknown bugs) compatible with all Amiga. All allocation of memory are
+ done with MEMF_PUBLIC, so that it can work also with only 512K. But
+ it is not tested on other Amigas. Surely it works well with almost
+ all configurations, I hope.
+ I can't solve your problem, because I won't give any address. I will
+ test it on my Amiga very often, ; but, I think if it works here,
+ why shouldn't it work on others? That's all folks.
+
+ KNOWN BUGS
+ When an error message is shown, you can click everywhere and the
+ intuition messages will be enqueue, then my program will do them; so,
+ for examples, if during a request you do sixteen correct moves,
+ after you answered the request, my program do thirty-two (16*2, one
+ for you and one for !enemy!) moves!
+ This bug is easy to be correct: it is sufficient to skip all unuseful
+ messages and do only the last.
+ Why will I never correct it? Because I like it!
+
+ ANOTHER NOTE
+ When you are in stopped status, the "stop" menu should be ghosted. So
+ when you select "play >> xx" all item (with subitems) "play" should be
+ ghosted. And at the beginning, when no game are in memory, the reset
+ item should be ghosted too. Don't worry! I wrote a safe-code: at the
+ start of every routine (interested) there are two lines of code that
+ skips all the function and returns to wait a new messages. Surely it
+ seems to be rough... Now I don't want to do ghosted item... In a future
+ next program I will remember it.
+
+  Mauro Panigada, ITALY. Excuse me for my poor english.
+
+ 
+@ENDNODE
+
+@NODE ohh "PLAY"
+
+ It is very simple: select Quit in Amigaguide and play!
+
+@ENDNODE
+
+@NODE morto
+
+ There's nothing!
+
+@ENDNODE

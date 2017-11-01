@@ -1,0 +1,306 @@
+;
+; Smooth v1.0
+; written by Mauro Panigada
+;
+; $VER: Smooth.a v1.0 (1996-12-23) by Mauro Panigada
+;
+; * Purpose: It makes source longer if there are no ASCII code, by
+;   inserting special char, so that the final file is an ASCII file
+;   and it is also more repetitive (test it with crunch prg)
+;
+; * Bugs&Notes: If you smooths a very long file, it is not bufferized
+;   but Smooth try to load it all in memory, so probably it will fail.
+;   A solution to this problem, which is very rough, it's to split file
+;   into two parts (check if they are less than your free memory).
+;   This is correct when source is loaded. But Smooth needs also a
+;   buffer where it stores the processed file, and this buffer must be
+;   at least double... So you need free memory: x + 2x = 3x where x
+;   is file length.
+;
+; History: * 1996-12-23     Created.
+;          * 1997-01-08     Fixed the Big Bag! Now it works but...
+;          * 1997-01-08     Classified: UNUSEFUL!
+;          * 1997-01-16     Added Unsmooth function!
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+
+
+		bra.s	Start
+
+		dc.b	"$VER: "
+		dc.b	"Smooth v1.0 (1996-12-23) by Mauro Panigada"
+		dc.b	0
+
+Start		lea	DOSName(pc),a1
+		moveq	#37,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	Sayonara
+
+		link	a4,#-(4*4)
+
+		moveq	#0,d6
+		move.l	d6,d5
+		move.l	d5,d4
+		move.l	d4,(sp)
+		move.l	d4,4(sp)
+		move.l	d4,8(sp)
+		move.l	d4,12(sp)
+		suba.l	a3,a3
+
+		move.l	a6,a5
+		move.l	d0,a6
+		lea	Template(pc),a0
+		move.l	a0,d1
+		move.l	sp,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d7			; d7=arg
+		beq	ERR_NoArgs
+
+		move.l	(sp),d1
+		move.l	#MODE_OLDFILE,d2
+		jsr	_LVOOpen(a6)
+		move.l	d0,d6			; d6=file
+		beq	ERR_NoFile
+
+		move.l	d6,d1
+		moveq	#0,d2
+		moveq	#OFFSET_END,d3
+		jsr	_LVOSeek(a6)
+		move.l	d6,d1
+		moveq	#0,d2
+		moveq	#OFFSET_BEGINNING,d3
+		jsr	_LVOSeek(a6)
+		move.l	d0,d5			; d5=file length
+		beq	ERR_ZFile
+
+		exg	a5,a6		; now a6=exec
+		;move.l	d5,d0
+		move.l	#MEMF_ANY,d1
+		jsr	_LVOAllocVec(a6)
+		move.l	d0,d4			; d4=memptr
+		beq	ERR_NoMemory
+
+		move.l	d5,d0
+
+		tst.l	8(sp)
+		bne.s	UnsmoothSetted		; option UNSMOOTH=BACK
+
+		lsl.l	#1,d0
+
+UnsmoothSetted	move.l	#MEMF_ANY,d1
+		jsr	_LVOAllocVec(a6)
+		move.l	d0,12(sp)		; 8(sp)=-4(a4)
+		beq	ERR_NoMemory2
+
+		move.l	d6,d1
+		move.l	d4,d2
+		move.l	d5,d3
+		exg	a5,a6
+		jsr	_LVORead(a6)
+		cmp.l	d0,d5
+		bne	ERR_Reading
+
+		move.l	d4,a0
+		move.l	12(sp),a1
+		move.l	a0,a2
+		add.l	d5,a2
+
+		tst.l	8(sp)
+		bne	F_Unsmooth
+
+;--* Smooth *--------------------------------------+--------+
+		move.b	#"~",d1		;<---------|  MAIN  |
+		moveq	#0,d2		;          +--------+
+M_Loop		cmp.l	a0,a2
+		beq	M_End
+		move.b	(a0)+,d0
+		cmp.b	d1,d0
+		beq.s	C_SChar
+		btst	#7,d0
+		beq.s	C_Normal
+C_NoASCII	and.b	#$7f,d0
+		move.b	d1,(a1)+
+		move.b	d0,(a1)+
+		addq.l	#2,d2
+		bra.s	M_Loop
+C_SChar		move.b	d1,(a1)+
+		move.b	d1,(a1)+
+		addq.l	#2,d2
+		bra.s	M_Loop
+C_Normal	move.b	d0,(a1)+
+		addq.l	#1,d2		;          +--------+
+		bra.s	M_Loop		;<---------|END MAIN|
+;--------------------------------------------------+--------+
+
+;--------------------------------------------------* UNSMOOTH *---
+;
+F_Unsmooth	move.l	d5,d1		; d1 = smoothed length
+		moveq	#0,d2		; d2 = original length (to be calc)
+		move.b	#"~",d3
+US_Loop		move.b	(a0)+,d0
+		btst	#7,d0
+		bne	ERR_NoSmoothed
+		cmp.b	d3,d0
+		bne.s	US_Idem
+		move.b	(a0)+,d0
+		sub.l	#1,d1
+		beq	ERR_Corrupted
+		cmp.b	d3,d0
+		beq.s	US_Tilde
+		or.b	#$80,d0
+		move.b	d0,(a1)+
+US_Jumpi	add.l	#1,d2
+		sub.l	#1,d1
+		bne.s	US_Loop
+		bra.s	M_End
+US_Tilde	move.b	d3,(a1)+
+		bra.s	US_Jumpi
+US_Idem		move.b	d0,(a1)+
+		bra.s	US_Jumpi
+
+; ATTENTION ! ACHTUNG ! There a special bug in the unsmoothing system!
+; Smoothing If in source there was a $FE, in dest we find $7E + $7E !
+; But it is also the two-bytes-code for ~ ($7E), special char !
+; Unsmoothing, all $FE bytes will be lost in $7E bytes !
+;                                                                      |
+;----------------------------------------------------------------------+
+
+
+M_End		move.l	d2,-(sp)
+		move.l	8(sp),d1
+		move.l	#MODE_NEWFILE,d2
+		jsr	_LVOOpen(a6)
+		move.l	(sp)+,d3
+		tst.l	d0
+		beq	ERR_NoFile2
+
+		move.l	d3,-(sp)
+		move.l	d0,a3
+		move.l	d0,d1
+		move.l	16(sp),d2
+		jsr	_LVOWrite(a6)
+		move.l	(sp)+,d1
+		cmp.l	d0,d1
+		bne	ERR_Writing
+
+Exit
+		move.l	a3,d1
+		beq.s	Exit0
+		jsr	_LVOClose(a6)
+
+Exit0		move.l	d6,d1
+		beq.s	Exit1
+		jsr	_LVOClose(a6)
+
+Exit1		move.l	12(sp),a1
+		exg	a5,a6
+		tst.l	8(sp)
+		beq.s	Exit2
+		jsr	_LVOFreeVec(a6)
+
+Exit2		move.l	d4,a1
+		tst.l	d4
+		beq.s	Exit3
+		jsr	_LVOFreeVec(a6)
+
+Exit3		exg	a5,a6
+		move.l	d7,d1
+		beq.s	Exit4
+		jsr	_LVOFreeArgs(a6)
+
+Exit4		move.l	a6,a1
+		move.l	a5,a6
+		jsr	_LVOCloseLibrary(a6)
+		
+		unlk	a4
+
+Sayonara	moveq	#0,d0
+		rts
+
+
+ERR_NoArgs	lea	NoArgs.err(pc),a0
+ERR_Print	move.l	a0,d2
+		lea	Smooth.name(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		move.l	d2,d1
+		jsr	_LVOPutStr(a6)
+		bra	Exit
+
+ERR_NoFile	lea	NoFile.err(pc),a0
+		bra.s	ERR_Print
+
+ERR_NoFile2	lea	NoFile2.err(pc),a0
+		bra.s	ERR_Print
+
+ERR_ZFile	lea	ZFile.err(pc),a0
+		bra.s	ERR_Print
+
+ERR_NoMemory2
+ERR_NoMemory	lea	NoMemory.err(pc),a0
+		exg	a5,a6
+		bra.s	ERR_Print
+
+ERR_Reading	lea	Reading.err(pc),a0
+		bra.s	ERR_Print
+
+ERR_Writing	lea	Writing.err(pc),a0	; here it should delete
+		bra.s	ERR_Print		; wrong created file, but...
+
+ERR_NoSmoothed	lea	Unsmooth.err(pc),a0
+		bra	ERR_Print
+
+ERR_Corrupted	lea	Corruption.err(pc),a0
+		bra	ERR_Print
+
+
+
+DOSName		dc.b	"dos.library",0
+		even
+
+Template	dc.b	"FROM/A,TO/A,UNSMOOTH=BACK/S",0
+		even
+
+Smooth.name	dc.b	"Smooth: ",0
+		even
+
+Unsmooth.err	dc.b	"it is not a smoothed file!",10,0
+		even
+
+Corruption.err	dc.b	"corrupted file!",10,0
+		even
+
+Writing.err	dc.b	"ERROR while writing.",10,0
+		even
+
+Reading.err	dc.b	"ERROR while reading.",10,0
+		even
+
+NoMemory.err	dc.b	"no enough memory.",10,0
+		even
+
+ZFile.err	dc.b	"source file is empty.",10,0
+		even
+
+NoFile.err	dc.b	"source file does not exist!",10,0
+		even
+
+NoFile2.err	dc.b	"ERROR while creating destination file!",10,0
+		even
+
+NoArgs.err	dc.b	"no required arguments.",10,0
+		even
+
+
+		END

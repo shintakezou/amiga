@@ -1,0 +1,1135 @@
+;
+; ScrollerWindow v1.0
+; written by Mauro Panigada
+;
+; $VER: ScrollerWindow.a v1.0 (1996-07-26) by Mauro Panigada
+;
+; STARTED: 1996-07-24
+; FINISHED: 1996-07-26
+;
+; HISTORY:    1996-07-24      started.
+;             1996-07-25      finished translation. Bugged.
+;             1996-07-26      It now runs OK!!! (3184 vs 5688)
+;                             Not optimized yet.
+;
+; ABOUT: Translated by Wouter from example scrollerwindow.c by
+;  Christoph Feck, TowerSystems (feck@informatik.uni-kl.de) to
+;  AmigaE program ScrollerWindow.e
+;  Translated by Mauro Panigada from ScrollerWindow.e to Assembler
+;  (ScrollerWindow.a!).
+;
+; PURPOSE: Just another example. If you want and if you can, you can
+;  see also ScrollerWindow.c and ScrollerWindow.e, surely they are longer
+;  and perhaps slower than asm, but surely they are more understandable.
+;
+; TO DO:  * Detach from CLI. It's simple, but now I do not want do it...
+;         * Shorten it by killing all subroutines that call system
+;           function, that it seems to be very C or hi-lang final object.
+;         * Kill unused code.
+;         * Make taglist static (now on the stack) (-> shorter <-)
+;         * Optimize all!
+;
+; ATTENTION: The .e version can work also with V37, in fact it has
+;  different code (for example in CreateBitMap, where in V39 there is
+;  a libfunc, but before no...). I semplified and I started from V39!
+;  Ah: because of this, some code I converted can be unuseful... I will
+;  kill it in a future version (see above, to do).
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+
+		include	"utility/utility.i"
+		include	"utility/utility_lib.i"
+		include	"utility/tagitem.i"
+
+		include	"intuition/intuition.i"
+		include	"intuition/imageclass.i"
+		include	"intuition/screens.i"
+		include	"intuition/classes.i"
+		include	"intuition/icclass.i"
+		include	"intuition/gadgetclass.i"
+		include	"intuition/intuition_lib.i"
+
+		include	"graphics/gfx.i"
+		include	"graphics/text.i"
+		include	"graphics/rastport.i"
+		include	"graphics/graphics_lib.i"
+
+
+
+	STRUCTURE SW_Data,0
+		LONG	_ExecBase
+		LONG	_UtilBase
+		LONG	_IntBase
+		LONG	_GfxBase
+
+		APTR	_Screen		; APTR = LONG...
+		APTR	_Dri
+		APTR	_BitMap
+
+		LONG	_HorizGadget
+		LONG	_VertGadget
+		LONG	_LeftGadget
+		LONG	_RightGadget
+		LONG	_UpGadget
+		LONG	_DownGadget
+
+		LONG	_SizeImage
+		LONG	_LeftImage
+		LONG	_RightImage
+		LONG	_UpImage
+		LONG	_DownImage
+
+		LONG	_HTotal
+		LONG	_VTotal
+		LONG	_HVisible
+		LONG	_VVisible
+
+		LONG	_Window
+
+		LONG	_Resolution
+		LONG	_TopBorder
+		LONG	_SF
+		LONG	_W
+		LONG	_H
+		LONG	_BW
+		LONG	_BH
+		LONG	_RW
+		LONG	_RH
+		LONG	_GW
+		LONG	_GH
+		LONG	_Gap
+
+		LONG	_SrcX
+		LONG	_SrcY
+
+		LONG	_IMsg
+		LONG	_Quit
+		LONG	_OldTop
+		LONG	_Cl
+		LONG	_V
+
+		LONG	_R
+
+		LABEL	SW_Data_SIZEOF	; must be longword alligned!
+
+
+;
+; Gadget ids
+;
+HORIZ_GID	EQU	1
+VERT_GID	EQU	2
+LEFT_GID	EQU	3
+RIGHT_GID	EQU	4
+UP_GID		EQU	5
+DOWN_GID	EQU	6
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+;
+; COADA means CODE AND DATA. Because this prg is short, it's bad thing
+; to separe CODE AND DATA... I think so. (Oh, not-variable data...)
+;
+
+
+		SECTION	ScrolWinCOADA,CODE
+
+		bra.s	Start
+
+		dc.b	"$VER: ScrollerWindow v1.0 (1996-07-26)"
+		dc.b	" by Mauro Panigada",0
+		even
+
+Start
+		include	"misc/easystart.i"
+
+		lea	Stores,a5
+
+		move.l	a5,a0			; clear storage area
+		moveq	#(SW_Data_SIZEOF/4)-1,d0
+		moveq	#0,d1
+ClrLoop		move.l	d1,(a0)+
+		dbf	d0,ClrLoop
+
+		move.l	4.w,a6
+		move.l	a6,(a5)		; is it shorter or the same? Boh!
+
+		lea	UtilName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_UtilBase(a5)
+		beq	Sayonara
+
+		lea	IntName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_IntBase(a5)
+		beq	LibExit
+
+		lea	GfxName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_GfxBase(a5)
+		beq	LibExit
+
+;
+; Here is the main!
+;
+		bsr	DoScrollWin
+
+LibExit		move.l	(a5),a6
+		move.l	_GfxBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_IntBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_UtilBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+Sayonara	rts
+
+
+
+
+
+;=======================================
+;= Subroutines (all is not optimized!) =
+;=======================================
+
+;
+; Max - output: maximum.
+; IN: d0=x, d1=y
+; OUT: d0=maximum
+;
+Max		cmp.l	d1,d0
+		bgt.s	MAX_Hai		;bhi.s	MAX_Hai
+		move.l	d1,d0
+MAX_Hai		rts
+
+;
+; Min - output: minimum.
+; IN: d0=x, d1=y
+; OUT: d0=minimum
+;
+Min		cmp.l	d1,d0
+		blt.s	MIN_Hai		;blo.s	MIN_Hai
+		move.l	d1,d0
+MIN_Hai		rts
+
+;
+; CreateBitMap - create a bitmap (V39+ only)
+;  ** NOTE: It is only a crazy thing for gfx func call!
+; IN: d0,d1=width,height, d2=depth, d3=flags, a0=friend(ptr to bitmap)
+; OUT: d0=bm
+;
+CreateBitMap	move.l	a6,-(sp)
+		move.l	_GfxBase(a5),a6
+		jsr	_LVOAllocBitMap(a6)
+		move.l	(sp)+,a6
+		rts
+
+;
+; DeleteBitMap - delete a bitmap (V39+ only)
+;  ** SEE NOTE ON CreateBitMap
+; IN: a0=bm
+;
+DeleteBitMap	move.l	a6,-(sp)
+		move.l	_GfxBase(a5),a6
+		jsr	_LVOFreeBitMap(a6)
+		move.l	(sp)+,a6
+		rts
+
+;
+; BitMapDepth - get bitmap depth
+;  ** SEE NOTE ON CreateBitMap
+; IN: a0=bm
+; OUT: d0=value
+;
+BitMapDepth	move.l	a6,-(sp)
+		move.l	_GfxBase(a5),a6
+		moveq	#BMA_DEPTH,d1
+		jsr	_LVOGetBitMapAttr(a6)
+		move.l	(sp)+,a6
+		rts
+
+;
+; SysISize - ?
+; OUT: d0
+;
+SysISize	moveq	#SYSISIZE_MEDRES,d0
+		move.l	_Screen(a5),a0
+		move.w	sc_Flags(a0),d1
+		and.w	#SCREENHIRES,d1
+		tst.w	d1
+		bne.s	SIS_Hai
+		moveq	#SYSISIZE_LOWRES,d0
+SIS_Hai		rts
+
+;
+; NewImageObj - create a new image object
+; IN: d0=which
+;
+NewImageObj	movem.l	a2/a6,-(sp)
+		move.l	d0,-(sp)
+		bsr	SysISize
+		move.l	d0,d1
+		move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		lea	SysClass(pc),a1
+		lea	SysTag(pc),a2
+		move.l	_Dri(a5),4(a2)
+		move.l	(sp)+,d0
+		move.l	d0,12(a2)
+		move.l	d1,20(a2)
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+;
+; NewPropObj - create a new prop object
+; IN: d0=freedom, a0=taglist
+;
+NewPropObj	movem.l	a2/a6,-(sp)
+		move.l	_IntBase(a5),a6
+		lea	PropClass(pc),a1
+		lea	PropTag(pc),a2
+		move.l	d0,12(a2)
+		move.l	a0,36(a2)
+		move.l	_Dri(a5),a0
+		moveq	#0,d1
+		move.l	dri_Flags(a0),d0
+		and.l	#DRIF_NEWLOOK,d0
+		beq.s	NPO_NoNewLook		; no new look set!
+		cmp.w	#1,dri_Depth(a0)
+		beq.s	NPO_NoNewLook
+		moveq	#-1,d1
+NPO_NoNewLook	move.l	d1,28(a2)
+		suba.l	a0,a0
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+;
+; NewButtonObj - create a new button-image object
+; IN: a0=ptr to image, a1=taglist
+;
+NewButtonObj	movem.l	a2/a6,-(sp)
+		move.l	_IntBase(a5),a6
+		lea	ButtonTag(pc),a2
+		move.l	a1,20(a2)
+		lea	ButtonClass(pc),a1
+		move.l	a0,12(a2)
+		suba.l	a0,a0
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+;
+; OpenScrollWin - open scrollerwindow (main)
+; IN: a0=taglist
+;
+OpenScrollWin	move.l	a0,-(sp)
+		bsr	SysISize
+		move.l	d0,_Resolution(a5)
+		move.l	_Screen(a5),a0
+		move.l	sc_Font(a0),_SF(a5)
+		moveq	#0,d0
+		move.b	sc_WBorTop(a0),d0
+		move.l	_SF(a5),a1
+		move.w	ta_YSize(a1),d1
+		addq.w	#1,d1
+		add.w	d1,d0
+		move.l	d0,_TopBorder(a5)
+
+;
+; LITTLE NOTE: This and other variables can be Word only and not Long,
+; but in the .e, in DEF we find 'DEF topborder' (for example) and this
+; means (according to my little knowledge about AmigaE) that it is LONG.
+; Now, this will make the executable longer... I will enhance this too...
+; (In the future...)
+;
+
+		move.l	_SizeImage(a5),a0
+		move.w	ig_Width(a0),d0
+		move.l	d0,_W(a5)
+		move.w	ig_Height(a0),d0
+		move.l	d0,_H(a5)
+
+		moveq	#1,d0
+		cmp.l	#SYSISIZE_LOWRES,_Resolution(a5)
+		beq.s	OSW_Skip0
+		moveq	#2,d0
+OSW_Skip0	move.l	d0,_BW(a5)
+
+		moveq	#2,d0
+		cmp.l	#SYSISIZE_HIRES,_Resolution(a5)
+		beq.s	OSW_Skip1
+		moveq	#1,d0
+OSW_Skip1	move.l	d0,_BH(a5)
+
+		moveq	#3,d0
+		cmp.l	#SYSISIZE_HIRES,_Resolution(a5)
+		beq.s	OSW_Skip2
+		moveq	#2,d0
+OSW_Skip2	move.l	d0,_RW(a5)
+
+		moveq	#2,d0
+		cmp.l	#SYSISIZE_HIRES,_Resolution(a5)
+		beq.s	OSW_Skip3
+		moveq	#1,d0
+OSW_Skip3	move.l	d0,_RH(a5)
+
+		move.l	_LeftImage(a5),a0
+		moveq	#0,d0
+		move.w	ig_Height(a0),d0
+		move.l	_H(a5),d1
+		swap	d1	; for example these istructions are needed:
+		clr.w	d1	; I'm afraid that there are sporious data
+		swap	d1	; in the upper bound.
+		bsr	Max
+		move.l	d0,_GH(a5)
+
+		move.l	_RightImage(a5),a0
+		move.l	d0,d1
+		moveq	#0,d0
+		move.w	ig_Height(a0),d0
+		bsr	Max
+		move.l	d0,_GH(a5)
+
+		move.l	_UpImage(a5),a0
+		moveq	#0,d0
+		move.w	ig_Width(a0),d0
+		move.l	_W(a5),d1
+		swap	d1
+		clr.w	d1		; and.l #$ffff,d1  !!!
+		swap	d1
+		bsr	Max
+		move.l	d0,_GW(a5)
+
+		move.l	_DownImage(a5),a0
+		move.l	d0,d1
+		moveq	#0,d0
+		move.w	ig_Width(a0),d0
+		bsr	Max
+		move.l	d0,_GW(a5)
+
+		move.l	#1,_Gap(a5)
+
+;
+; Here it starts the creation of gadget...
+;  ** Note: I used two different way to do it... The first is hi-level
+;     way (using stack-area) and it is longer and longer than the other
+;     way, that you must prefer. But so you can see the tags quickly,
+;     without jumping... and it's easier for me who can follow E-source!
+;
+
+		moveq	#FREEHORIZ,d0
+		move.l	#TAG_END,-(sp)	; create taglist. hi-level way
+		move.l	_HVisible(a5),-(sp)
+		move.l	#PGA_VISIBLE,-(sp)
+		move.l	_HTotal(a5),-(sp)
+		move.l	#PGA_TOTAL,-(sp)
+		move.l	#HORIZ_GID,-(sp)
+		move.l	#GA_ID,-(sp)
+		move.l	#TRUE,-(sp)
+		move.l	#GA_BOTTOMBORDER,-(sp)
+		move.l	_GH(a5),d1
+		move.l	_BH(a5),d2
+		sub.l	d2,d1
+		sub.l	d2,d1
+		subq.l	#2,d1
+		move.l	d1,-(sp)
+		move.l	#GA_HEIGHT,-(sp)
+		move.l	_GW(a5),d1
+		neg.l	d1
+		sub.l	_Gap(a5),d1
+		move.l	_LeftImage(a5),a1
+		moveq	#0,d2
+		move.w	ig_Width(a1),d2
+		sub.l	d2,d1
+		move.l	_RightImage(a5),a1
+		move.w	ig_Width(a1),d2
+		sub.l	d2,d1
+		sub.l	_RW(a5),d1
+		sub.l	_RW(a5),d1
+		move.l	d1,-(sp)
+		move.l	#GA_RELWIDTH,-(sp)
+		move.l	_BH(a5),d1
+		sub.l	_GH(a5),d1
+		addq.l	#2,d1
+		move.l	d1,-(sp)
+		move.l	#GA_RELBOTTOM,-(sp)
+		move.l	_RW(a5),d1
+		add.l	_Gap(a5),d1
+		move.l	d1,-(sp)
+		move.l	#GA_LEFT,-(sp)
+		move.l	sp,a0
+		bsr	NewPropObj
+		move.l	d0,_HorizGadget(a5)
+		lea	68(sp),sp
+
+;
+; Now I will use the other way, and so you can see how it is shorter
+;  but if you want to see the tag, you must jump bottom.
+;
+
+		moveq	#FREEVERT,d0
+		lea	VertTag(pc),a0
+
+		move.l	_BW(a5),d1	; calc value
+		sub.l	_GW(a5),d1
+		addq.l	#3,d1
+		move.l	d1,4(a0)
+		move.l	_TopBorder(a5),d1
+		add.l	_RH(a5),d1
+		move.l	d1,12(a0)
+		move.l	_GW(a5),d1
+		sub.l	_BW(a5),d1
+		sub.l	_BW(a5),d1
+		subq.l	#4,d1
+		move.l	d1,20(a0)
+		move.l	_TopBorder(a5),d1
+		neg.l	d1
+		sub.l	_H(a5),d1
+		move.l	_UpImage(a5),a1
+		moveq	#0,d2
+		move.w	ig_Height(a1),d2
+		sub.l	d2,d1
+		move.l	_DownImage(a5),a1
+		move.w	ig_Height(a1),d2
+		sub.l	d2,d1
+		sub.l	_RH(a5),d1
+		sub.l	_RH(a5),d1
+		move.l	d1,28(a0)
+		move.l	_HorizGadget(a5),44(a0)
+		move.l	_VTotal(a5),60(a0)
+		move.l	_VVisible(a5),68(a0)
+		bsr	NewPropObj
+		move.l	d0,_VertGadget(a5)
+
+		move.l	_LeftImage(a5),a0
+		lea	LButtonTag(pc),a1
+		moveq	#1,d1
+		moveq	#0,d2
+		move.w	ig_Width(a0),d2
+		sub.l	d2,d1
+		move.l	_RightImage(a5),a2
+		move.w	ig_Width(a2),d2
+		sub.l	d2,d1
+		sub.l	_GW(a5),d1
+		move.l	d1,4(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.l	d2,d1
+		move.l	d1,12(a1)
+		move.l	d0,28(a1)
+		bsr	NewButtonObj
+		move.l	d0,_LeftGadget(a5)
+
+		move.l	_RightImage(a5),a0
+		lea	RButtonTag(pc),a1
+		moveq	#1,d1
+		moveq	#0,d2
+		move.w	ig_Width(a0),d2
+		sub.l	d2,d1
+		sub.l	_GW(a5),d1
+		move.l	d1,4(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.l	d2,d1
+		move.l	d1,12(a1)
+		move.l	d0,28(a1)
+		move.l	#RIGHT_GID,36(a1)
+		bsr	NewButtonObj
+		move.l	d0,_RightGadget(a5)
+
+		move.l	_UpImage(a5),a0
+		lea	UButtonTag(pc),a1
+		moveq	#1,d1
+		moveq	#0,d2
+		move.w	ig_Width(a0),d2
+		sub.l	d2,d1
+		move.l	d1,4(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.l	d2,d1
+		move.l	_DownImage(a5),a2
+		move.w	ig_Height(a2),d2
+		sub.l	d2,d1
+		sub.l	_H(a5),d1
+		move.l	d1,12(a1)
+		move.l	d0,28(a1)
+		move.l	#UP_GID,36(a1)
+		bsr	NewButtonObj
+		move.l	d0,_UpGadget(a5)
+
+		move.l	_DownImage(a5),a0
+		lea	DButtonTag(pc),a1
+		moveq	#1,d1
+		moveq	#0,d2
+		move.w	ig_Width(a0),d2
+		sub.l	d2,d1
+		move.l	d1,4(a1)
+		moveq	#1,d1
+		move.w	ig_Height(a0),d2
+		sub.l	d2,d1
+		sub.l	_H(a5),d1
+		move.l	d1,12(a1)
+		move.l	d0,28(a1)
+		move.l	#DOWN_GID,36(a1)
+		bsr	NewButtonObj
+		move.l	d0,_DownGadget(a5)
+
+		beq	OSW_FError
+
+		lea	SWindow(pc),a1
+		moveq	#80,d0
+		move.l	_GW(a5),d1
+		add.l	_Gap(a5),d1
+		move.l	_LeftImage(a5),a0
+		moveq	#0,d2
+		move.w	ig_Width(a0),d2
+		add.l	d2,d1
+		move.l	_RightImage(a5),a0
+		move.w	ig_Width(a0),d2
+		add.l	d2,d1
+		add.l	_RW(a5),d1
+		add.l	_RW(a5),d1
+		addq.l	#KNOBHMIN,d1
+		bsr	Max
+		move.l	d0,12(a1)
+		moveq	#50,d0
+		move.l	_TopBorder(a5),d1
+		add.l	_H(a5),d1
+		move.l	_UpImage(a5),a0
+		moveq	#0,d2
+		move.w	ig_Height(a0),d2
+		add.l	d2,d1
+		move.l	_DownImage(a5),a0
+		move.w	ig_Height(a0),d2
+		add.l	d2,d1
+		add.l	_RH(a5),d1
+		add.l	_RH(a5),d1
+		addq.l	#KNOBVMIN,d1
+		bsr	Max
+		move.l	d0,20(a1)
+		move.l	_HorizGadget(a5),4(a1)
+		move.l	(sp),28(a1)
+		suba.l	a0,a0
+		move.l	_IntBase(a5),a6
+		jsr	_LVOOpenWindowTagList(a6)
+
+OSW_FError	addq.l	#4,sp
+		rts
+
+;
+; CloseScrollWin - close opened window and kill objects
+;
+CloseScrollWin	move.l	_IntBase(a5),a6
+		move.l	_Window(a5),d0
+		beq.s	CSW_NoWindow
+		move.l	d0,a0
+		jsr	_LVOCloseWindow(a6)
+CSW_NoWindow	move.l	_HorizGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_VertGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_LeftGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_RightGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_UpGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_DownGadget(a5),a0
+		jsr	_LVODisposeObject(a6)
+		rts
+
+;
+; RecalcHVisible - recalc horiz visible
+; OUT: d0
+;
+RecalcHVisible	moveq	#0,d0
+		move.l	_Window(a5),a0
+		move.w	wd_Width(a0),d0
+		moveq	#0,d1
+		move.b	wd_BorderLeft(a0),d1
+		sub.l	d1,d0
+		move.b	wd_BorderRight(a0),d1
+		sub.l	d1,d0
+		rts
+
+;
+; RecalcVVisible - recal vert visible
+; OUT: d0
+;
+RecalcVVisible	moveq	#0,d0
+		move.l	_Window(a5),a0
+		move.w	wd_Height(a0),d0
+		moveq	#0,d1
+		move.b	wd_BorderTop(a0),d1
+		sub.l	d1,d0
+		move.b	wd_BorderBottom(a0),d1
+		sub.l	d1,d0
+		rts
+
+;
+; UpdateProp - update prop object
+; IN: a0=gadget, d0=attr,d1=value
+;
+UpdateProp	movem.l	a2-a3/a6,-(sp)
+		move.l	_Window(a5),a1
+		suba.l	a2,a2
+		move.l	_IntBase(a5),a6
+		clr.l	-(sp)
+		move.l	d1,-(sp)
+		move.l	d0,-(sp)
+		move.l	sp,a3
+		jsr	_LVOSetGadgetAttrsA(a6)
+		lea	12(sp),sp
+		movem.l	(sp)+,a2-a3/a6
+		rts
+
+;
+; CopyBitMap - copy bitmap
+;
+CopyBitMap	movem.l	d2-d6/a2/a6,-(sp)
+		move.l	_IntBase(a5),a6
+		move.l	#PGA_TOP,d0
+		move.l	_HorizGadget(a5),a0
+		lea	_SrcX(a5),a1
+		jsr	_LVOGetAttr(a6)
+		move.l	#PGA_TOP,d0
+		move.l	_VertGadget(a5),a0
+		lea	_SrcY(a5),a1
+		jsr	_LVOGetAttr(a6)
+		move.l	_GfxBase(a5),a6
+		move.l	_BitMap(a5),a0
+		move.l	_Window(a5),a2
+		move.l	wd_RPort(a2),a1
+		moveq	#0,d2
+		move.b	wd_BorderLeft(a2),d2
+		moveq	#0,d3
+		move.b	wd_BorderTop(a2),d3
+		move.l	_HTotal(a5),d0
+		move.l	_HVisible(a5),d1
+		bsr	Min
+		move.l	d0,d4
+		move.l	_VTotal(a5),d0
+		move.l	_VVisible(a5),d1
+		bsr	Min
+		move.l	d0,d5
+		move.b	#$c0,d6
+		move.l	_SrcX(a5),d0
+		move.l	_SrcY(a5),d1
+		jsr	_LVOBltBitMapRastPort(a6)
+		movem.l	(sp)+,d2-d6/a2/a6
+		rts
+
+;
+; UpdateScrollWin - update scroller window
+;
+UpdateScrollWin	bsr	RecalcHVisible
+		move.l	d0,_HVisible(a5)
+		move.l	d0,d1
+		move.l	_HorizGadget(a5),a0
+		move.l	#PGA_VISIBLE,d0
+		bsr	UpdateProp
+
+		bsr	RecalcVVisible
+		move.l	d0,_VVisible(a5)
+		move.l	d0,d1
+		move.l	_VertGadget(a5),a0
+		move.l	#PGA_VISIBLE,d0
+		bsr	UpdateProp
+
+		bsr	CopyBitMap
+		rts
+
+;
+; HandleScrollWin - handle scroller window messages
+;
+HandleScrollWin	
+HSW_ExtLoop	tst.l	_Quit(a5)
+		bne	HSW_Quit
+
+		move.l	_Window(a5),a0
+		move.l	wd_UserPort(a0),a4	; a4=userport
+
+HSW_WLoop	tst.l	_Quit(a5)
+		bne	HSW_WhileEnd
+
+		move.l	a4,a0
+		move.l	(a5),a6
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq	HSW_WhileEnd
+
+		move.l	d0,_IMsg(a5)
+		move.l	d0,a1
+		move.l	im_Class(a1),_Cl(a5)
+
+		move.l	_Cl(a5),d0
+
+		cmp.l	#IDCMP_CLOSEWINDOW,d0
+		bne.s	HSW_NextC0
+		move.l	d0,_Quit(a5)
+		bra	HSW_DoWhile
+
+HSW_NextC0	cmp.l	#IDCMP_NEWSIZE,d0
+		bne.s	HSW_NextC1
+		bsr	UpdateScrollWin
+		bra	HSW_DoWhile
+
+HSW_NextC1	cmp.l	#IDCMP_REFRESHWINDOW,d0
+		bne.s	HSW_NextC2
+		move.l	_IntBase(a5),a6
+		move.l	_Window(a5),a0
+		jsr	_LVOBeginRefresh(a6)
+		bsr	CopyBitMap
+		move.l	_Window(a5),a0
+		moveq	#TRUE,d0
+		jsr	_LVOEndRefresh(a6)
+		bra	HSW_DoWhile
+
+HSW_NextC2	cmp.l	#IDCMP_IDCMPUPDATE,d0
+		bne	HSW_End
+		move.l	_UtilBase(a5),a6
+		move.l	_IMsg(a5),a0
+		move.l	im_IAddress(a0),a0
+		move.l	#GA_ID,d0
+		moveq	#0,d1
+		jsr	_LVOGetTagData(a6)
+		move.l	d0,_V(a5)		; f.e.: unuseful!
+
+		cmp.l	#HORIZ_GID,d0		; SELECT v, CASE ...
+		bne.s	SV_Next0
+		bsr	CopyBitMap
+		bra	SV_End
+
+SV_Next0	cmp.l	#VERT_GID,d0
+		bne.s	SV_Next1
+		bsr	CopyBitMap
+		bra	SV_End
+
+SV_Next1	cmp.l	#LEFT_GID,d0
+		bne	SV_Next2
+		move.l	#PGA_TOP,d0
+		move.l	_HorizGadget(a5),a0
+		lea	_OldTop(a5),a1
+		move.l	_IntBase(a5),a6
+		jsr	_LVOGetAttr(a6)
+		move.l	_OldTop(a5),d0	; V-V: flag set, TST not needed (?)
+		tst.l	d0		; maybe you can skip this istr.
+		ble	SV_End
+		move.l	_HorizGadget(a5),a0
+		move.l	d0,d1
+		subq.l	#1,d1
+		move.l	#PGA_TOP,d0
+		bsr	UpdateProp
+		bsr	CopyBitMap
+		bra	SV_End
+
+SV_Next2	cmp.l	#RIGHT_GID,d0
+		bne	SV_Next3
+		move.l	#PGA_TOP,d0
+		move.l	_HorizGadget(a5),a0
+		lea	_OldTop(a5),a1
+		move.l	_IntBase(a5),a6
+		jsr	_LVOGetAttr(a6)
+		move.l	_OldTop(a5),d0
+		move.l	_HTotal(a5),d1
+		sub.l	_HVisible(a5),d1
+		cmp.l	d1,d0
+		bge	SV_End
+		move.l	d0,d1
+		move.l	_HorizGadget(a5),a0
+		move.l	#PGA_TOP,d0
+		addq.l	#1,d1
+		bsr	UpdateProp
+		bsr	CopyBitMap
+		bra	SV_End
+
+SV_Next3	cmp.l	#UP_GID,d0
+		bne	SV_Next4
+		move.l	#PGA_TOP,d0
+		move.l	_VertGadget(a5),a0
+		lea	_OldTop(a5),a1
+		move.l	_IntBase(a5),a6
+		jsr	_LVOGetAttr(a6)
+		move.l	_OldTop(a5),d0
+		ble	SV_End
+		move.l	d0,d1
+		subq.l	#1,d1
+		move.l	#PGA_TOP,d0
+		move.l	_VertGadget(a5),a0
+		bsr	UpdateProp
+		bsr	CopyBitMap
+		bra	SV_End
+
+SV_Next4	cmp.l	#DOWN_GID,d0
+		bne	SV_End
+		move.l	#PGA_TOP,d0
+		move.l	_VertGadget(a5),a0
+		lea	_OldTop(a5),a1
+		move.l	_IntBase(a5),a6
+		jsr	_LVOGetAttr(a6)
+		move.l	_OldTop(a5),d0
+		move.l	_VTotal(a5),d1
+		sub.l	_VVisible(a5),d1
+		cmp.l	d1,d0
+		bge	SV_End
+		move.l	_VertGadget(a5),a0
+		move.l	d0,d1
+		addq.l	#1,d1
+		move.l	#PGA_TOP,d0
+		bsr	UpdateProp
+		bsr	CopyBitMap
+
+SV_End
+HSW_End
+HSW_DoWhile	move.l	_IMsg(a5),a1
+		move.l	(a5),a6
+		jsr	_LVOReplyMsg(a6)
+		bra	HSW_WLoop
+HSW_WhileEnd	tst.l	_Quit(a5)
+		bne.s	HSW_Quit
+		move.l	a4,a0
+		move.l	(a5),a6
+		jsr	_LVOWaitPort(a6)
+		bra	HSW_ExtLoop
+
+HSW_Quit	move.l	(a5),a6		; skip unuseful msg
+HSW_SkMLoop	move.l	a4,a0
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	HSW_Sayonara
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+		bra.s	HSW_SkMLoop
+HSW_Sayonara	rts
+
+;
+; DoScrollWin - main
+;
+DoScrollWin	move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		jsr	_LVOLockPubScreen(a6)
+		move.l	d0,_Screen(a5)
+		beq	DSW_NoScreen
+
+		move.l	d0,a0
+		moveq	#0,d0
+		move.w	sc_Width(a0),d0
+		move.l	d0,_HTotal(a5)
+		move.l	d0,_HVisible(a5)
+		move.w	sc_Height(a0),d0
+		move.l	d0,_VVisible(a5)
+		move.l	d0,_VTotal(a5)
+
+		lea	sc_RastPort(a0),a2
+		move.l	a2,_R(a5)
+
+		move.l	rp_BitMap(a2),a0
+		bsr	BitMapDepth
+		move.l	d0,d2
+		move.l	_HTotal(a5),d0
+		move.l	_VTotal(a5),d1
+		move.l	rp_BitMap(a2),a0
+		moveq	#0,d3
+		bsr	CreateBitMap
+		move.l	d0,_BitMap(a5)
+		beq	DSW_NoBitMap
+
+		move.l	_GfxBase(a5),a6
+		move.l	rp_BitMap(a2),a0
+		moveq	#0,d0
+		moveq	#0,d1
+		move.l	_BitMap(a5),a1
+		move.l	d0,d2
+		move.l	d0,d3
+		move.l	_HTotal(a5),d4
+		move.l	_VTotal(a5),d5
+		move.b	#$c0,d6
+		moveq	#-1,d7
+		suba.l	a2,a2
+		jsr	_LVOBltBitMap(a6)
+
+		move.l	_IntBase(a5),a6
+		move.l	_Screen(a5),a0
+		jsr	_LVOGetScreenDrawInfo(a6)
+		move.l	d0,_Dri(a5)
+		beq	DSW_NoDri
+
+		moveq	#SIZEIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_SizeImage(a5)
+		moveq	#LEFTIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_LeftImage(a5)
+		moveq	#RIGHTIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_RightImage(a5)
+		moveq	#UPIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_UpImage(a5)
+		moveq	#DOWNIMAGE,d0
+		bsr	NewImageObj
+		move.l	d0,_DownImage(a5)
+
+		tst.l	_SizeImage(a5)
+		beq	DSW_SizeImage
+		tst.l	_LeftImage(a5)
+		beq	DSW_LeftImage
+		tst.l	_RightImage(a5)
+		beq	DSW_RightImage
+		tst.l	_UpImage(a5)
+		beq	DSW_UpImage
+		tst.l	_DownImage(a5)
+		beq	DSW_DownImage
+
+		lea	WinTag(pc),a0
+		move.l	_Screen(a5),4(a0)
+		move.l	_HTotal(a5),36(a0)
+		move.l	_VTotal(a5),44(a0)
+		bsr	OpenScrollWin
+		move.l	d0,_Window(a5)
+		beq	DSW_NoWin
+
+		bsr	UpdateScrollWin
+		bsr	HandleScrollWin
+
+		bsr	CloseScrollWin
+
+		;bra	DSW_Kill
+
+DSW_NoWin
+		** Write message "No window!" **
+DSW_UpImage					; NOTE: All messages skipped
+DSW_DownImage
+DSW_LeftImage
+DSW_RightImage
+DSW_SizeImage
+		** Write message "No images" **
+
+DSW_Kill	move.l	_IntBase(a5),a6
+		move.l	_SizeImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_LeftImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_RightImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_UpImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+		move.l	_DownImage(a5),a0
+		jsr	_LVODisposeObject(a6)
+
+		move.l	_GfxBase(a5),a6
+		move.l	_Screen(a5),a0
+		move.l	_Dri(a5),a1
+		jsr	_LVOFreeScreenDrawInfo(a6)
+
+DSW_NoDri	move.l	_GfxBase(a5),a6
+		jsr	_LVOWaitBlit(a6)
+		move.l	_BitMap(a5),a0
+		bsr	DeleteBitMap
+
+DSW_NoBitMap	move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		move.l	_Screen(a5),a1
+		jsr	_LVOUnlockPubScreen(a6)
+
+DSW_NoScreen	rts
+
+
+
+;\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+;//////////////////////////////////////////  Go Fish!
+
+IntName		dc.b	"intuition.library",0
+		even
+GfxName		dc.b	"graphics.library",0
+		even
+UtilName	dc.b	"utility.library",0
+		even
+
+ButtonClass	dc.b	"buttongclass",0
+		even
+PropClass	dc.b	"propgclass",0
+		even
+SysClass	dc.b	"sysiclass",0
+		even
+
+SysTag		dc.l	SYSIA_DrawInfo,0
+		dc.l	SYSIA_Which,0
+		dc.l	SYSIA_Size,0
+		dc.l	TAG_END
+
+PropTag		dc.l	ICA_TARGET,ICTARGET_IDCMP
+		dc.l	PGA_FREEDOM,0
+		dc.l	PGA_NewLook,TRUE
+		dc.l	PGA_BORDERLESS,0
+		dc.l	TAG_MORE,0
+
+ButtonTag	dc.l	ICA_TARGET,ICTARGET_IDCMP
+		dc.l	GA_IMAGE,0
+		dc.l	TAG_MORE,0
+
+VertTag		dc.l	GA_RELRIGHT,0
+		dc.l	GA_TOP,0
+		dc.l	GA_WIDTH,0
+		dc.l	GA_RELHEIGHT,0
+		dc.l	GA_RIGHTBORDER,TRUE
+		dc.l	GA_PREVIOUS,0
+		dc.l	GA_ID,VERT_GID
+		dc.l	PGA_TOTAL,0
+		dc.l	PGA_VISIBLE,0
+		dc.l	TAG_END
+
+UButtonTag
+DButtonTag
+		dc.l	GA_RELRIGHT,0
+		dc.l	GA_RELBOTTOM,0
+		dc.l	GA_RIGHTBORDER,TRUE
+		dc.l	GA_PREVIOUS,0
+		dc.l	GA_ID,0
+		dc.l	TAG_END
+
+RButtonTag
+LButtonTag	dc.l	GA_RELRIGHT,0
+		dc.l	GA_RELBOTTOM,0
+		dc.l	GA_BOTTOMBORDER,TRUE
+		dc.l	GA_PREVIOUS,0
+		dc.l	GA_ID,LEFT_GID
+		dc.l	TAG_END
+
+SWindow		dc.l	WA_Gadgets,0
+		dc.l	WA_MinWidth,0
+		dc.l	WA_MinHeight,0
+		dc.l	TAG_MORE,0
+
+Title		dc.b	"Scroller Window in Asm!",0
+		even
+
+WinTag		dc.l	WA_PubScreen,0
+		dc.l	WA_Title,Title
+		dc.l	WA_Flags,WFLG_CLOSEGADGET!WFLG_SIZEGADGET!WFLG_DRAGBAR!WFLG_DEPTHGADGET!WFLG_SIMPLE_REFRESH!WFLG_ACTIVATE
+		dc.l	WA_IDCMP,IDCMP_CLOSEWINDOW!IDCMP_NEWSIZE!IDCMP_REFRESHWINDOW!IDCMP_IDCMPUPDATE
+		dc.l	WA_InnerWidth,0
+		dc.l	WA_InnerHeight,0
+		dc.l	WA_MaxWidth,-1
+		dc.l	WA_MaxHeight,-1
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	TAG_END
+
+
+
+		SECTION	ScrolWinSTORE,BSS
+
+Stores		ds.b	SW_Data_SIZEOF
+
+
+		END

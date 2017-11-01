@@ -1,0 +1,53 @@
+*** MDIR v1.0; data 9/6/1993
+
+CreateDir	EQU	-120		; d1 *nome della directory
+UnLock		EQU	-90		; d1 lock
+Output		EQU	-60
+Write		EQU	-48
+OpenLibrary	EQU	-552
+CloseLibrary	EQU	-414
+DeleteFile	EQU	-72
+
+		cmp.b	#1,d0
+		beq	nodos
+		clr.b	-1(a0,d0)
+		move.l	a0,d6
+		move.l	d0,d5
+		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#0,d0
+		jsr	OpenLibrary(a6)
+		tst.l	d0
+		beq.s	nodos		; quando mai
+		move.l	d0,a6
+		move.l	d6,d1
+		jsr	DeleteFile(a6)
+		tst.l	d0
+		beq.s	nodirec
+closedos	move.l	a6,a1
+		move.l	4.w,a6
+		jsr	CloseLibrary(a6)
+nodos		rts
+
+nodirec		jsr	Output(a6)
+		tst.l	d0
+		beq.s	closedos
+		move.l	d0,d7
+		move.l	d0,d1
+		move.l	#noop,d2
+		move.l	#lenght,d3
+		jsr	Write(a6)
+		move.l	d7,d1
+		move.l	d6,d2
+		move.l	d6,a0
+		move.b	#10,-1(a0,d5)
+		move.l	d5,d3
+		jsr	Write(a6)
+		bra	closedos
+
+dosname		dc.b	'dos.library',0
+		even
+noop		dc.b	"Can't delete "
+lenght		EQU	*-noop
+
+		END

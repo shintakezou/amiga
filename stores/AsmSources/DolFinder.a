@@ -1,0 +1,143 @@
+***
+*** $VER: Dolfinder.a
+***
+*** Dolfinder v1.0 written by Mauro Panigada
+***
+*** FREEWARE
+***
+*** PURPOSE: search every "$%s:%s" and show it to an output.
+*** NOTE: bufferized in 4096 bytes.
+*** BUGS: Because of bufferizing, if a $ is found at the end of buffer,
+***   it is not shown. However, you can remember that it is better
+***   put $xx: at the beginning of file.
+***   I do not test if it is a valid file: this means that if is a raw
+***   file and Dolfinder find a "$" but no a ":", you probably
+***   will wait until the end of file...
+***   If it find a "$" which is not a "comment indicator", it will search
+***   for ":" everywhere. So if you write a file: "$ blabla for 1000 or
+***   more bytes:/n" it will show you all file!
+***
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/memory.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+
+
+CALL		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+
+		SECTION	DFCODE,CODE
+
+		bra.s	start
+
+		dc.b	"$VER: Dolfinder v1.0 by Mauro Panigada",0
+		even
+
+start		bsr	open_libs
+
+		move.l	dosbase(pc),a6
+		move.l	#template,d1
+		move.l	#array,d2
+		moveq	#0,d3
+		CALL	ReadArgs
+		move.l	d0,rd_result
+		beq	help_scr
+		lea	array(pc),a0
+		tst.l	(a0)
+		beq	help_scr
+		move.l	(a0),d1
+		move.l	#MODE_OLDFILE,d2
+		CALL	Open
+		move.l	d0,file_hand
+		beq	error
+loop0		move.l	file_hand,d1
+		move.l	#buffer,d2
+		move.l	#4096,d3
+		CALL	Read
+		tst.l	d0
+		beq	fine
+		move.l	d0,d7
+		subq.w	#1,d7
+		lea	buffer,a1
+loop1		move.b	(a1)+,d0
+		cmp.b	#"$",d0
+		beq.s	dolfound
+		dbf	d7,loop1
+		bra	loop0
+dolfound	move.l	a1,a5
+loop2		move.b	(a1)+,d0
+		cmp.b	#":",d0
+		beq.s	tpfound
+		dbf	d7,loop2
+		bra	loop0
+tpfound		move.b	(a1)+,d0
+		cmp.b	#10,d0
+		beq.s	endfound
+		tst.b	d0
+		beq.s	endfound
+		dbf	d7,tpfound
+		bra	loop0
+endfound	clr.b	-1(a1)
+		move.l	a5,d1
+		CALL	PutStr
+		move.l	#accapo,d1
+		CALL	PutStr
+		bra	loop1
+error
+fine		move.l	file_hand,d1
+		beq.s	c2
+		CALL	Close
+c2		move.l	rd_result,d1
+		beq.s	c3
+		CALL	FreeArgs
+c3		bsr	close_libs
+		rts
+
+open_libs	moveq	#36,d0
+		movea.l	4.w,a6
+		lea	dosname(pc),a1
+		CALL	OpenLibrary
+		move.l	d0,dosbase
+		beq.s	error0
+		rts
+error0		add.l	#4,sp
+		bra	error
+
+close_libs	move.l	4.w,a6
+		move.l	dosbase(pc),d0
+		beq.s	cx
+		move.l	d0,a1
+		CALL	CloseLibrary
+cx		rts
+
+help_scr	move.l	#help,d1
+		CALL	PutStr
+		bra	fine
+
+;==================================
+
+dosname		dc.b	"dos.library",0
+		even
+dosbase		dc.l	0
+rd_result	dc.l	0
+array		dc.l	0
+template	dc.b	"FILE/A",0
+		even
+file_hand	dc.l	0
+accapo		dc.b	10,0
+help		dc.b	"DolFinder v1.0 by Mauro Panigada",10
+		dc.b	"Type 'DolFinder ?' for help.",10,0
+
+
+		SECTION	DFBSS,BSS
+
+buffer		ds.b	4096
+
+		END

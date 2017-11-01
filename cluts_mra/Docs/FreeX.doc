@@ -1,0 +1,18 @@
+
+$VER: FreeX.doc v1.0 (c) 1999 by Mauro Panigada
+
+FreeX v1.0
+===========
+
+(c) 1999 by Mauro Panigada
+
+Sometimes you find a program in your c directory but you can not say where you
+have given it... nor who written that program if there is no documentation
+and in the ascii dump of file does not appear interesting strings...
+
+My FreeX is based on output of Free, unknown author. FreeX gives information
+about free space on a device and if it is OFS, FFS, simply DOS or what, the
+name of volume... just run it and see.
+
+
+

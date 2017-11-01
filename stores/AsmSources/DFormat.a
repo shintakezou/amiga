@@ -1,0 +1,131 @@
+;
+; DFormat v1.0
+; written by Mauro Panigada
+;
+; $VER: DFormat.a v1.0 by Mauro Panigada
+;
+; FREEWARE
+;
+; Started: 1996-04-16 (year/month/day)
+;          1996-04-17 fixed a bug and I tried it...
+;
+; Purpose: Fastly formats a low-level formatted disk.
+; Usage: NEVER USE IT IF YOU DO NOT KNOW WHAT YOU ARE DOING!
+;  You must type always:
+;    1> inhibitor dev: OFF
+;    1> dformat dev: name DOS 0
+;    1> inhibitor dev:
+;  In fact the dev: must be first inhibited if you want dformat works
+;  well.
+;  Type 'DFormat ?' for a dos-like help.
+; Bugs: Unknown.
+; Note: It works well. It Fastly formats a disk with the specified name.
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+
+SETVAR		MACRO
+varoff		SET	\1
+		ENDM
+
+NLONG		MACRO
+varoff		SET	varoff-4
+\1		EQU	varoff
+		ENDM
+
+NAME		MACRO
+\1		EQU	varoff
+		ENDM
+
+		SETVAR	0
+		NLONG	byteadj
+		NLONG	dostype
+		NLONG	volname
+		NLONG	devname
+		NAME	array
+		NAME	spbuf_len
+
+
+		bra.s	main
+
+		dc.b	"$VER: DFormat v1.0 (1996-04-16)"
+		dc.b	" written by Mauro Panigada",0
+		even
+
+main		link	a4,#spbuf_len
+		moveq	#0,d7
+		moveq	#0,d0
+		moveq	#4,d1
+		lea	spbuf_len(a4),a0
+cloop		move.l	d0,(a0)+
+		dbf	d1,cloop
+		lea	dosname(pc),a1
+		moveq	#37,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,d6
+		beq.s	fexit
+		move.l	d6,a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		lea	array(a4),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d7
+		beq.s	help
+		move.l	devname(a4),d1
+		move.l	volname(a4),d2
+		move.l	#('DOS'<<8),d3
+		move.l	dostype(a4),d0
+		beq.s	skipdos
+		moveq	#0,d3
+		move.l	d0,a0
+		addq.w	#3,a0
+		move.b	-(a0),d3
+		ror.l	#8,d3
+		or.b	-(a0),d3
+		ror.l	#8,d3
+		or.b	-(a0),d3
+		ror.l	#8,d3
+skipdos		move.l	byteadj(a4),a0
+		move.l	(a0),d0
+		or.b	d0,d3
+		jsr	_LVOFormat(a6)
+exit		move.l	d7,d1
+		jsr	_LVOFreeArgs(a6)
+exit2		move.l	d6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+fexit		unlk	a4
+		rts
+
+help		lea	helpt(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		bra.s	exit2
+
+
+dosname		dc.b	"dos.library",0
+		even
+helpt		dc.b	10,"DFormat v1.0 (1996-04-16) by Mauro Panigada",10
+		dc.b	10,"Usage:",10,10
+		dc.b	" DFormat DEV: VOLNAME [DOSTYPE] [BYTEADJUST]",10
+		dc.b	10
+		dc.b	" - DOSTYPE is a dostype 'flag', it must be three"
+		dc.b	" char long",10
+		dc.b	"   and BYTEADJUST fill it, ie.: ('DOS'<<8)|1",10
+		dc.b	10
+		dc.b	"Remember to inhibit the device first; you can use"
+		dc.b	" Inhibitor v1.x by me.",10
+		dc.b	"When you have finished, you must undo inhibit"
+		dc.b	" operation.",10,10,0
+		even
+template	dc.b	"FILESYSTEM/A,VOLUMENAME=VOL/A,DOSTYPE=TYPE,"
+		dc.b	"BYTEADJUST=BA/N",0
+
+		END

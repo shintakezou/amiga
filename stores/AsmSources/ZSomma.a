@@ -1,0 +1,52 @@
+***********
+**       **
+** SOMMA **
+**       **
+***********
+
+
+		
+		move.l	#$fefdfcfb,d0
+		move.l	#$01020304,d1
+
+		bsr	somma32		; a long
+
+		;>d0 = risultato
+		moveq	#0,d0
+		rts
+
+
+*>>>>>> SOMMA A BYTE
+
+somma		moveq	#8-1,d4
+loopb		move.b	d0,d2
+		eor.b	d1,d0
+		and.b	d1,d2
+		lsl.b	#1,d2
+		move.b	d2,d1
+		dbf	d4,loopb
+		rts
+
+*>>>>>> SOMMA A WORD
+
+somma16		moveq	#16-1,d4
+loopw		move.w	d0,d2
+		eor.w	d1,d0
+		and.w	d1,d2
+		lsl.w	#1,d2
+		move.w	d2,d1
+		dbf	d4,loopw
+		rts
+
+*>>>>>> SOMMA A LONG
+
+somma32		moveq	#32-1,d4
+loopl		move.l	d0,d2
+		eor.l	d1,d0
+		and.l	d1,d2
+		lsl.l	#1,d2
+		move.l	d2,d1
+		dbf	d4,loopl
+		rts
+
+		END

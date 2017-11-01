@@ -1,0 +1,996 @@
+; Copier.a   17/5/1994
+
+
+		incdir	"dh0:progr/assem/include/"
+
+		include	"exec/types.i"
+		include	"exec/exec_lib.i"
+		include	"exec/ports.i"
+		include	"exec/errors.i"
+		include	"devices/trackdisk.i"
+
+		include	"intuition/intuition_lib.i"
+		include	"intuition/intuition.i"
+		include	"graphics/gfx.i"
+		include	"graphics/graphics_lib.i"
+		include	"graphics/gfxbase.i"
+		include	"libraries/dosextens.i"
+		include "libraries/dos_lib.i"
+
+		include	"misc/easystart.i"
+
+CALL		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+
+		moveq	#0,d7
+		jsr	_OpenAll
+		tst.l	d0
+		bmi	exit0
+
+		move.l	intbase,a6
+		lea	mywin,a0
+		CALL	OpenWindow
+		move.l	d0,mywinbase
+		beq	exit
+
+		move.l	d0,a0
+		move.l	wd_RPort(a0),d0
+		move.l	d0,rastport
+		move.l	wd_UserPort(a0),d0
+		move.l	d0,userport
+		bsr	_inizia
+
+		move.l	rastport,a0
+		lea	myborder,a1
+		moveq	#0,d0
+		moveq	#0,d1
+		move.l	intbase,a6
+		CALL	DrawBorder
+
+		lea	itsmine,a0
+		move.w	#(9+34),d0
+		move.w	#92,d1
+		move.b	#1,d2
+		jsr	_Print
+		lea	itsmine1,a0
+		move.w	#(9+(itslen*8)+34),d0
+		move.w	#92,d1
+		move.b	#3,d2
+		jsr	_Print
+
+		lea	trackborder,a1
+		move.w	#9,(a1)
+		move.w	#65,2(a1)
+		move.l	#79,d7
+drawtracks	move.l	rastport,a0
+		lea	trackborder,a1
+		moveq	#0,d0
+		moveq	#0,d1
+		CALL	DrawBorder
+		lea	trackborder,a1
+		add.w	#4,(a1)
+		dbf	d7,drawtracks
+
+		move.l	4,a6
+		bsr	_checkdisk
+		bsr	_stop
+
+waitmsg		move.l	userport,a0
+		CALL	WaitPort
+		tst.l	d0
+		beq.s	waitmsg
+		move.l	userport,a0
+		CALL	GetMsg
+		tst.l	d0
+		beq.s	waitmsg
+skipmsg		move.l	d0,a1
+		move.l	im_Class(a1),imclass
+		move.w	im_Code(a1),imcode
+		move.l	im_IAddress(a1),imiaddr
+		CALL	ReplyMsg
+		move.l	userport,a0
+		CALL	GetMsg
+		tst.l	d0
+		bne	skipmsg
+		move.l	imclass,d0
+		cmp.l	#GADGETUP,d0
+		beq	gadgetexec
+		cmp.l	#DISKINSERTED,d0
+		beq	cdisk
+		cmp.l	#DISKREMOVED,d0
+		beq	cdisk
+		bra	waitmsg
+
+cdisk		bsr	_checkdisk
+		bsr	_stop
+		bra	waitmsg
+
+gadgetexec	move.l	imiaddr,a0
+		move.l	gg_UserData(a0),d0
+		beq.s	exit1
+		move.l	d0,a0
+		jsr	(a0)
+		bsr	_stop
+		bra	waitmsg
+
+exit1		move.l	mywinbase,a0
+		move.l	intbase,a6
+		CALL	CloseWindow
+
+exit		jsr	_CloseAll
+exit0		moveq	#0,d0
+		rts
+
+
+_start		bsr	diskin
+
+		jsr	_cleartrack
+
+		move.l	4,a6
+		pea	check1
+check0		lea	devIO0,a1
+		move.w	strt_cyl,actual_cyl
+		jsr	_read_cyl0
+		cmp.b	#TDERR_DiskChanged,d0
+		beq	nodiskin0
+		cmp.b	#TDERR_DriveInUse,d0
+		beq	nousein0
+		bsr	diskin0
+		add.l	#4,sp
+
+check1		lea	devIO1,a1
+		jsr	_read_cyl0
+		cmp.b	#TDERR_DiskChanged,d0
+		beq	nodiskin1
+		cmp.b	#TDERR_DriveInUse,d0
+		beq	nousein1
+		lea	devIO1,a1
+		jsr	_write_cyl0
+		cmp.b	#TDERR_WriteProt,d0
+		beq	diskprot
+		bsr	diskin1
+
+		tst.b	disk0_flag
+		bne	tornami
+
+		move.l	4,a6
+		jsr	_clearmem
+
+copier		;lea	devIO1,a1
+		;CALL	WaitIO
+		lea	devIO0,a1
+		jsr	_read_cyl
+
+		;lea	devIO0,a1
+		;CALL	WaitIO
+		lea	devIO1,a1
+		jsr	_write_cyl
+
+		move.w	actual_cyl,d0
+		moveq	#1,d2
+		jsr	_addtrack
+		move.l	4,a6
+		move.w	actual_cyl,d0
+		move.w	stp_cyl,d1
+		cmp.w	d0,d1
+		beq	_stop
+		add.w	#1,d0
+		move.w	d0,actual_cyl
+
+		move.l	4,a6
+		move.l	userport,a0
+		CALL	GetMsg
+		tst.l	d0
+		beq	copier
+		move.l	d0,a1
+		move.l	im_Class(a1),d3
+		move.l	im_IAddress(a1),a3
+		CALL	ReplyMsg
+
+		cmp.l	#GADGETUP,d3
+		bne	copier
+		move.w	gg_GadgetID(a3),d0
+		cmp.w	#'AZ',d0
+		bne	copier
+
+
+
+_stop		lea	devIO0,a1
+		CALL	WaitIO
+		lea	devIO0,a1
+		jsr	_motor_off
+		lea	devIO1,a1
+		CALL	WaitIO
+		lea	devIO1,a1
+		jsr	_motor_off
+tornami		rts
+
+
+_inizia		move.w	#0,strt_cyl
+		move.w	#79,stp_cyl
+_copylimit	bsr	_ValAdj
+		lea	strtbuff,a0
+		move.w	#88,d0
+		move.w	#50,d1
+		moveq	#1,d2
+		jsr	_Print
+		lea	stpbuff,a0
+		move.w	#173,d0
+		move.w	#50,d1
+		moveq	#1,d2
+		jsr	_Print
+		rts
+
+
+_ValAdj		move.w	strt_cyl,d0
+		Jsr	_Bin2Dec
+		lea	decbuff,a0
+		lea	strtbuff,a1
+		move.w	(a0),(a1)
+valfine		move.w	stp_cyl,d0
+		jsr	_Bin2Dec
+		lea	decbuff,a0
+		lea	stpbuff,a1
+		move.w	(a0),(a1)
+valfine1	rts
+
+
+diskin		bsr	diskin0
+		bra	diskin1
+
+
+diskin0		lea	nodisk0_m,a0
+		sf	disk0_flag
+		move.w	#42,d1
+		moveq	#0,d2
+		bra	diskson
+
+
+diskin1		lea	nodisk1_m,a0
+		move.w	#57,d1
+		moveq	#0,d2
+		bra.s	diskson
+
+
+nodiskin1	lea	nodisk1_m,a0
+		move.w	#57,d1
+		bra.s	nodisk
+
+nodiskin0	lea	nodisk0_m,a0
+		move.w	#42,d1
+		st	disk0_flag
+nodisk		move.b	#$31,d2
+diskson		move.w	#218,d0
+		jsr	_Print
+		rts
+
+
+nousein0	lea	nouse0_m,a0
+		move.w	#42,d1
+		bra.s	nodisk
+
+
+nousein1	lea	nouse1_m,a0
+		move.w	#57,d1
+		bra.s	nodisk
+
+
+diskprot	lea	diskprot_m,a0
+		move.w	#57,d1
+		bra	nodisk
+
+
+_checkdisk	pea	_check1
+		lea	devIO0,a1
+
+		clr.w	actual_cyl
+		jsr	_read_cyl0
+		cmp.b	#TDERR_DiskChanged,d0
+		beq	nodiskin0
+		cmp.b	#TDERR_DriveInUse,d0
+		beq	nousein0
+
+		bsr	diskin0
+		add.l	#4,sp
+
+_check1		lea	devIO1,a1
+		clr.w	actual_cyl
+		jsr	_read_cyl0
+		cmp.b	#TDERR_DiskChanged,d0
+		beq	nodiskin1
+		cmp.b	#TDERR_DriveInUse,d0
+		beq	nousein1
+		bsr	diskin1
+		rts
+
+
+
+		SECTION	subs,CODE
+
+_OpenAll	bsr	_OpenInt
+		bmi.s	openingerr
+		bsr	_OpenGfx
+		bmi.s	openingerr
+		bsr	_OpenDev
+		bmi.s	openingerr
+		moveq	#0,d0
+		rts
+openingerr	move.l	d0,d7
+		lea	dosname,a1
+		moveq	#0,d0
+		CALL	OpenLibrary
+		move.l	d0,dosbase
+		beq	_CloseAll
+_intclosed	cmp.b	#$fd,d7
+		bne.s	_gfxclosed
+		lea	noint_m,a0
+		bsr	_Put
+_gfxclosed	cmp.b	#$fc,d7
+		bne	_devclosed
+		lea	nogfx_m,a0
+		bsr	_Put
+_devclosed	cmp.b	#$fe,d7
+		bne	_CloseAll
+		lea	nodev_m,a0
+		bsr	_Put
+
+_CloseAll	move.l	4,a6
+		tst.b	devopen_flag
+		beq.s	closegfx
+		lea	devIO0,a1
+		CALL	CloseDevice
+		lea	devport0,a1
+		bsr	_FreePort
+		lea	devIO1,a1
+		CALL	CloseDevice
+		lea	devport1,a1
+		bsr	_FreePort
+closegfx	move.l	gfxbase,d0
+		beq.s	closeint
+		move.l	d0,a1
+		CALL	CloseLibrary
+closeint	move.l	intbase,d0
+		beq.s	closedos
+		move.l	d0,a1
+		CALL	CloseLibrary
+closedos	move.l	dosbase,d0
+		beq.s	closend
+		move.l	d0,a1
+		CALL	CloseLibrary
+closend		move.l	d7,d0
+		rts
+
+
+_OpenInt	move.l	4,a6
+		lea	intname,a1
+		moveq	#0,d0
+		CALL	OpenLibrary
+		move.l	d0,intbase
+		beq.s	noint
+		moveq	#0,d0
+		rts
+noint		move.b	#$fd,d0
+		rts
+
+
+_OpenGfx	move.l	4,a6
+		lea	gfxname,a1
+		moveq	#0,d0
+		CALL	OpenLibrary
+		move.l	d0,gfxbase
+		beq.s	nogfx
+		moveq	#0,d0
+		rts
+nogfx		move.b	#$fc,d0
+		rts
+
+
+_FreePort	move.l	a1,-(sp)		; a1, ptr port
+		move.b	MP_SIGBIT(a1),d0	; exec in a6
+		CALL	FreeSignal
+freeport1	move.l	(sp)+,a1
+		moveq	#0,d0
+		rts
+
+
+_CreatePort	move.l	a1,-(sp)		; a1, ptr port
+		moveq	#-1,d0			; exec in a6
+		CALL	AllocSignal
+		moveq	#-1,d1
+		cmp.l	d1,d0
+		beq	freeport1
+		move.l	(sp),a0
+		move.b	#0,LN_PRI(a0)
+		move.b	#NT_MSGPORT,LN_TYPE(a0)
+		move.b	#PA_SIGNAL,MP_FLAGS(a0)
+		move.b	d0,MP_SIGBIT(a0)
+		suba.l	a1,a1
+		CALL	FindTask
+		move.l	(sp),a1
+		move.l	d0,MP_SIGTASK(a1)
+		lea	MP_MSGLIST(a1),a0
+		NEWLIST	a0
+cportend	move.l	(sp)+,d0
+		rts
+
+
+_OpenDev	lea	devport0,a1
+		move.l	4,a6
+		bsr	_CreatePort
+		lea	trackname,a0
+		moveq	#0,d0
+		lea	devIO0,a1
+		moveq	#0,d1
+		CALL	OpenDevice
+		cmp.l	#IOERR_OPENFAIL,d0
+		beq	nodevice0
+		lea	devIO0,a0
+		lea	devport0,a1
+		move.l	a1,MN_REPLYPORT(a0)
+		lea	devport1,a1
+		bsr	_CreatePort
+		lea	trackname,a0
+		moveq	#1,d0
+		lea	devIO1,a1
+		moveq	#0,d1
+		CALL	OpenDevice
+		cmp.l	#IOERR_OPENFAIL,d0
+		beq	nodevice1
+		lea	devIO1,a0
+		lea	devport1,a1
+		move.l	a1,MN_REPLYPORT(a0)
+		st	devopen_flag
+		moveq	#0,d0
+		rts
+nodevice1	lea	devIO0,a1
+		CALL	CloseDevice
+		lea	devport0,a1
+		bsr	_FreePort
+nodevice0	sf	devopen_flag
+		move.b	#$fe,d0
+		rts
+
+
+_Put		movem.l	d2-d3/a6,-(sp)
+		move.l	a0,-(sp)
+		move.l	dosbase,a6
+		CALL	Output
+		move.l	d0,d1
+		moveq	#0,d0
+		move.l	(sp)+,d2
+		move.l	d2,a0
+countlen	tst.b	(a0)+
+		beq.s	truelen
+		add.l	#1,d0
+		bra.s	countlen
+truelen		move.l	d0,d3
+		CALL	Write
+		movem.l	(sp)+,d2-d3/a6
+		rts
+
+
+_Print		movem.l	d3-d7/a2-a6,-(sp)	; d0/d1 pos; a0 Cstring
+		move.l	a0,-(sp)
+		move.l	gfxbase,a6
+		move.l	rastport,a1
+		CALL	Move
+		move.l	rastport,a1
+		move.l	d2,d3
+		and.l	#$0f,d2
+		move.l	d2,d0
+		CALL	SetAPen
+		move.l	rastport,a1
+		and.l	#$f0,d3
+		move.l	d3,d0
+		lsr.b	#4,d0
+		CALL	SetBPen
+		move.l	rastport,a1
+		moveq	#0,d0
+		move.l	(sp),a0
+clen		tst.b	(a0)+
+		beq.s	truelen1
+		add.l	#1,d0
+		bra.s	clen
+truelen1	move.l	(sp)+,a0
+		CALL	Text
+		movem.l	(sp)+,d3-d7/a2-a6
+		rts
+
+
+_Bin2Dec	movem.l	d2-d7/a2-a6,-(sp)	; d0 num to conv
+		move.l	4,a6
+		lea	decmask,a0
+		lea	decbuff,a3
+		lea	decrout,a2
+		lea	numtoconv,a1
+		move.w	d0,(a1)
+		CALL	RawDoFmt
+		movem.l	(sp)+,d2-d7/a2-a6
+		rts
+decrout		move.b	d0,-1(a3)
+		adda.l	#1,a3
+		rts
+
+
+_0plus10	move.w	strt_cyl,d0
+		add.w	#10,d0
+aplusj		move.w	stp_cyl,d1
+		cmp.w	d1,d0
+		bhi.s	strttozero
+		move.w	d0,strt_cyl
+		jsr	_copylimit
+		rts
+
+strttozero	move.w	d1,strt_cyl
+		jmp	_copylimit
+
+
+_0plus1		move.w	strt_cyl,d0
+		add.w	#1,d0
+		bra.s	aplusj
+
+
+_1plus10	move.w	stp_cyl,d0
+		add.w	#10,d0
+bplusj		cmp.w	#79,d0
+		bhi.s	stptozero
+		move.w	d0,stp_cyl
+		jsr	_copylimit
+		rts
+
+stptozero	move.w	#79,stp_cyl
+		jmp	_copylimit
+
+
+_1plus1		move.w	stp_cyl,d0
+		add.w	#1,d0
+		bra.s	bplusj
+
+
+_0minus10	move.w	strt_cyl,d0
+		sub.w	#10,d0
+		bcs.s	strtto79
+		move.w	d0,strt_cyl
+		jsr	_copylimit
+		rts
+
+strtto79	move.w	#0,strt_cyl
+		jmp	_copylimit
+
+
+_0minus1	move.w	strt_cyl,d0
+		sub.w	#1,d0
+		bcs.s	strtto79
+		move.w	d0,strt_cyl
+		jsr	_copylimit
+		rts
+
+
+_1minus10	move.w	stp_cyl,d0
+		sub.w	#10,d0
+bminusj		move.w	strt_cyl,d1
+		cmp.w	d1,d0
+		ble.s	stpto0
+		move.w	d0,stp_cyl
+		jsr	_copylimit
+		rts
+
+stpto0		move.w	d1,stp_cyl
+		jmp	_copylimit
+
+
+_1minus1	move.w	stp_cyl,d0
+		sub.w	#1,d0
+		bra.s	bminusj
+
+
+
+_motor_off	move.l	a6,-(sp)
+		move.l	4,a6
+		move.w	#9,IO_COMMAND(a1)
+		clr.l	IO_LENGTH(a1)
+		CALL	DoIO
+		move.l	(sp)+,a6
+		rts
+
+
+
+_read_cyl0	move.l	a6,-(sp)
+		move.l	4,a6
+		move.w	#CMD_READ,IO_COMMAND(a1)
+_do_metr0	move.l	#lreadbuff,IO_DATA(a1)
+		move.l	#11264,IO_LENGTH(a1)
+		move.w	actual_cyl,d0
+		and.l	#$ffff,d0
+		lsl.l	#7,d0
+		lsl.l	#3,d0
+		mulu	#11,d0
+		move.l	d0,IO_OFFSET(a1)
+		CALL	DoIO
+		move.l	(sp)+,a6
+		rts
+
+
+_write_cyl0	move.l	a6,-(sp)
+		move.l	4,a6
+		move.w	#CMD_WRITE,IO_COMMAND(a1)
+		bra.s	_do_metr0
+
+
+
+_read_cyl	move.l	a6,-(sp)
+		move.l	4,a6
+		move.w	#CMD_READ,IO_COMMAND(a1)
+_do_metr	move.l	#lreadbuff,IO_DATA(a1)
+		move.l	#11264,IO_LENGTH(a1)
+		move.w	actual_cyl,d0
+		and.l	#$ffff,d0
+		lsl.l	#7,d0
+		lsl.l	#3,d0
+		mulu	#11,d0
+		move.l	d0,IO_OFFSET(a1)
+		CALL	DoIO
+		;CALL	SendIO
+		move.l	(sp)+,a6
+		rts
+
+
+_write_cyl	move.l	a6,-(sp)
+		move.l	4,a6
+		move.w	#CMD_WRITE,IO_COMMAND(a1)
+		bra.s	_do_metr
+
+
+
+_cleartrack	moveq	#0,d0
+clearloop	moveq	#0,d2
+		move.l	d0,-(sp)
+		bsr	_addtrack
+		move.l	(sp)+,d0
+		cmp.w	#79,d0
+		beq	clearend
+		add.w	#1,d0
+		bra.s	clearloop
+clearend	rts
+
+
+_addtrack	move.l	gfxbase,a6
+		move.l	d0,d3
+		move.l	d2,d0
+		move.l	rastport,a1
+		CALL	SetAPen
+		lsl.w	#2,d3
+		add.w	#10,d3
+		and.l	#$ffff,d3
+		move.l	d3,d0
+		move.l	#66,d1
+		move.l	d3,d2
+		add.l	#2,d2
+		move.l	#66+14,d3
+		move.l	rastport,a1
+		CALL	RectFill
+		rts
+
+
+_clearmem	lea	lreadbuff,a0
+		move.l	#2815,d0
+		moveq	#0,d1
+cl_loop		move.l	d1,(a0)+
+		dbf	d0,cl_loop
+		rts
+
+
+
+		SECTION	vuoti,BSS_C
+
+devport0	ds.b	MP_SIZE
+devIO0		ds.b	IOSTD_SIZE
+devport1	ds.b	MP_SIZE
+devIO1		ds.b	IOSTD_SIZE
+lreadbuff	ds.b	11264
+
+
+		SECTION	vuoti2,BSS
+
+devopen_flag	ds.w	1
+gfxbase		ds.l	1
+intbase		ds.l	1
+dosbase		ds.l	1
+mywinbase	ds.l	1
+rastport	ds.l	1
+userport	ds.l	1
+imclass		ds.l	1
+imcode		ds.w	1
+imiaddr		ds.l	1
+decbuff		ds.b	2
+		ds.b	2		; zeri per la stampa
+numtoconv	ds.w	1
+strt_cyl	ds.w	1
+stp_cyl		ds.w	1
+strtbuff	ds.w	2
+stpbuff		ds.w	2
+actual_cyl	ds.w	2
+disk0_flag	ds.w	1
+
+
+
+		SECTION	dativari,DATA
+
+decmask		dc.b	"%03d",0
+		even
+
+itsmine		dc.b	'Simple Copier by',0
+itslen		EQU	*-itsmine
+		even
+
+itsmine1	dc.b	'Mauro Panigada',0
+		even
+
+trackname	dc.b	'trackdisk.device',0
+		even
+
+dosname		dc.b	'dos.library',0
+		even
+
+intname		dc.b	'intuition.library',0
+		even
+
+gfxname		dc.b	'graphics.library',0
+		even
+
+noint_m		dc.b	'No intuition.library!',10,0
+		even
+
+nogfx_m		dc.b	'No graphics.library!',10,0
+		even
+
+nodev_m		dc.b	'No trackdisk.device (I need two drives)!',10,0
+		even
+
+nodisk0_m	dc.b	'   No df0:   ',0
+		even
+
+nodisk1_m	dc.b	'   No df1:   ',0
+		even
+
+nouse0_m	dc.b	'  df0: used  ',0
+		even
+
+nouse1_m	dc.b	'  df1: used  ',0
+		even
+
+diskprot_m	dc.b	'  Protected  ',0
+		even
+
+DISKCHANGEM	EQU	DISKREMOVED!DISKINSERTED
+
+mywin		dc.w	15,15			; Left,Top Edge
+		dc.w	340,100			; Width, Height
+		dc.b	1,2			; Detail, Block Pen
+		dc.l	GADGETUP!DISKCHANGEM	; IDCMP
+		dc.l	ACTIVATE!WINDOWDRAG	; flags
+		dc.l	gadget1			; firstgadget
+		dc.l	0			; checkmark
+		dc.l	mytitle			; title
+		dc.l	0			; screen
+		dc.l	0			; bitmap
+		dc.w	0,0,0,0			; MinWidth Height/Max W H
+		dc.w	WBENCHSCREEN		; type
+
+mytitle		dc.b	'                 Copier                    ',0
+		even
+
+gadget1		dc.l	gadget2			; next gadget
+		dc.w	9,20			; Left, Top Edge
+		dc.w	59,10			; Width Height
+		dc.w	GADGHCOMP		; flag
+		dc.w	RELVERIFY!GADGIMMEDIATE	; activation
+		dc.w	BOOLGADGET		; gadgettype
+		dc.l	gad1border		; gadget render
+		dc.l	0			; select render
+		dc.l	gad1text		; gadget text
+		dc.l	0			; mutual exclude
+		dc.l	0			; special info
+		dc.w	1			; gadget id
+		dc.l	0			; userdata
+gad1text	dc.b	1,0			; front/back pen
+		dc.b	0,0			; draw mode
+		dc.w	12,1			; left top edge
+		dc.l	0			; font
+		dc.l	gad1_m			; text
+		dc.l	0			; next
+gad1border	dc.w	0,0			; left top edge
+		dc.b	2,0			; front back pen
+		dc.b	0			; draw mode
+		dc.b	5			; number xy pairs
+		dc.l	gad1_b			; xy pairs
+		dc.l	0			; next
+gad1_b		dc.w	-1,-1
+		dc.w	59,-1
+		dc.w	59,10
+		dc.w	-1,10
+		dc.w	-1,-1
+gad1_m		dc.b	'QUIT',0
+		even
+
+gadget12	dc.l	0
+		dc.w	109,35,60,25
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad12border,0
+		dc.l	gad12text,0,0
+		dc.w	2
+		dc.l	_inizia			; reset valori start/stop
+gad12text	dc.b	1,0,0,0
+		dc.w	9,9
+		dc.l	0,gad12_m,0
+gad12border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	gad12_b,0
+gad12_b		dc.w	-1,-1
+		dc.w	60,-1
+		dc.w	60,25
+		dc.w	-1,25
+		dc.w	-1,-1
+gad12_m		dc.b	'RESET',0
+		even
+
+
+gadget4		dc.l	gadget5
+		dc.w	88,35,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad4text,0,0
+		dc.w	2
+		dc.l	_0plus10
+gad4text	dc.b	1,0,0,0
+		dc.w	0,0
+		dc.l	0,gad4_m,0
+gad4border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	gad4_b,0
+gad4_b		dc.w	-1,-1
+		dc.w	8,-1
+		dc.w	8,7
+		dc.w	-1,7
+		dc.w	-1,-1
+gad4_m		dc.b	'+',0
+		even
+
+gadget5		dc.l	gadget6
+		dc.w	97,35,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad4text,0,0
+		dc.w	2
+		dc.l	_0plus1
+		even
+
+gadget6		dc.l	gadget7
+		dc.w	173,35,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad4text,0,0
+		dc.w	2
+		dc.l	_1plus10
+		even
+
+gadget7		dc.l	gadget8
+		dc.w	182,35,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad4text,0,0
+		dc.w	2
+		dc.l	_1plus1
+		even
+
+gadget8		dc.l	gadget9
+		dc.w	88,53,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad8text,0,0
+		dc.w	2
+		dc.l	_0minus10
+gad8text	dc.b	1,0,0,0
+		dc.w	0,0
+		dc.l	0,gad8_m,0
+gad8_m		dc.b	'-',0
+		even
+
+gadget9		dc.l	gadget10
+		dc.w	97,53,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad8text,0,0
+		dc.w	2
+		dc.l	_0minus1
+		even
+
+gadget10	dc.l	gadget11
+		dc.w	173,53,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad8text,0,0
+		dc.w	2
+		dc.l	_1minus10
+		even
+
+gadget11	dc.l	gadget12
+		dc.w	182,53,8,7
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad4border,0
+		dc.l	gad8text,0,0
+		dc.w	2
+		dc.l	_1minus1
+		even
+
+gadget2		dc.l	gadget3
+		dc.w	88,20,102,10
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad2border,0
+		dc.l	gad2text,0,0
+		dc.w	2
+		dc.l	_start
+gad2text	dc.b	1,0,0,0
+		dc.w	10,1
+		dc.l	0,gad2_m,0
+gad2border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	gad2_b,0
+gad2_b		dc.w	-1,-1
+		dc.w	102,-1
+		dc.w	102,10
+		dc.w	-1,10
+		dc.w	-1,-1
+gad2_m		dc.b	'START COPY',0
+		even
+
+gadget3		dc.l	gadget4
+		dc.w	210,20,119,10
+		dc.w	GADGHCOMP,RELVERIFY!GADGIMMEDIATE,BOOLGADGET
+		dc.l	gad3border,0
+		dc.l	gad3text,0,0
+		dc.w	'AZ'
+		dc.l	_stop
+gad3text	dc.b	1,0,0,0
+		dc.w	22,1
+		dc.l	0,gad3_m,0
+gad3border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	gad3_b,0
+gad3_b		dc.w	-1,-1
+		dc.w	119,-1
+		dc.w	119,10
+		dc.w	-1,10
+		dc.w	-1,-1
+gad3_m		dc.b	'STOP COPY',0
+		even
+
+myborder	dc.w	210,34
+		dc.b	2,0,0,5
+		dc.l	mybord0,myborderb
+mybord0		dc.w	0,0
+		dc.w	119,0
+		dc.w	119,11
+		dc.w	0,11
+		dc.w	0,0
+		even
+
+myborderb	dc.w	210,49
+		dc.b	2,0,0,5
+		dc.l	mybord0,0
+		even
+
+trackborder	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	trackb0,0
+trackb0		dc.w	0,0
+		dc.w	4,0
+		dc.w	4,16
+		dc.w	0,16
+		dc.w	0,0
+		even
+
+
+		END

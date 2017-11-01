@@ -1,0 +1,1274 @@
+****
+****
+**
+** SE AVETE UN ASSEMBLATORE CHE AGGIUNGE DEGLI ZERI LA` DOVE SERVIREBBERO
+** PER PAREGGIARE (AUTO-EVEN, INSOMMA), TOGLIETEGLI QUESTA OPZIONE O
+** LE SCRITTE NON COMPARIRANNO CORRETTAMENTE.
+**
+** DICIAMO CHE HO EVITATO IL PROBLEMA PONENDO DC.B INVECE DI DC.W:
+** DC.W X,Y = DC.B (X>>8),(X&$FF),(Y>>8),(Y&$FF)
+** CHE E` PIU` LUNGO, PERO`...
+**
+****
+****
+
+
+
+
+_LVOOpenLibrary                 EQU     -552
+_LVOCloseLibrary                EQU     -414
+_LVODisable                     EQU     -120
+_LVOEnable                      EQU     -126
+_LVOForbid			EQU	-$84
+_LVOPermit			EQU	-$8A
+_LVOOwnBlitter			EQU	-$1c8
+_LVODisownBlitter		EQU	-$1ce
+_LVOLoadView			EQU	-$de
+_LVOWaitTOF			EQU	-$10e
+_LVORethinkDisplay		EQU	-$186
+_LVOFindTask			EQU	-$126
+_LVOSetTaskPri			EQU	-$12c
+_LVOWaitBlit			EQU	-$e4
+
+bltddat     EQU   $000
+dmaconr     EQU   $002
+vposr	    EQU   $004
+vhposr	    EQU   $006
+dskdatr     EQU   $008
+joy0dat     EQU   $00A
+joy1dat     EQU   $00C
+clxdat	    EQU   $00E
+
+adkconr     EQU   $010
+pot0dat     EQU   $012
+pot1dat     EQU   $014
+potinp	    EQU   $016
+serdatr     EQU   $018
+dskbytr     EQU   $01A
+intenar     EQU   $01C
+intreqr     EQU   $01E
+
+dskpt	    EQU   $020
+dsklen	    EQU   $024
+dskdat	    EQU   $026
+refptr	    EQU   $028
+vposw	    EQU   $02A
+vhposw	    EQU   $02C
+copcon	    EQU   $02E
+serdat	    EQU   $030
+serper	    EQU   $032
+potgo	    EQU   $034
+joytest     EQU   $036
+strequ	    EQU   $038
+strvbl	    EQU   $03A
+strhor	    EQU   $03C
+strlong     EQU   $03E
+
+bltcon0     EQU   $040
+bltcon1     EQU   $042
+bltafwm     EQU   $044
+bltalwm     EQU   $046
+bltcpt	    EQU   $048
+bltbpt	    EQU   $04C
+bltapt	    EQU   $050
+bltdpt	    EQU   $054
+bltsize     EQU   $058
+bltcon0l    EQU   $05B		; note: byte access only
+bltsizv     EQU   $05C
+bltsizh     EQU   $05E
+
+bltcmod     EQU   $060
+bltbmod     EQU   $062
+bltamod     EQU   $064
+bltdmod     EQU   $066
+
+bltcdat     EQU   $070
+bltbdat     EQU   $072
+bltadat     EQU   $074
+
+deniseid    EQU   $07C
+dsksync     EQU   $07E
+
+cop1lc	    EQU   $080
+cop2lc	    EQU   $084
+copjmp1     EQU   $088
+copjmp2     EQU   $08A
+copins	    EQU   $08C
+diwstrt     EQU   $08E
+diwstop     EQU   $090
+ddfstrt     EQU   $092
+ddfstop     EQU   $094
+dmacon	    EQU   $096
+clxcon	    EQU   $098
+intena	    EQU   $09A
+intreq	    EQU   $09C
+adkcon	    EQU   $09E
+
+aud	    EQU   $0A0
+aud0	    EQU   $0A0
+aud1	    EQU   $0B0
+aud2	    EQU   $0C0
+aud3	    EQU   $0D0
+
+* AudChannel
+ac_ptr	    EQU   $00	; ptr to start of waveform data
+ac_len	    EQU   $04	; length of waveform in words
+ac_per	    EQU   $06	; sample period
+ac_vol	    EQU   $08	; volume
+ac_dat	    EQU   $0A	; sample pair
+ac_SIZEOF   EQU   $10
+
+bplpt	    EQU   $0E0
+
+bplcon0     EQU   $100
+bplcon1     EQU   $102
+bplcon2     EQU   $104
+bplcon3     EQU   $106
+bpl1mod     EQU   $108
+bpl2mod     EQU   $10A
+bplcon4     EQU   $10C
+clxcon2     EQU   $10E
+
+bpldat	    EQU   $110
+
+sprpt	    EQU   $120
+
+spr	    EQU   $140
+
+* SpriteDef
+sd_pos	    EQU   $00
+sd_ctl	    EQU   $02
+sd_dataa    EQU   $04
+sd_datab    EQU   $06
+sd_SIZEOF   EQU   $08
+
+color	    EQU   $180
+
+htotal	    EQU   $1c0
+hsstop	    EQU   $1c2
+hbstrt	    EQU   $1c4
+hbstop	    EQU   $1c6
+vtotal	    EQU   $1c8
+vsstop	    EQU   $1ca
+vbstrt	    EQU   $1cc
+vbstop	    EQU   $1ce
+sprhstrt    EQU   $1d0
+sprhstop    EQU   $1d2
+bplhstrt    EQU   $1d4
+bplhstop    EQU   $1d6
+hhposw	    EQU   $1d8
+hhposr	    EQU   $1da
+beamcon0    EQU   $1dc
+hsstrt	    EQU   $1de
+vsstrt	    EQU   $1e0
+hcenter     EQU   $1e2
+diwhigh     EQU   $1e4
+fmode	    EQU   $1fc
+
+ciapra		  EQU	$0000
+
+
+_custom		EQU	$dff000
+_ciaa		EQU	$bfe001
+
+
+
+		SECTION	myhardprova,CODE
+
+; QUESTA E` LA STARTUP SEMPLICE + qualcosa di migliore...
+; di importante manca ancora il controllo sul vbr e qualcosa d'altro...
+
+		move.l	4.w,a6
+		lea	gfxname(pc),a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,gfxbase
+		beq	error0
+
+		move.l	gfxbase(pc),a6
+		move.l	$26(a6),oldcop
+		move.l	$32(a6),oldcop2
+		move.l	$22(a6),wbview	; view del workbench
+		suba.l	a1,a1
+		jsr	_LVOLoadView(a6)
+		suba.l	a1,a1
+		jsr	_LVOLoadView(a6)
+		jsr	_LVOWaitTOF(a6)
+		jsr	_LVOWaitTOF(a6)
+		jsr	_LVOWaitTOF(a6)
+		jsr	_LVOWaitTOF(a6)
+
+		move.l	gfxbase,a6
+		jsr	_LVOOwnBlitter(a6)
+		jsr	_LVOWaitBlit(a6)
+		jsr	_LVOWaitBlit(a6)
+
+		move.l	4.w,a6
+		sub.l	a1,a1
+		jsr	_LVOFindTask(a6)
+		move.l	d0,a1
+		moveq	#127,d0
+		jsr	_LVOSetTaskPri(a6)
+		jsr	_LVOForbid(a6)
+		jsr	_LVODisable(a6)
+
+		bsr	 main
+
+		move.l	oldcop2,_custom+cop2lc
+		move.l	oldcop,_custom+cop1lc
+		move.w	#0,_custom+copjmp1
+
+		move.l	4.w,a6
+		sub.l	a1,a1
+		jsr	_LVOFindTask(a6)
+		move.l	d0,a1
+		moveq	#0,d0
+		jsr	_LVOSetTaskPri(a6)
+		jsr	_LVOEnable(a6)
+		jsr	_LVOPermit(a6)
+
+		move.l	gfxbase(pc),a6
+		jsr	_LVOWaitBlit(a6)
+		jsr	_LVOWaitBlit(a6)
+		jsr	_LVODisownBlitter(a6)
+
+		move.l	wbview(pc),a1
+		jsr	_LVOLoadView(a6)
+		jsr	_LVOWaitTOF(a6)
+		jsr	_LVOWaitTOF(a6)
+
+		move.l	4.w,a6
+		move.l	gfxbase,a1
+		jsr	_LVOCloseLibrary(a6)
+		moveq	#0,d0
+error0		rts
+
+
+
+gfxname		dc.b	"graphics.library",0
+		even
+gfxbase		dc.l	0
+intbase		dc.l	0
+oldcop		dc.l	0
+oldcop2		dc.l	0
+wbview		dc.l	0
+
+
+
+*#########################################################################
+*#########################################################################
+*=========================================================================
+*
+*  +-----------------------------+
+*  | MAIN PROGRAM, HARD SECTION! | Prima era solo la startup (OS out)
+*  +-----------------------------+
+*
+*=========================================================================
+
+main
+		move.l	#copper,_custom+cop1lc
+		move.w	d0,_custom+copjmp1
+
+		lea	$dff000,a5	; questo in realta` e` di startup
+		move.w	dmaconr(a5),odmacon
+		move.w	adkconr(a5),oadkcon
+		move.w	intenar(a5),ointena
+		move.w	intreqr(a5),ointreq
+
+		move.w	#$7fff,d0
+		move.w	d0,dmacon(a5)
+		move.w	d0,adkcon(a5)
+		move.w	d0,intena(a5)
+		move.w	d0,intreq(a5)
+
+*>>>>>>>>>> DISATTIVA L'AGA! (!!??)
+
+		move.w	#0,_custom+fmode	; clr.w no? disattiva AGA
+		move.w	#$c00,_custom+bplcon3	; disattiva AGA
+		move.w	#$11,_custom+bplcon4	; resetta palette sprite
+
+		move.w	#%1000001111100000,_custom+dmacon
+
+;---------------------------------------------
+		lea	misprit,a1
+		move.l	#questo,d0
+		move.w	d0,6(a1)
+		swap	d0
+		move.w	d0,2(a1)
+		lea	sprit2,a1
+		move.l	#codesto,d0
+		move.w	d0,6(a1)
+		swap	d0
+		move.w	d0,2(a1)
+
+		lea	mibit,a1
+		move.l	#bplane,d0
+		move.w	d0,6(a1)
+		swap	d0
+		move.w	d0,2(a1)
+		lea	bp2,a1
+		move.l	#bplane2,d0
+		move.w	d0,6(a1)
+		swap	d0
+		move.w	d0,2(a1)
+
+		move.b	_custom+joy0dat,oldmy
+		move.b	_custom+joy0dat+1,oldmx
+
+		lea	testo(pc),a0
+		lea	bplane,a3
+		bsr	bwrite
+
+		lea	testo2(pc),a0
+		lea	bplane2,a3
+		bsr	bwrite
+
+skipperj	btst.b	#7,_ciaa+ciapra
+		beq.s	sk_fast
+		clr.w	rr
+		cmp.b	#$80,_custom+vhposr
+		bne.s	skipperj
+		bra.s	nodw
+sk_fast		move.w	#1,rr
+		cmp.b	#$80,_custom+vhposr
+		bne.s	skipperj
+nodw
+		bsr	modify1		; - prima barra sopra sotto
+		bsr	colcycle	; - colori dello sprite 0
+		bsr	modify2		; - barra sulla scritta MAURO
+		bsr	boncesprite	; - <P> rimbalzina
+		bsr	boingball	; - palla che "rimbalza" (!)
+		bsr	boingball	; 3 volte anche bouncemau
+		bsr	boingball
+		bsr	bouncemau	; super-speedup upon
+		;bsr	bouncemau	; bounce "MAURO"!!
+		;bsr	bouncemau	; - "MAURO" destra-sinistra
+		;bsr	bouncemau	; cfr. boingball
+		bsr	ccscritta
+		bsr	ccscritta
+		
+		move.w	rr,d0
+		subq.w	#1,d0
+		bmi.s	stip
+		move.w	d0,rr
+		bra.s	nodw
+		
+
+stip		btst.b	#6,_ciaa+ciapra
+		bne.s	skipperj
+
+
+;----------------------------------------------
+		lea	$dff000,a5	; startup - non assumiamo nulla
+		move.l	#$80008000,d0
+		or.l	d0,odmacon
+		or.l	d0,ointena
+		move.w	odmacon,dmacon(a5)
+		move.w	oadkcon,adkcon(a5)
+		move.w	ointena,intena(a5)
+		move.w	ointreq,intreq(a5)
+		rts
+
+*>>>>>>>>>>>>>>>>>>>>>>>>>>> questi dati sono tenuti qua perche` sono di
+*>>>>>>>>>>>>>>>>>>>>>>>>>>> startup....
+odmacon		dc.w	0
+oadkcon		dc.w	0
+ointena		dc.w	0
+ointreq		dc.w	0
+
+
+;=============================================
+modify2		lea	few,a0
+		tst.w	mf
+		bmi.s	mret
+		cmp.b	#$a4,(a0)
+		beq.s	mnot
+		moveq	#1,d0
+		add.b	d0,(a0)
+		add.b	d0,8(a0)
+		add.b	d0,16(a0)
+		add.b	d0,24(a0)
+		add.b	d0,32(a0)
+		add.b	d0,40(a0)
+		rts
+mnot		not.w	mf
+		rts
+mret		cmp.b	#$94,(a0)
+		beq.s	mnot
+		moveq	#1,d0
+		sub.b	d0,(a0)
+		sub.b	d0,8(a0)
+		sub.b	d0,16(a0)
+		sub.b	d0,24(a0)
+		sub.b	d0,32(a0)
+		sub.b	d0,40(a0)
+		rts
+
+
+;===========================================
+colcycle	move.w	rr,d1
+		dbf	d1,ccy_no
+		lea	ciclet,a0
+		move.w	coltabpos(pc),d0
+		cmp.w	#coltablen,d0
+		beq.s	cczero
+		addq.w	#6,coltabpos
+cccont		lea	coltab(pc),a1
+		move.w	(a1,d0.w),(a0)
+		move.w	2(a1,d0.w),4(a0)
+		move.w	4(a1,d0.w),8(a0)
+ccy_no		rts
+cczero		moveq	#0,d0
+		clr.w	coltabpos
+		rts
+
+
+;============================================
+boingball	lea	_custom,a5	; perche` non lo faccio sempre? Bah!
+		lea	ball,a4
+
+		move.l	postabx,a3
+		move.l	postaby,a2
+		move.w	-(a3),d1
+		move.w	-(a2),d7
+		move.l	a3,postabx
+		move.l	a2,postaby
+		tst.w	d1
+		bmi.s	reloadx
+bbb		tst.w	d7
+		bmi.s	reloady
+		bra.s	noreload
+reloadx		lea	balltabx(pc),a3
+		move.w	-(a3),d1
+		move.l	a3,postabx
+		bra.s	bbb
+reloady		lea	balltaby(pc),a2
+		move.w	-(a2),d7
+		move.l	a2,postaby
+
+noreload	movem.w	d1/d7,-(sp)
+		move.w	oldballx,d1
+		move.w	oldbally,d7
+		lea	bplane,a0
+		move.w	d1,d0
+		and.w	#$000f,d0
+		lsl.w	#8,d0
+		lsl.w	#4,d0
+		or.w	#$09f0,d0
+		lsr.w	#3,d1
+		and.w	#$fffe,d1
+		add.w	d1,a0
+		;mulu.w	#40,d7		; da cambiare
+		lsl.w	#3,d7	; *8 (r *5)
+		move.w	d7,d6
+		lsl.w	#2,d7	; *4
+		add.w	d6,d7
+		add.w	d7,a0
+		bsr	bb_clear
+		movem.w	(sp)+,d1/d7
+		move.w	d1,oldballx
+		move.w	d7,oldbally
+
+		bsr	bouncemau	; risparmiamo tempo..., credo.
+
+		lea	bplane,a0
+		move.w	d1,d0
+		and.w	#$000f,d0
+		lsl.w	#8,d0
+		lsl.w	#4,d0
+		or.w	#$09f0,d0
+		lsr.w	#3,d1
+		and.w	#$fffe,d1
+		add.w	d1,a0
+		;mulu.w	#40,d7
+		lsl.w	#3,d7
+		move.w	d7,d6
+		lsl.w	#2,d7
+		add.w	d6,d7
+		add.w	d7,a0
+		;bsr	bb_put	; e` equivalente...
+		;rts
+
+
+bb_put		btst.b	#6,dmaconr(a5)	; a4 = source
+bb_loop		btst.b	#6,dmaconr(a5)	; a0 = dest,d0 = shift + op
+		bne.s	bb_loop
+		move.w	d0,bltcon0(a5)	; minterm: a->d + shift
+		move.w	#0,bltcon1(a5)	; #0
+		move.w	#-2,bltamod(a5)	; mod can. a (diretto..)
+		move.w	#(40-((BALLX+16)/8)),bltdmod(a5)	; mod can. d
+		move.w	#$ffff,bltafwm(a5)
+		move.w	#0,bltalwm(a5)
+		move.l	a4,bltapt(a5)	; source ptr
+		move.l	a0,bltdpt(a5)	; dest ptr
+		move.w	#(BALLY*64)+((BALLX+16)/16),bltsize(a5)	; 32x31
+		rts
+
+
+; penso che con l'opportuno utilizzo dei minterm si puo` benissimo
+; fare un clear senza dover definire un oggetto di zeri delle stesse
+; dimensioni di quello da cancellare...
+
+bb_clear	btst.b	#6,dmaconr(a5)	; a4 = source
+bbc_loop	btst.b	#6,dmaconr(a5)	; a0 = dest,d0 = shift + op
+		bne.s	bbc_loop
+		move.w	d0,bltcon0(a5)	; minterm: a->d + shift
+		move.w	#0,bltcon1(a5)	; #0
+		move.w	#-2,bltamod(a5)	; mod can. a (diretto..)
+		move.w	#(40-((BALLX+16)/8)),bltdmod(a5)	; mod can. d
+		move.w	#$ffff,bltafwm(a5)
+		move.w	#0,bltalwm(a5)
+		move.l	#ball0,bltapt(a5)	; source ptr
+		move.l	a0,bltdpt(a5)	; dest ptr
+		move.w	#(BALLY*64)+((BALLX+16)/16),bltsize(a5)	; 32x31
+		rts
+
+
+
+;=============================================
+boncesprite	move.w	rr,d1
+		dbf	d1,bs_no
+
+		lea	codesto,a1
+		moveq	#11,d2
+		cmp.w	#300,s2x
+		beq.s	bs_invertx
+		tst.w	s2x
+		bne.s	bs_l0
+		bclr.b	#0,s2f+1
+		bra.s	bs_l0
+bs_invertx	bset.b	#0,s2f+1
+bs_l0		cmp.w	#10,s2y
+		beq.s	bs_inverty
+		cmp.w	#-2,s2y
+		bne.s	bs_l1
+		bclr.b	#1,s2f+1
+		bra.s	bs_l1
+bs_inverty	bset.b	#1,s2f+1
+bs_l1
+bs_do		move.w	s2f,d3
+		beq.s	bs_aa
+		cmp.w	#1,d3
+		beq.s	bs_as
+		cmp.w	#2,d3
+		beq.s	bs_sa
+
+bs_ss		subq.w	#1,s2y
+		subq.w	#1,s2x
+		move.w	s2y,d0
+		add.w	s2yc,d0
+		move.w	s2x,d1
+		bra	amp
+
+bs_no		rts
+
+bs_aa		addq.w	#1,s2y
+		addq.w	#1,s2x
+		move.w	s2y,d0
+		add.w	s2yc,d0
+		move.w	s2x,d1
+		bra	amp
+
+bs_as		addq.w	#1,s2y
+		subq.w	#1,s2x
+		move.w	s2y,d0
+		add.w	s2yc,d0
+		move.w	s2x,d1
+		bra	amp
+
+bs_sa		subq.w	#1,s2y
+		addq.w	#1,s2x
+		move.w	s2y,d0
+		add.w	s2yc,d0
+		move.w	s2x,d1
+		bra	amp
+
+
+;=================================================
+modify1		lea	questo,a1
+		tst.w	postab
+		bmi.s	su
+		bsr	movisprite
+		lea	tipo,a0
+		cmp.b	#100,(a0)
+		beq.s	sut
+lappo		addq.b	#1,(a0)
+nl		rts
+giut
+sut		not.w	postab
+		rts
+su		bsr	movisprite
+		lea	tipo,a0
+		cmp.b	#40,(a0)
+		beq.s	giut
+luppo		subq.b	#1,(a0)
+nt		rts
+
+
+;==========================================
+movisprite	move.w	sx,oldsx
+		move.w	sy,oldsy
+		moveq	#0,d0
+		move.l	d0,d1
+		move.b	_custom+joy0dat,d1
+		move.b	d1,d0
+		sub.b	oldmy,d0
+		beq.s	novert
+		ext.w	d0
+		add.w	d0,sy
+novert		move.b	d1,oldmy
+		move.b	_custom+joy0dat+1,d1
+		move.b	d1,d0
+		sub.b	oldmx,d0
+		beq.s	noriz
+		ext.w	d0
+		add.w	d0,sx
+noriz		move.b	d1,oldmx
+
+		move.w	sx,d1
+		move.w	sy,d0
+		moveq	#13,d2
+
+		cmp.w	#1,d1	; controllo di non uscita dallo schermo.
+		bls.s	ms_nox	; non funziona tanto bene: provoca delle
+		cmp.w	#300,d1	; strane scattosita` ai limiti...
+		bhi.s	ms_nox
+chky		cmp.w	#1,d0
+		bls.s	ms_noy
+		cmp.w	#240,d0
+		bhi.s	ms_noy
+		bra.s	amp
+ms_nox		move.w	oldsx,sx
+		move.w	sx,d1
+		bra.s	chky
+ms_noy		move.w	oldsy,sy
+		move.w	sy,d0
+
+
+amp		add.w	#$2c,d0
+		move.b	d0,(a1)
+		btst.l	#8,d0
+		beq.s	nonvs
+		bset.b	#2,3(a1)
+		bra.s	tvs
+nonvs		bclr.b	#2,3(a1)
+tvs		add.w	d2,d0
+		move.b	d0,2(a1)
+		btst.l	#8,d0
+		beq.s	et1
+		bset.b	#1,3(a1)
+		bra.s	et2
+et1		bclr.b	#1,3(a1)
+et2		add.w	#128,d1
+		btst.l	#0,d1
+		beq.s	v0
+		bset	#0,3(a1)
+		bra.s	v1
+v0		bclr.b	#0,3(a1)
+v1		lsr.w	#1,d1
+		move.b	d1,1(a1)
+		rts
+
+
+;=============================================
+RBOUND		EQU	260
+
+bouncemau	lea	bouncer+2,a0
+		lea	bp2+6,a1
+		tst.w	bouncef
+		bmi.s	bm_sinistra
+		tst.w	bouncev
+		beq.s	bounk
+		subq.w	#1,bouncev
+		cmp.b	#$ff,1(a0)
+		beq.s	bpshift0
+		add.b	#$11,1(a0)
+		rts
+bpshift0	clr.b	1(a0)
+		subq.w	#2,(a1)
+		rts
+
+bounk		not.w	bouncef
+		rts
+
+bm_sinistra	cmp.w	#RBOUND,bouncev
+		beq.s	bounk
+		addq.w	#1,bouncev
+		cmp.b	#0,1(a0)
+		beq.s	bpshift1
+		sub.b	#$11,1(a0)
+		rts
+bpshift1	move.b	#$ff,1(a0)
+		addq.w	#2,(a1)
+		rts
+
+
+;================================================================
+bwrite		;move.w	(a0)+,d3	; x in caratter (80)
+		;move.w	(a0)+,d6	; y in pixel
+		moveq	#0,d3
+		moveq	#0,d6
+		move.b	(a0)+,d3	; cosi` puo` accedere a
+		lsl.w	#8,d3		; indirizzi dispari e non serve
+		or.b	(a0)+,d3	; lo zero di allineamento, ma e`
+		move.b	(a0)+,d6	; piu` lento...
+		lsl.w	#8,d6
+		or.b	(a0)+,d6
+bw_loop0	move.w	d6,d4
+		;mulu.w	#40,d4
+		lsl.w	#3,d4	; moltiplica *8, rimane da fare *5
+		move.w	d4,d5
+		lsl.w	#2,d4	; *4
+		add.w	d5,d4	; +1 = *5! (4x+x=5x, algebra docet)
+		moveq	#0,d5
+bw_loop		move.b	(a0)+,d2
+		cmp.b	#$fe,d2
+		beq.s	end_text
+		cmp.b	#$ff,d2
+		beq.s	bwrite
+		;tst.b	d2
+		;beq.s	bw_loop
+		cmp.b	#" ",d2
+		beq.s	spc_found
+		cmp.b	#10,d2
+		beq.s	crf
+		bsr	get_char
+spc_found	addq.w	#1,d5
+		bra.s	bw_loop
+crf		addq.w	#8,d6
+		bra.s	bw_loop0
+end_text	rts
+get_char	lea	my_set(pc),a1
+		moveq	#0,d0
+		moveq	#0,d1
+get_itchar	move.b	(a1)+,d0
+		cmp.b	d2,d0
+		beq.s	ok_char
+		addq.w	#1,d1
+		bra.s	get_itchar
+ok_char		lea	char_set,a1
+		lsl.w	#3,d1
+		add.l	d1,a1
+get_cpos	move.l	a3,a2
+		adda.w	d3,a2
+		adda.w	d4,a2
+		adda.w	d5,a2
+		move.b	(a1)+,40*0(a2)
+		move.b	(a1)+,40*1(a2)
+		move.b	(a1)+,40*2(a2)
+		move.b	(a1)+,40*3(a2)
+		move.b	(a1)+,40*4(a2)
+		move.b	(a1)+,40*5(a2)
+		move.b	(a1)+,40*6(a2)
+		move.b	(a1)+,40*7(a2)
+		rts
+
+
+;=============================================
+ccscritta	lea	scritta2c+2,a0
+		lea	t2color(pc),a1
+		move.w	p2col(pc),d1
+		move.w	(a1,d1),(a0)
+		addq.w	#2,d1
+		cmp.w	#t2collen,d1
+		bne.s	ccs_ok
+		moveq	#0,d1
+ccs_ok		move.w	d1,p2col
+		rts
+
+
+
+;########################################################################
+;########################################################################
+
+rr		dc.w	0
+
+bouncef		dc.w	0
+bouncev		dc.w	RBOUND
+
+postab		dc.w	0
+
+oldmx		dc.b	0
+oldmy		dc.b	0
+
+oldsx		dc.w	0
+oldsy		dc.w	0
+
+s2x		dc.w	0
+s2y		dc.w	0
+s2yc		dc.w	$c9-$2c
+s2f		dc.w	0
+
+oldballx	dc.w	10
+oldbally	dc.w	256-31
+
+; N=(Y*(SCREENX/8))+(X/16), che per me e` N=(Y*20)+(X/16)
+; ADDR=BP+N*2
+; MODULO=(BPX-IMAGEX)*2, espressi in word...
+
+BALLX		EQU	32
+BALLY		EQU	31
+
+postabx		dc.l	balltabx
+postaby		dc.l	balltaby
+
+mf		dc.w	0
+
+
+		dc.w	-1
+		dc.w	$0096,$0097,$0098,$0099,$0099,$009A,$009B,$009B,$009C,$009D
+		dc.w	$009E,$009E,$009F,$00A0,$00A1,$00A1,$00A2,$00A3,$00A3,$00A4
+		dc.w	$00A5,$00A6,$00A6,$00A7,$00A8,$00A8,$00A9,$00AA,$00AB,$00AB
+		dc.w	$00AC,$00AD,$00AD,$00AE,$00AF,$00AF,$00B0,$00B1,$00B1,$00B2
+		dc.w	$00B3,$00B3,$00B4,$00B5,$00B5,$00B6,$00B7,$00B7,$00B8,$00B9
+		dc.w	$00B9,$00BA,$00BB,$00BB,$00BC,$00BC,$00BD,$00BE,$00BE,$00BF
+		dc.w	$00BF,$00C0,$00C1,$00C1,$00C2,$00C2,$00C3,$00C3,$00C4,$00C5
+		dc.w	$00C5,$00C6,$00C6,$00C7,$00C7,$00C8,$00C8,$00C9,$00C9,$00CA
+		dc.w	$00CA,$00CB,$00CB,$00CC,$00CC,$00CD,$00CD,$00CE,$00CE,$00CE
+		dc.w	$00CF,$00CF,$00D0,$00D0,$00D1,$00D1,$00D1,$00D2,$00D2,$00D2
+		dc.w	$00D3,$00D3,$00D4,$00D4,$00D4,$00D5,$00D5,$00D5,$00D5,$00D6
+		dc.w	$00D6,$00D6,$00D7,$00D7,$00D7,$00D7,$00D8,$00D8,$00D8,$00D8
+		dc.w	$00D9,$00D9,$00D9,$00D9,$00DA,$00DA,$00DA,$00DA,$00DA,$00DA
+		dc.w	$00DB,$00DB,$00DB,$00DB,$00DB,$00DB,$00DB,$00DB,$00DB,$00DC
+		dc.w	$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC
+		dc.w	$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC,$00DC
+		dc.w	$00DC,$00DB,$00DB,$00DB,$00DB,$00DB,$00DB,$00DB,$00DB,$00DB
+		dc.w	$00DA,$00DA,$00DA,$00DA,$00DA,$00DA,$00D9,$00D9,$00D9,$00D9
+		dc.w	$00D8,$00D8,$00D8,$00D8,$00D7,$00D7,$00D7,$00D7,$00D6,$00D6
+		dc.w	$00D6,$00D5,$00D5,$00D5,$00D5,$00D4,$00D4,$00D4,$00D3,$00D3
+		dc.w	$00D2,$00D2,$00D2,$00D1,$00D1,$00D1,$00D0,$00D0,$00CF,$00CF
+		dc.w	$00CE,$00CE,$00CE,$00CD,$00CD,$00CC,$00CC,$00CB,$00CB,$00CA
+		dc.w	$00CA,$00C9,$00C9,$00C8,$00C8,$00C7,$00C7,$00C6,$00C6,$00C5
+		dc.w	$00C5,$00C4,$00C3,$00C3,$00C2,$00C2,$00C1,$00C1,$00C0,$00BF
+		dc.w	$00BF,$00BE,$00BE,$00BD,$00BC,$00BC,$00BB,$00BB,$00BA,$00B9
+		dc.w	$00B9,$00B8,$00B7,$00B7,$00B6,$00B5,$00B5,$00B4,$00B3,$00B3
+		dc.w	$00B2,$00B1,$00B1,$00B0,$00AF,$00AF,$00AE,$00AD,$00AD,$00AC
+		dc.w	$00AB,$00AB,$00AA,$00A9,$00A8,$00A8,$00A7,$00A6,$00A6,$00A5
+		dc.w	$00A4,$00A3,$00A3,$00A2,$00A1,$00A1,$00A0,$009F,$009E,$009E
+		dc.w	$009D,$009C,$009B,$009B,$009A,$0099,$0099,$0098,$0097,$0096
+balltaby
+
+		dc.w	-1
+		dc.w	$0001,$0003,$0005,$0008,$000A,$000C,$000E,$0010,$0013,$0015
+		dc.w	$0017,$0019,$001B,$001E,$0020,$0022,$0024,$0026,$0029,$002B
+		dc.w	$002D,$002F,$0031,$0033,$0036,$0038,$003A,$003C,$003E,$0040
+		dc.w	$0042,$0045,$0047,$0049,$004B,$004D,$004F,$0051,$0053,$0055
+		dc.w	$0058,$005A,$005C,$005E,$0060,$0062,$0064,$0066,$0068,$006A
+		dc.w	$006C,$006E,$0070,$0072,$0074,$0076,$0078,$007A,$007C,$007E
+		dc.w	$0080,$0082,$0084,$0086,$0088,$008A,$008C,$008E,$008F,$0091
+		dc.w	$0093,$0095,$0097,$0099,$009B,$009C,$009E,$00A0,$00A2,$00A4
+		dc.w	$00A5,$00A7,$00A9,$00AB,$00AC,$00AE,$00B0,$00B2,$00B3,$00B5
+		dc.w	$00B7,$00B8,$00BA,$00BC,$00BD,$00BF,$00C0,$00C2,$00C4,$00C5
+		dc.w	$00C7,$00C8,$00CA,$00CB,$00CD,$00CE,$00D0,$00D1,$00D3,$00D4
+		dc.w	$00D6,$00D7,$00D8,$00DA,$00DB,$00DD,$00DE,$00DF,$00E1,$00E2
+		dc.w	$00E3,$00E4,$00E6,$00E7,$00E8,$00E9,$00EB,$00EC,$00ED,$00EE
+		dc.w	$00EF,$00F0,$00F2,$00F3,$00F4,$00F5,$00F6,$00F7,$00F8,$00F9
+		dc.w	$00FA,$00FB,$00FC,$00FD,$00FE,$00FF,$0100,$0101,$0101,$0102
+		dc.w	$0103,$0104,$0105,$0106,$0106,$0107,$0108,$0109,$0109,$010A
+		dc.w	$010B,$010B,$010C,$010D,$010D,$010E,$010E,$010F,$010F,$0110
+		dc.w	$0111,$0111,$0111,$0112,$0112,$0113,$0113,$0114,$0114,$0114
+		dc.w	$0115,$0115,$0115,$0116,$0116,$0116,$0116,$0117,$0117,$0117
+		dc.w	$0117,$0117,$0118,$0118,$0118,$0118,$0118,$0118,$0118,$0118
+		dc.w	$0118,$0118,$0118,$0118,$0118,$0118,$0118,$0118,$0117,$0117
+		dc.w	$0117,$0117,$0117,$0116,$0116,$0116,$0116,$0115,$0115,$0115
+		dc.w	$0114,$0114,$0114,$0113,$0113,$0112,$0112,$0111,$0111,$0111
+		dc.w	$0110,$010F,$010F,$010E,$010E,$010D,$010D,$010C,$010B,$010B
+		dc.w	$010A,$0109,$0109,$0108,$0107,$0106,$0106,$0105,$0104,$0103
+		dc.w	$0102,$0101,$0101,$0100,$00FF,$00FE,$00FD,$00FC,$00FB,$00FA
+		dc.w	$00F9,$00F8,$00F7,$00F6,$00F5,$00F4,$00F3,$00F2,$00F0,$00EF
+		dc.w	$00EE,$00ED,$00EC,$00EB,$00E9,$00E8,$00E7,$00E6,$00E4,$00E3
+		dc.w	$00E2,$00E1,$00DF,$00DE,$00DD,$00DB,$00DA,$00D8,$00D7,$00D6
+		dc.w	$00D4,$00D3,$00D1,$00D0,$00CE,$00CD,$00CB,$00CA,$00C8,$00C7
+		dc.w	$00C5,$00C4,$00C2,$00C0,$00BF,$00BD,$00BC,$00BA,$00B8,$00B7
+		dc.w	$00B5,$00B3,$00B2,$00B0,$00AE,$00AC,$00AB,$00A9,$00A7,$00A5
+		dc.w	$00A4,$00A2,$00A0,$009E,$009C,$009B,$0099,$0097,$0095,$0093
+		dc.w	$0091,$008F,$008E,$008C,$008A,$0088,$0086,$0084,$0082,$0080
+		dc.w	$007E,$007C,$007A,$0078,$0076,$0074,$0072,$0070,$006E,$006C
+		dc.w	$006A,$0068,$0066,$0064,$0062,$0060,$005E,$005C,$005A,$0058
+		dc.w	$0055,$0053,$0051,$004F,$004D,$004B,$0049,$0047,$0045,$0042
+		dc.w	$0040,$003E,$003C,$003A,$0038,$0036,$0033,$0031,$002F,$002D
+		dc.w	$002B,$0029,$0026,$0024,$0022,$0020,$001E,$001B,$0019,$0017
+		dc.w	$0015,$0013,$0010,$000E,$000C,$000A,$0008,$0005,$0003,$0001
+balltabx
+
+p2col		dc.w	0
+
+t2color		dc.w	$ff0,$ff0,$ff0,$ff0,$ff0,$ff0,$ff0,$ff0
+		dc.w	$ee0,$ee0,$ee0,$ee0,$ee0,$ee0,$ee0,$ee0
+		dc.w	$dd0,$dd0,$dd0,$dd0,$dd0,$dd0,$dd0
+		dc.w	$cc0,$cc0,$cc0,$cc0,$cc0,$cc0,$cc0
+		dc.w	$bb0,$bb0,$bb0,$bb0,$bb0,$bb0
+		dc.w	$aa0,$aa0,$aa0,$aa0,$aa0,$aa0
+		dc.w	$990,$990,$990,$990,$990
+		dc.w	$880,$880,$880,$880,$880
+		dc.w	$770,$770,$770,$770
+		dc.w	$660,$660,$660
+		dc.w	$550,$550
+		dc.w	$440
+		dc.w	$330
+		dc.w	$440
+		dc.w	$550,$550
+		dc.w	$660,$660,$660
+		dc.w	$770,$770,$770,$770
+		dc.w	$880,$880,$880,$880,$880
+		dc.w	$990,$990,$990,$990,$990
+		dc.w	$aa0,$aa0,$aa0,$aa0,$aa0,$aa0
+		dc.w	$bb0,$bb0,$bb0,$bb0,$bb0,$bb0
+		dc.w	$cc0,$cc0,$cc0,$cc0,$cc0,$cc0,$cc0
+		dc.w	$dd0,$dd0,$dd0,$dd0,$dd0,$dd0,$dd0
+		dc.w	$ee0,$ee0,$ee0,$ee0,$ee0,$ee0,$ee0,$ee0
+		dc.w	$ff0,$ff0,$ff0,$ff0,$ff0,$ff0,$ff0,$ff0
+t2collen	EQU	*-t2color
+
+
+coltabpos	dc.w	0
+
+coltab		dc.w	$999,$fff,$555
+		dc.w	$888,$eee,$444
+		dc.w	$777,$ddd,$333
+		dc.w	$666,$ccc,$222
+		dc.w	$555,$aba,$111
+		dc.w	$444,$999,$000
+		dc.w	$333,$888,$000
+		dc.w	$222,$777,$000
+		dc.w	$333,$888,$111
+		dc.w	$444,$999,$222
+		dc.w	$555,$aaa,$333
+		dc.w	$666,$bbb,$333
+		dc.w	$777,$ccc,$444
+		dc.w	$888,$ddd,$555
+		dc.w	$999,$eee,$555
+		dc.w	$999,$fff,$555
+coltablen	EQU	(*-coltab)
+
+my_set		dc.b	"`1234567890-=\~!@#$%^&*()_+|"
+		dc.b	"qwertyuiop[]QWERTYUIOP{}"
+		dc.b	"asdfghjkl;'"
+		dc.b	'ASDFGHJKL:"'		; notare '..' e non ".."
+		dc.b	"zxcvbnm,./ZXCVBNM<>?"
+my_set_len	EQU	*-my_set
+		even
+
+testo		dc.w	0,13
+		dc.b	"PRESS LMB TO EXIT AND FIRE TO FASTIZE",$ff
+		dc.b	(12>>8),12,(13+16)>>8,(13+16)
+		dc.b	"STUPID DEMO BY",$ff
+		dc.b	12>>8,12,(13+16+8)>>8,(13+16+8)
+		dc.b	"MAURO PANIGADA",$ff
+		dc.b	1>>8,1,(13+16+8+16)>>8,(13+16+8+16)
+		dc.b	"FOR A LOVE LIKE THAT, YOU KNOW YOU",$ff
+		dc.b	12>>8,12,(13+16+8+16+8)>>8,13+16+8+16+8
+		dc.b	"SHOULD BE GLAD!",$ff
+		dc.b	0,0,90>>8,90
+		dc.b	"MOVE MOUSE = MOVE COLORCYCLING SPRITE",$fe
+		even
+
+testo2		dc.w	0,0
+		dc.b	"MAURO",$fe
+		even
+
+
+
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		SECTION	copp,DATA_C
+
+CWAIT		MACRO		;x,y
+		dc.w           ($0000+((\2)<<8)+(\1))!1,$fffe
+		ENDM
+
+CWAIT0		MACRO		;x,y
+		dc.w           ($2c00+((\2)<<8)+(\1))!1,$fffe
+		ENDM
+
+CWAIT1		MACRO
+		dc.w		($0000+((\2)<<8)+(\1))!1,\3
+		ENDM
+
+CSKIP		MACRO		;x,y
+		dc.w           ($0000+((\2)<<8)+(\1))!1,$ffff
+		ENDM
+
+CMOVE		MACRO		;address,data
+		dc.w           (\1)&$fffe,(\2)
+		ENDM           
+
+CEND		MACRO
+		dc.w           $ffff,$fffe
+		ENDM
+
+CNEXTLINE	MACRO
+		CWAIT1	$e1,0,$80FE
+		CWAIT1	$0,0,$80FE
+		ENDM
+
+
+copper		dc.w	diwstrt
+provex		dc.w	$2c81		; $2c81
+		dc.w	diwstop
+provey		dc.w	$2cc1
+		dc.w	ddfstrt
+provez		dc.w	$38
+		dc.w	ddfstop
+provew		dc.w	$d0
+		dc.w	bplcon0,%0001001000000000
+		dc.w	bplcon1,0
+		dc.w	bplcon2,%0000000000001001	; cambia priorita`, cosicche` lo sprite sovrapponga "MAURO"
+mibit		dc.w	bplpt,$0000
+		dc.w	bplpt+2,$0000
+		dc.w	bpl1mod
+bplmio		dc.w	0
+		dc.w	bpl2mod,0
+
+*»»»»»»»»»»» DISATTIVA GLI SPRITE
+
+ciclet		EQU	*+2
+		dc.w	color+(17*2),$fff
+		dc.w	color+(18*2),$555
+		dc.w	color+(19*2),$756
+
+		dc.w	color+(23*2),$fff
+		dc.w	color+(24*2),$765
+		dc.w	color+(25*2),$123
+
+misprit		dc.w	sprpt+0,0,sprpt+2,0
+sprit2		dc.w	sprpt+8,0,sprpt+10,0
+		dc.w	sprpt+4,0,sprpt+6,0
+		dc.w	sprpt+12,0,sprpt+14,0
+		dc.w	sprpt+16,0,sprpt+18,0
+		dc.w	sprpt+20,0,sprpt+22,0
+		dc.w	sprpt+24,0,sprpt+26,0
+		dc.w	sprpt+28,0,sprpt+30,0
+		dc.w	$0007,$fffe
+		dc.w	color,0
+		dc.w	color+2,$001		; blu scurissimo
+tipo
+		dc.w	$3007,$fffe
+		dc.w	color,$000
+		CNEXTLINE
+		dc.w	color,$110
+		CNEXTLINE
+		dc.w	color,$220
+		CNEXTLINE
+		dc.w	color,$330
+		CNEXTLINE
+		dc.w	color,$440
+		CNEXTLINE
+		dc.w	color,$550
+		CNEXTLINE
+		dc.w	color,$660
+		CNEXTLINE
+		dc.w	color,$770
+		CNEXTLINE
+		dc.w	color,$880
+		CNEXTLINE
+		dc.w	color,$990
+		CNEXTLINE
+		dc.w	color,$aa0
+		CNEXTLINE
+		dc.w	color,$bb0
+		CNEXTLINE
+		dc.w	color,$cc0
+		CNEXTLINE
+		dc.w	color,$dd0
+		CNEXTLINE
+		dc.w	color,$ee0
+		CNEXTLINE
+		dc.w	color,$dd0
+		CNEXTLINE
+		dc.w	color,$cc0
+		CNEXTLINE
+		dc.w	color,$bb0
+		CNEXTLINE
+		dc.w	color,$aa0
+		CNEXTLINE
+		dc.w	color,$990
+		CNEXTLINE
+		dc.w	color,$880
+		CNEXTLINE
+		dc.w	color,$770
+		CNEXTLINE
+		dc.w	color,$660
+		CNEXTLINE
+		dc.w	color,$550
+		CNEXTLINE
+		dc.w	color,$440
+		CNEXTLINE
+		dc.w	color,$330
+		CNEXTLINE
+		dc.w	color,$220
+		CNEXTLINE
+		dc.w	color,$110
+		CNEXTLINE
+		dc.w	color,$000
+		dc.w	$8107,$fffe
+		dc.w	color,$f
+scritta2c	dc.w	color+2,$ff0
+		dc.w	color+4,$f00
+		dc.w	color+6,$f00
+		dc.w	$a007,$fffe
+		dc.w	bplcon0,%0010001000000000
+bouncer		dc.w	bplcon1,$0000
+bp2		dc.w	bplpt+4,0
+		dc.w	bplpt+6,0
+		dc.w	color+4,$f00
+few		dc.w	$a107,$fffe
+		dc.w	color+4,$f10
+		dc.w	$a207,$fffe
+		dc.w	color+4,$f20
+		dc.w	$a307,$fffe
+		dc.w	color+4,$f30
+		dc.w	$a407,$fffe
+		dc.w	color+4,$f20
+		dc.w	$a507,$fffe
+		dc.w	color+4,$f10
+		dc.w	$a607,$fffe
+		dc.w	color+4,$f00
+		dc.w	$a907,$fffe
+		dc.w	bplcon0,%0001001000000000
+		dc.w	bplcon1,0
+		dc.w	color+2,$3e1
+		dc.w	$c007,$fffe
+		dc.w	color,$664
+		dc.w	$c107,$fffe
+		dc.w	color,$755
+		dc.w	$c207,$fffe
+		dc.w	color,$746
+		dc.w	$c307,$fffe
+		dc.w	color,$737
+		dc.w	$c407,$fffe
+		dc.w	color,$728
+		dc.w	$c507,$fffe
+		dc.w	color,$719
+		dc.w	color+4,$3e1
+		dc.w	$e007,$fffe
+		dc.w	color,$62a
+		dc.w	$e207,$fffe
+		dc.w	color,$53b
+		dc.w	$e407,$fffe
+		dc.w	color,$44b
+		dc.w	$e607,$fffe
+		dc.w	color,$35c
+		dc.w	$e807,$fffe
+		dc.w	color,$26d
+		dc.w	$ea07,$fffe
+		dc.w	color,$17e
+		dc.w	$ec07,$fffe
+		dc.w	color,$08f
+		dc.w	$ffff,$fffe
+
+
+sy		dc.w	0
+sx		dc.w	0
+
+questo
+		dc.b $2c	; Posizione verticale di inizio sprite (da $2c a $f2)
+		dc.b $40	; Posizione orizzontale di inizio sprite (da $40 a $d8)
+		dc.b $2c+13	; $30+13=$3d	; posizione verticale di fine sprite
+		dc.b $00	; %abcdefgh: a=attached col precedente; h=bit basso del byte pos (nono bit!)
+		dc.w	%0000000000000000,%0000110000110000 ; Formato binario per modifiche
+		dc.w	%0000000000000000,%0000011001100000
+		dc.w	%0000000000000000,%0000001001000000
+		dc.w	%0000000110000000,%0011000110001100 ;BINARIO 00=COLORE 0 (TRASPARENTE)
+		dc.w	%0000011111100000,%0110011111100110 ;BINARIO 10=COLORE 1 (ROSSO)
+		dc.w	%0000011111100000,%1100100110010011 ;BINARIO 01=COLORE 2 (VERDE)
+		dc.w	%0000110110110000,%1111100110011111 ;BINARIO 11=COLORE 3 (GIALLO)
+		dc.w	%0000011111100000,%0000011111100000
+		dc.w	%0000011111100000,%0001111001111000
+		dc.w	%0000001111000000,%0011101111011100
+		dc.w	%0000000110000000,%0011000110001100
+		dc.w	%0000000000000000,%1111000000001111
+		dc.w	%0000000000000000,%1111000000001111
+		dc.w	0,0	; 2 word azzerate definiscono la fine dello sprite.
+
+codesto		dc.b	$2c,$40,$2c+11,0
+		dc.w	%0000000100000000,%0000000100000000
+		dc.w	%0000001110000000,%0000001110000000
+		dc.w	%0000011111000000,%0000011111000000
+		dc.w	%0000110001100000,%0000111111100000
+		dc.w	%0001110110110000,%0001111111110000
+		dc.w	%0011110001111000,%0011111111111000
+		dc.w	%0001110111110000,%0001111111110000
+		dc.w	%0000110111100000,%0000111111100000
+		dc.w	%0000011111000000,%0000011111000000
+		dc.w	%0000001110000000,%0000001110000000
+		dc.w	%0000000100000000,%0000000100000000
+		dc.w	0,0
+
+ball		incbin	"zball3231.raw"
+
+
+
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		SECTION	topos,BSS_C
+
+bplane		ds.b	40*260
+
+ball0		ds.b	(32/8)*31
+
+
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		SECTION	topos2,BSS_C
+
+		ds.b	40
+bplane2		ds.b	40*9
+
+
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		SECTION	VisitorsAttackData,DATA
+
+char_set	dc.l	$18180c00,$00000000,$0c1c3c0c,$0c0c0c00
+		dc.l	$3e63030e,$38607f00,$7f06001e,$03037e00
+		dc.l	$60606666,$7f060600,$7f607e03,$03037e00
+		dc.l	$0c18307e,$63633e00,$7f030306,$0c181800
+		dc.l	$3e63633e,$63633e00,$3e63633f,$060c1800
+		dc.l	$3e636b6b,$6b633e00
+		dc.l	$0000007e,$00000000
+		dc.l	$00007e00,$007e0000,$c0603018,$0c060300
+		dc.l	$18180c00,$00000000
+		dc.l	$183c3c18,$18001800,$3e636f6b,$6f603f00
+		dc.l	$36367f36,$7f363600,$183c683e,$0b7e1800
+		dc.l	$0063660c,$18336300,$081c3663,$00000000
+		dc.l	$1c363c3b,$6e663b00,$00663cff,$3c660000
+		dc.l	$06183030,$30180600,$300c0606,$060c3000
+		dc.l	$00000000,$0000007f,$0018187e,$18180000
+		dc.l	$18181818,$18181800,$00003f63,$633f0303
+		dc.l	$0000636b,$6b363600,$00003e63,$7f603f00
+		dc.l	$00006f70,$60606000,$18183e18,$18180c00
+		dc.l	$00006363,$633f063c,$00006363,$63633f00
+		dc.l	$18001818,$18181800,$00003e63,$63633e00
+		dc.l	$00007e63,$637e6060,$3c303030,$30303c00
+		dc.l	$3c0c0c0c,$0c0c3c00,$3e636363,$6f633f00
+		dc.l	$6363636b,$7f776300,$7e60607c,$60607f00
+		dc.l	$7e63637e,$66636300,$7e181818,$18181800
+		dc.l	$6363633f,$03063c00,$63636363,$63633f00
+		dc.l	$3c181818,$18183c00,$3e636363,$63633e00
+		dc.l	$7e63637e,$60606000,$070c0c38,$0c0c0700
+		dc.l	$380c0c07,$0c0c3800,$00003e03,$3f633f00
+		dc.l	$00003e60,$3e037e00,$03033f63,$63633f00
+		dc.l	$0f18183e,$18181800,$00003f63,$633f037e
+		dc.l	$60607e63,$63636300,$0c000c0c,$0c0c0c78
+		dc.l	$60606366,$7c666300,$18181818,$18180c00
+		dc.l	$000c0c00,$000c0c18,$0c0c1800,$00000000
+		dc.l	$3e63637f,$63636300,$3e60603e,$03037e00
+		dc.l	$7c666363,$63637e00
+		dc.l	$7f60607c,$60606000,$3e606067,$63633f00
+		dc.l	$6363637f,$63636300,$06060606,$06067c00
+		dc.l	$63666c78,$6c666300,$60606060,$60607f00
+		dc.l	$00181800,$00181800,$36360000,$00000000
+		dc.l	$00007f06,$1c307f00,$00006336,$1c366300
+		dc.l	$00003e60,$60603f00,$00006363,$63361c00
+		dc.l	$60607f63,$63637e00,$00007e63,$63636300
+		dc.l	$0000766b,$6b6b6b00,$00000000,$000c0c18
+		dc.l	$00000000,$00181800,$03060c18,$3060c000
+		dc.l	$7f03060c,$18307f00,$63361c1c,$1c366300
+		dc.l	$3e606060,$60603f00,$63633636,$1c1c0800
+		dc.l	$7e63637e,$63637f00,$63737b6f,$67636300
+		dc.l	$4163777f,$6b636300,$060c1830,$180c0600
+		dc.l	$30180c06,$0c183000,$3e630306,$0c000c00
+
+
+		END

@@ -1,0 +1,870 @@
+;
+; BOClock! v1.0
+; written by Mauro Panigada
+;
+; $VER: BOClock! v1.0 (1997-02-xx) by Mauro Panigada
+;
+; Started: 1997-02-11
+; First version: 1997-02-xx
+;
+; About BOClock!  (my own reference short doc)
+; ==============
+;
+; BOClock! is what you do not need on your system because other programs
+; do the same task better.
+; It performs a sort of clock which is not a clock: it can be an alarm,
+; do counterdown, sound a beep to awake you and so on.
+;
+; Incrementing clock (0,1,2 sec), decrementing clock (3,2,1 sec); alarm
+; on time (date, hours, minutes and second according to your Amiga clock
+; or to how much time is gone away), graphical and musical time visions
+; (1 beep per sec, flash every hour, progress bar...).
+; All programmable trough ARexx, too. Stores in env useful info for itself
+; and perhaps for you... Several types of covers...
+;
+; Main features:
+;
+; * Commodity
+; * ARexx
+; * Through Public Screen it can go!
+; * Cripple? No I am not Wordsworth
+; * Huge work for me: boopsi intuitionized
+; * Assembler 100%
+; * Programmed by me!
+; * Useless, but you can use it freely
+; * Short and fast
+; * Simple to use
+; * Your own language used (localization)
+;
+; Requirements:
+;
+; * An Amiga
+; * At least OS3.0 (#39)
+; * A bit (!) of RAM
+;
+; > Panprogramming exsercize <
+;   timer.device, intuition.library, commodities.library, locale.library,
+;   graphics.library, utility.library, boopsi programming techniques,
+;   adaptation intuition interface (on all resolutions, with all fonts...)
+;   gadtools.library (only menues), dos.library, workbench.library
+;
+
+DEBUG		EQU	0
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+
+		include	"utility/utility.i"
+		include	"utility/utility_lib.i"
+		include	"utility/tagitem.i"
+
+		include	"intuition/intuition.i"
+		include	"intuition/screens.i"
+		include	"intuition/intuition_lib.i"
+
+		include	"intuition/imageclass.i"
+		include	"intuition/classes.i"
+		include	"intuition/icclasses.i"
+		include	"intuition/gadgetclass.i"
+
+		include	"graphics/gfx.i"
+		include	"graphics/text.i"
+		include	"graphics/rastport.i"
+		include	"graphics/graphics_lib.i"
+
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"dos/dostags.i"
+		include	"dos/var.i"
+
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i"
+
+		include	"libraries/commodities.i"
+		include	"libraries/commodities_lib.i"
+
+		include	"devices/timer.i"
+		include	"devices/timer_dev.i"
+
+		include	"libraries/locale.i"
+		include	"libraries/locale_lib.i"
+
+		include	"workbench/icon_lib.i"
+		include	"workbench/workbench.i"
+
+		;include	"libraries/asl.i"
+		;include	"libraries/asl_lib.i"
+
+		include	"rexx/rxslib.i"
+
+
+;
+; Wow! I think they are too much!
+;
+
+
+		IFEQ	DEBUG
+
+		SECTION	BOClockStartCode,CODE
+
+pseg
+		bra.s	detach
+
+		dc.b	"$VER: BOClock! v1.0"
+		dc.b	" (1997-02-xx) by Mauro Panigada",0
+		even
+
+detach		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq.s	fexit
+
+		move.l	d0,a5
+		lea	pseg(pc),a4
+		move.l	-4(a4),d7
+		clr.l	-4(a4)
+
+		jsr	_LVOForbid(a6)
+
+		suba.l	a0,a0
+		jsr	_LVOFindTask(a6)
+		move.l	d0,a0
+		tst.l	pr_CLI(a0)
+		beq.s	wbstart
+		move.l	pr_CIS(a0),d6
+		move.l	pr_Arguments(a0),d5
+
+		clr.l	-(sp)		; TAG_END
+		move.l	d7,-(sp)
+		move.l	#NP_Seglist,-(sp)
+		move.l	#TRUE,-(sp)
+		move.l	#NP_FreeSeglist,-(sp)
+		lea	pname(pc),a0
+		move.l	a0,-(sp)
+		move.l	#NP_Name,-(sp)
+		move.l	#TRUE,-(sp)	; Is it needed?
+		move.l	#NP_Cli,-(sp)	; I want a CLI structure...
+		move.l	d6,-(sp)
+		move.l	#NP_Input,-(sp)
+		clr.l	-(sp)
+		move.l	#NP_CloseInput,-(sp)
+		move.l	d5,-(sp)
+		move.l	#NP_Arguments,-(sp)
+		move.l	sp,d1
+		exg	a5,a6
+		jsr	_LVOCreateNewProc(a6)
+		tst.l	d0
+		bne.s	donezero
+		move.l	d7,-4(a4)
+donozero	exg	a5,a6
+		jsr	_LVOPermit(a6)
+		add.l	#60,sp
+		move.l	a5,a1
+		jsr	_LVOCloseLibrary(a6)
+fexit		rts
+
+wbstart		jsr	_LVOPermit(a6)
+		move.l	d7,-4(a4)
+		move.l	a5,a1
+		jsr	_LVOCloseLibrary(a6)
+		jmp	Start
+
+
+dosname		dc.b	"dos.library",0
+		even
+
+pname		dc.b	"BOClock!.main.task",0
+		even
+
+		ENDC
+
+
+	STRUCTURE Preferences,0
+		LONG	prefs_Kludge
+		LABEL	Prefs_SIZEOF
+
+
+	STRUCTURE ChildrenInfo,MN_SIZE
+		LONG	ci_Kludge
+		LABEL	ChildrenInfo_SIZEOF
+
+
+	STRUCTURE BOClockArea,0
+		LONG	_ExecBase
+		LONG	_DOSBase
+		LONG	_IntuitionBase
+		LONG	_CommoditiesBase
+		LONG	_LocaleBase
+		LONG	_GadToolsBase
+		LONG	_UtilityBase
+		LONG	_GraphicsBase
+		LONG	_IconBase
+
+		LONG	_PrefsHandler
+
+		LONG	_ClockPort
+		LONG	_AlarmClock
+
+		LONG	_PubScreen
+
+		STRUCT	_PubScreenBuffer,32
+		STRUCT	_CxNameBuffer,32
+		LONG	_CxPri
+
+		STRUCT	_Preferences,Prefs_SIZEOF
+
+		STRUCT	_ChildrenMsg,ChildrenMsg_SIZEOF
+
+		LABEL	WorkArea_SIZEOF
+
+
+
+
+;>>>               +--------------------+
+;>>>               |      BOClock!      |  Written by Mauro Panigada
+;>>>               +--------------------+
+
+		SECTION	BOClockMainCode,CODE
+
+Start		move.l	4.w,a6
+		suba.l	a0,a0
+		jsr	_LVOFindTask(a6)
+		move.l	d0,a3
+		lea	_MyProcess(pc),a0
+		move.l	a3,(a0)+
+		move.l	pr_CLI(a3),(a0)+
+		lea	pr_MsgPort(a3),a1
+		move.l	a1,(a0)+
+
+		bsr	AllocWorkArea
+		tst.l	d0
+		beq	FExit
+
+		bsr	OpenLibraries
+		tst.l	d0
+		beq	Exit
+
+		lea	_MyProcess(pc),a1
+		tst.l	PRCLI_OFFSET(a1)
+		bne.s	FromCLI
+
+; WBStartup msg is not a need for my program...
+
+		bsr	GetWBArgs
+		bra.s	OkArgument
+
+FromCLI		bsr	GetCLIArgs
+
+OkArgument
+
+;OpenTimer	move.l	(a5),a6
+;		jsr	_LVOCreateMsgPort(a6)
+;		move.l	d0,_TimerIOPort(a5)
+;		beq	ERR_OT_Port
+;		move.l	d0,a0
+;		move.l	#IOTV_SIZE,d0
+;		jsr	_LVOCreateIORequest(a6)
+;		move.l	d0,_IORequest(a5)
+;		beq	ERR_OT_Request
+;
+; We will open timer.device when the user asks for a performance: I want
+; a clock, I want a countdown with beep and so on
+
+		lea	PrefsName(pc),a0
+		move.l	a0,d1
+		move.l	#MODE_OLDFILE,d2
+		move.l	_DOSBase(a5),a6
+		jsr	_LVOOpen(a6)
+		move.l	d0,_PrefsHandler(a5)
+		bne.s	DefaultPrefs
+
+SetPrefs	move.l	#Prefs_SIZEOF,d3
+		move.l	d0,d1
+		lea	_Preferences(a5),a0
+		move.l	a0,d2
+		jsr	_LVORead(a6)
+
+		move.l	_PrefsHandler(a5),d1
+		jsr	_LVOClose(a6)
+;
+; Here it could be an error! Now checking is not done...
+
+		bra.s	DonePrefs
+
+DefaultPrefs	bsr	SetDefaultPrefs
+
+DonePrefs	bsr	ChildrensBirth
+		cmp.b	#-1,d0
+		beq	ERR_CB_NoClock
+		cmp.b	#-2,d0
+		beq	ERR_CB_NoAlarm
+
+
+		bsr	MakeCX		; creates (comm) brokers
+		tst.l	d0
+		beq	ERR_NoCX
+
+
+
+
+;####################################################### EXIT #######
+
+Exit
+
+		bsr	DiscardBrokers
+
+		bsr	KillChildren	; No! / But...What have you thought?
+
+;		move.l	(a5),a6
+;		move.l	_IORequest(a5),d0
+;		beq.s	E_NoRequest
+;		move.l	d0,a0
+;		jsr	_LVODeleteIORequest(a6)
+;E_NoRequest	move.l	_TimerIOPort(a5),d0
+;		beq.s	E_NoPort
+;		move.l	d0,a0
+;		jsr	_LVODeleteMsgPort(a6)
+;E_NoPort
+
+		bsr	CloseLibraries
+
+		bsr	FreeWorkArea
+
+FExit		lea	_MyProcess(pc),a3
+		tst.l	PRCLI_OFFSET(a3)	; message (and with it all
+		bne.s	E_OK			; memory for args and so on
+		move.l	PRMSGPORT_OFFSET(a3),a0	; that wb allocs) is left
+		jsr	_LVOWaitPort(a6)	; alone until you kill me...
+		move.l	PRMSGPORT_OFFSET(a3),a0
+		jsr	_LVOGetMsg(a6)
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+
+E_OK		moveq	#0,d0
+		rts
+
+
+;&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& ERROR &&&&&
+
+ERR_CB_NoAlarm
+ERR_CB_NoClock	moveq	#BMSG_ChildError,d0
+ERR_DoIt	bsr	GetString
+		move.l	d0,a0
+		bsr	MakeErrMsg
+		bra	Exit
+
+ERR_NoCX	moveq	#BMSG_NoCX,d0
+		bra.s	ERR_DoIt
+
+
+;&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&_&&
+
+
+;-------------------------------------------------------------
+SetDefaultPrefs	lea	_Preferences(a5),a0
+		clr.l	prefs_Kludge(a0)
+		rts
+
+
+;--------------------------------------------------------
+GetCLIArgs	move.l	_DOSBase(a5),a6
+		lea	CLITemplate(pc),a0
+		move.l	a0,d1
+		lea	_CxPri-8(a5),a3
+		move.l	a3,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d1
+		beq	GCA_NoArgument
+
+		tst.l	(a3)
+		bne.s	GCA_PubName
+
+		lea	WBScrName(pc),a0
+		bra.s	GCA_CopyName
+
+GCA_PubName	move.l	(a3),a0
+GCA_CopyName	lea	_PubScreenBuffer(a5),a1
+GCA_Loop0	move.b	(a0)+,(a1)+
+		tst.b	(a0)
+		bne.s	GCA_Loop0
+
+		tst.l	4(a3)
+		bne.s	GCA_CxName
+
+		lea	CxDefaultName(pc),a0
+		bra.s	GCA_CopyName0
+
+GCA_CxName	move.l	4(a3),a0
+GCA_CopyName0	lea	CxNameBuffer(pc),a1
+GCA_Loop1	move.b	(a0)+,(a1)+
+		tst.b	(a0)
+		bne.s	GCA_Loop1
+
+		tst.l	_CxPri(a5)
+		bne.s	GCA_CxPri
+
+		;clr.l	_CxPri(a5)
+		bra.s	GCA_FreeArgs
+
+GCA_CxPri	move.l	_CxPri(a5),a0
+		move.l	a0,_CxPri(a5)
+GCA_FreeArgs
+
+		jsr	_LVOFreeArgs(a6)
+		rts
+
+GCA_NoArgument	lea	WBScrName(pc),a0
+		lea	_PubScreenBuffer(a5),a1
+GCA_CLoop	move.b	(a0)+,(a1)+
+		tst.b	(a0)
+		bne.s	GCA_CLoop
+		lea	CxDefaultName(pc),a0
+		lea	_CxNameBuffer(a5),a1
+GCA_CLoop1	move.b	(a0)+,(a1)+
+		tst.b	(a0)
+		bne.s	GCA_CLoop1
+		clr.l	_CxPri(a5)
+		rts
+
+
+;-------------------------------------------------------
+GetWBArgs	lea	DiskObjectName(pc),a0
+		move.l	_IconBase(a5),a6
+		jsr	_LVOGetDiskObject(a6)
+		tst.l	d0
+		beq	GWA_NoObject
+
+		move.l	d0,a3
+		move.l	do_ToolTypes(a3),a0
+		lea	PubScreenTool(pc),a1
+		jsr	_LVOFindToolType(a6)
+		tst.l	d0
+		bne.s	GWA_PubName
+
+		lea	WBScrName(pc),a0
+		bra.s	GWA_CopyPubName
+
+GWA_PubName	move.l	d0,a0
+GWA_CopyPubName	lea	_PubScreenBuffer(a5),a1
+GWA_Loop0	move.b	(a0)+,(a1)+
+		tst.b	(a0)
+		bne.s	GWA_Loop0
+
+GWA_NoPubTT	move.l	do_ToolTypes(a3),a0
+		lea	CxNameTool(pc),a1
+		jsr	_LVOFindToolType(a6)
+		tst.l	d0
+		bne.s	GWA_CxNameTT
+
+		lea	CxDefaultName(pc),a0
+		bra.s	GWA_CopyName2
+
+GWA_CxNameTT	move.l	d0,a0
+GWA_CopyName2	lea	_CxNameBuffer(a5),a1
+GWA_Loop1	move.b	(a0)+,(a1)+
+		tst.b	(a0)
+		bne.s	GWA_Loop1
+
+GWA_NoCxNameTT	move.l	do_ToolTypes(a3),a0
+		lea	CxPriTool(pc),a1
+		jsr	_LVOFindToolType(a6)
+		tst.l	d0
+		bne.s	GWA_CxPriTT
+
+		moveq	#0,d1
+		bra.s	GWA_CopyPri
+
+GWA_CxPriTT	move.l	d0,a0		; convert "yX" into a binary
+		moveq	#0,d1		; form (y=+/- or nihil), X is
+		move.l	d1,d2		; a decimal number
+GWA_Loop2	move.b	(a0)+,d0
+		beq.s	GWA_PriEnd
+		cmp.b	#"-",d0
+		seq	d2
+		sub.b	#"0",d0
+		add.b	d0,d1
+		move.b	d1,d3
+		lsl.l	#2,d1		; mulu #10,d1
+		add.b	d3,d1
+		bra.s	GWA_Loop2
+GWA_PriEnd	tst.b	d2
+		beq.s	GWA_NoNeg
+		neg.b	d1
+GWA_NoNeg	and.l	#$ff,d1
+GWA_CopryPri	move.l	d1,_CxPri(a5)
+
+GWA_NoCxPriTT
+		; what can I add here?
+
+GWA_End		move.l	a3,a0
+		jsr	_LVOFreeDiskObject(a6)
+
+GWA_NoObject	rts
+
+
+;------------------------------------------------------
+AllocWorkArea	move.l	4.w,a6
+		move.l	#WorkArea_SIZEOF,d0
+		move.l	#MEMF_ANY!MEMF_CLEAR,d1
+		jsr	_LVOAllocMem(a6)
+		tst.l	d0
+		beq.s	AWA_Exit
+		move.l	d0,a5
+		lea	_CommonData(pc),a0
+		move.l	a5,(a0)
+		move.l	a6,(a5)
+AWA_Exit	rts
+
+
+;------------------------------------------------------
+FreeWorkArea	move.l	(a5),a6
+		move.l	a5,a1
+		move.l	#WorkArea_SIZEOF,d0
+		jmp	_LVOFreeMem(a6)		; jsr/rts
+
+
+
+;------------------------------------------------------
+OLIBNUM		EQU	8
+OLIBPOS		EQU	4
+
+OpenLibraries	move.l	(a5),a6
+		lea	DOSName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_DOSBase(a5)
+		beq	OL_Exit
+
+		lea	IntuitionName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_IntuitionBase(a5)
+		beq	OL_Exit
+
+		lea	GraphicsName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_GraphicsBase(a5)
+		beq	OL_Exit
+
+		lea	LocaleBase(pc),a1
+		moveq	#0,d0			;?
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_LocaleBase(a5)
+		beq	OL_Exit
+
+		lea	UtilityName(pc),a1
+		moveq	#39,d0			;?
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_UtilityBase(a5)
+		beq	OL_Exit
+
+		lea	GadToolsName(pc),a1
+		moveq	#39,d0			;?
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_GadToolsBase(a5)
+		beq	OL_Exit
+
+		lea	IconName(pc),a1
+		moveq	#39,d0			;?
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_WorkbenchBase(a5)
+		beq	OL_Exit
+
+		lea	CommoditiesName(pc),a1
+		moveq	#39,d0			;?
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_CommoditiesBase(a5)
+		bne.s	OL_Ok
+
+OL_Exit		moveq	#0,d0
+OL_Ok		rts
+
+
+
+;-----------------------------------------------------
+CloseLibraries	lea	OLIBPOS(a5),a4
+		moveq	#OLIBNUM-1,d4
+		move.l	(a5),a6
+
+CL_Loop		move.l	(a4)+,a1
+		jsr	_LVOCloseLibrary(a6)
+		dbf	d4,CL_Loop
+
+		rts
+
+
+;----------------------------------------------------------
+ChildrensBirth	lea	ChildrenTag(pc),a3
+		move.l	a3,d1
+		lea	ClockTask(pc),a0
+		move.l	a0,4(a3)
+		lea	ClockTaskName(pc),a0
+		move.l	a0,12(a3)
+		move.l	_DOSBase(a5),a6
+		jsr	_LVOCreateNewProc(a6)
+		tst.l	d0
+		beq.s	CB_ERR_Clock
+
+		lea	AlarmTask(pc),a0
+		move.l	a0,4(a3)
+		lea	AlarmTaskName(pc),a0
+		move.l	a0,12(a3)
+		jsr	_LVOCreateNewProc(a6)
+		tst.l	d0
+		bne.s	CB_AllGone
+
+CB_ERR_Alarm	moveq	#-2,d0
+		rts
+
+CB_AllGone	moveq	#0,d0
+		rts
+
+CB_ERR_Clock	moveq	#-1,d0
+		rts
+
+
+;--------------------------------------------------------------
+KillChildren	move.l	(a5),a6
+		jsr	_LVOCreateMsgPort(a6)
+		move.l	d0,d2
+		move.l	_ClockPort(a5),a0
+		lea	_ChildrenMsg(a5),a1
+		clr.l	ci_Kludge(a1)		; COMMAND: KILL
+		move.l	d2,MN_REPLYPORT(a1)
+		move.w	#ChildrenInfo_SIZEOF+4,MN_LENGTH(a1)
+		jsr	_LVOPutMsg(a6)
+		move.l	d2,a0
+		jsr	_LVOWaitPort(a6)
+
+; We wait for a reply: this because children tasks need the father, and
+; this MUST die after them
+
+		move.l	_AlarmPort(a5),a0
+		lea	_ChildrenMsg(a5),a1
+		clr.l	ci_Kludge(a1)		; COMMAND: KILL
+		move.l	d2,MN_REPLYPORT(a1)
+		move.w	#ChildrenInfo_SIZEOF+4,MN_LENGTH(a1)
+		jsr	_LVOPutMsg(a6)
+		move.l	d2,a0
+		jsr	_LVOWaitPort(a6)
+
+		move.l	_DOSBase(a5),a6		; wait 10/50 sec to be
+		moveq	#10,d1			; sure children are not
+		jsr	_LVODelay(a6)		; STILL ALIVE
+		rts
+
+
+;-----------------------------------------------------------
+; GetString - get a localized string or standard
+; IN: d0 = string code
+; OUT: d0 = ptr to string
+;
+GetString	move.l	d4/a2/a6,-(sp)
+		move.l	d0,-(sp)
+		suba.l	a0,a0
+		lea	CatalogName(pc),a1
+		lea	CatalogTag(pc),a2
+		move.l	_LocaleBase(a5),a6
+		jsr	_LVOOpenCatalog(a6)
+		move.l	d0,d4
+		move.l	d0,a0
+		move.l	(sp)+,d0
+		lea	LocStringArray(pc),a1
+		move.l	d0,d1
+		lsl.l	#2,d1
+		move.l	(a1,d1),a1	; default str from array
+		jsr	_LVOGetCalatogStr(a6)
+		move.l	d4,a0
+		move.l	d0,d4
+		jsr	_LVOCloseCatalog(a6)
+		movem.l	(sp)+,d4/a2/a6
+		move.l	d4,d0
+		rts
+
+
+;-------------------------------------------------------------
+; MakeErrMsg - make a request for users: ERROR!
+; IN: a0 = ptr to error string
+;
+MakeErrMsg	move.l	_IntuitionBase(a5),a6
+		moveq	#BMSG_OkString,d0
+		bsr	GetString
+		lea	_ErrorEasyReq(a5),a1
+		move.l	#EasyStruct_SIZEOF,(a1)
+		move.l	a0,es_TextFormat(a1)
+		lea	CxDefaultName(pc),a0
+		move.l	a0,es_Title(a1)
+		move.l	d0,es_GadgetFormat(a1)
+		suba.l	a0,a0
+		move.l	a0,a2
+		move.l	a2,a3
+		jsr	_LVOEasyRequestArgs(a6)
+		rts
+		
+
+
+
+;==================================================================
+
+
+;
+;####=====================#
+;#### BOClock!.clock.task #
+;####=====================#
+;
+
+ClockTask	lea	_CommonData(pc),a5
+		move.l	(a5),a5
+		rts
+
+
+;
+;####=====================#
+;#### COClock!.alarm.task #
+;####=====================#
+;
+
+AlarmTask	lea	_CommonData(pc),a5
+		move.l	(a5),a5
+		rts
+
+
+
+
+;=========================================================
+_MyProcess	dc.l	0,0,0
+_CommonData	dc.l	0
+
+PROCESS_OFFSET		EQU	0
+PRCLI_OFFSET		EQU	4
+PRMSGPORT_OFFSET	EQU	8
+
+;========================================================
+DOSName		dc.b	"dos.library",0
+		even
+
+CommoditiesName	dc.b	"commodities.library",0
+		even
+
+IntuitionName	dc.b	"intuition.library",0
+		even
+
+UtilityName	dc.b	"utility.library",0
+		even
+
+GraphicsName	dc.b	"graphics.library",0
+		even
+
+GadToolsName	dc.b	"gadtools.library",0
+		even
+
+LocaleName	dc.b	"locale.library",0
+		even
+
+IconName	dc.b	"icon.library",0
+		even
+
+PrefsFile	dc.b	"S:"
+		dc.b	"BOClock!.prefs",0
+		even
+
+; BOClock! must be named BOClock and his icon BOClock.info
+;
+DiskObjectName	dc.b	"BOClock",0
+		even
+
+CLITemplate	dc.b	"PUBSCREEN,CX_NAME,CX_PRI/N",0
+		even
+
+PubScreenTool	dc.b	"PUBSCREEN",0
+		even
+
+CxNameTool	dc.b	"CX_NAME",0
+		even
+
+CxPriTool	dc.b	"CX_PRI",0
+		even
+
+WBScrName	dc.b	"Workbench",0
+		even
+
+CxDefaultName	dc.b	"BOClock!",0
+		even
+
+ClockTaskName	dc.b	"BOClock!.clock.task",0
+		even
+
+AlarmTaskName	dc.b	"BOClock!.alarm.task",0
+		even
+
+EnglishLoc	dc.b	"english",0
+		even
+
+CatalogName	dc.b	"BOClock.catalog",0
+		even
+
+
+; With this macro we can create a set of strings, the standard
+; ones, to use if language=english or no catalog is given.
+;
+LocStr		MACRO
+		IFEQ	NARG-1
+LOCCOUNT	SET	\1
+		MEXIT
+		ENDC
+\1		dc.b	\2,0
+		even
+\3		EQU	LOCCOUNT
+LOCCOUNT	SET	LOCCOUNT+1
+		ENDM
+
+
+; A stupid macro that defines the array which points to standard
+; string (notez bien: you MUST keep the same order!
+;
+LocDim		MACRO
+		dc.l	\1
+		ENDM
+
+
+	LocStr	0
+	LocStr	<Internal.msg>,<"Love is love, truth is truth">,<BMSG_Internal>
+	LocStr	<Internal2.msg>,<"Ahime`, il linguaggio interno e` sempre inglese!">,<BMSG_Internal2>
+	LocStr	<ChildError.msg>,<"Error while creating child task!">,<BMSG_ChildError>
+	LocStr	<OkString.msg>,<"Ok">,<BMSG_OkString>
+	LocStr	<NoCX.msg>,<"Error while making brokers!">,<BMSG_NoCX>
+
+
+LocStringArray
+
+	LocDim	Internal.msg
+	LocDim	Internal2.msg
+	LocDim	ChildError.msg
+	LocDim	OkString.msg
+	LocDim	NoCX.msg
+
+
+
+ChildrenTag	dc.l	NP_Entry,0
+		dc.l	NP_Name,0
+		dc.l	TAG_END
+
+CatalogTag	dc.l	OC_BuiltInLanguage,EnglishLoc
+		dc.l	TAG_END
+
+
+
+		END

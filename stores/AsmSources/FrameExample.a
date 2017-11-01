@@ -1,0 +1,289 @@
+;
+; PERCHE` !!!!!! NON SCRIVE IL TESTO NEL GADGET??????!!!!!!!
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+
+		include	"utility/utility.i"
+		include	"utility/utility_lib.i"
+		include	"utility/tagitem.i"
+
+		include	"intuition/intuition.i"
+		include	"intuition/imageclass.i"
+		include	"intuition/screens.i"
+		include	"intuition/classes.i"
+		include	"intuition/icclass.i"
+		include	"intuition/gadgetclass.i"
+		include	"intuition/intuition_lib.i"
+
+		;include	"graphics/gfx.i"
+		;include	"graphics/text.i"
+		;include	"graphics/rastport.i"
+		;include	"graphics/graphics_lib.i"
+
+
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+
+
+	STRUCTURE	STORES,0
+		LONG	_ExecBase
+		LONG	_UtilBase
+		LONG	_IntBase
+
+		LONG	_Screen
+		LONG	_Dri
+
+		LONG	_Gadget0
+		LONG	_Frame0
+
+		LONG	_Window
+
+		LONG	_IMsg
+
+		LABEL	STORES_SIZE
+
+
+
+		SECTION	Prova,CODE
+
+
+Start		lea	Stores,a5
+
+		move.l	4.w,a6
+		move.l	a6,(a5)
+
+		lea	UtilName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_UtilBase(a5)
+		beq	Sayonara
+
+		lea	IntName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_IntBase(a5)
+		beq	Exit
+
+		bsr	WorkWell
+
+Exit		move.l	(a5),a6
+		move.l	_IntBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+		move.l	_UtilBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+Sayonara	rts
+
+;=======================================
+;= Subroutines (all is not optimized!) =
+;=======================================
+
+
+;
+; NewFrameObj - create a standard frame
+; IN: d0=frame type
+;
+NewFrameObj	movem.l	a2/a6,-(sp)
+		move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		lea	FrameClass(pc),a1
+		lea	FrameTag(pc),a2
+		move.l	d0,4(a2)
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+;
+; NewButtonObj - create a new button-frame object
+; IN: a0=ptr to frame, a1=taglist
+;
+NewButtonObj	movem.l	a2/a6,-(sp)
+		move.l	_IntBase(a5),a6
+		lea	ButtonTag(pc),a2
+		move.l	a1,20(a2)
+		lea	ButtonClass(pc),a1
+		move.l	a0,12(a2)
+		suba.l	a0,a0
+		jsr	_LVONewObjectA(a6)
+		movem.l	(sp)+,a2/a6
+		rts
+
+
+
+
+;=======================================================================
+;-----------------------------------------------------------------------
+;.......................................................................
+
+WorkWell	move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		jsr	_LVOLockPubScreen(a6)
+		move.l	d0,_Screen(a5)
+		beq	WW_Fast
+
+		move.l	d0,a0
+		jsr	_LVOGetScreenDrawInfo(a6)
+		move.l	d0,_Dri(a5)
+
+
+		moveq	#FRAME_BUTTON,d0
+		bsr	NewFrameObj
+		move.l	d0,_Frame0(a5)
+		beq	WW_NoFrame
+
+		lea	WindowTag(pc),a0
+		move.l	_Screen(a5),4(a0)
+
+		bsr	OpenWindow
+		tst.l	d0
+		beq.s	Bye
+
+		move.l	_Gadget0(a5),a1
+		move.l	_Window(a5),a0
+		moveq	#0,d0
+		move.l	_IntBase(a5),a6
+		jsr	_LVOAddGadget(a6)
+
+		move.l	_Window(a5),a1
+		move.l	_Gadget0(a5),a0
+		suba.l	a2,a2
+		moveq	#-1,d0
+		jsr	_LVORefreshGList(a6)
+
+		;move.l	_Window(a5),a0
+		;move.l	wd_RPort(a0),a0
+		;lea	testo(pc),a1
+		;moveq	#30,d0
+		;moveq	#25,d1
+		;jsr	_LVOPrintIText(a6)
+
+		bsr	Handle
+
+Bye		move.l	_IntBase(a5),a6
+		move.l	_Gadget0(a5),a0
+		jsr	_LVODisposeObject(a6)
+
+WW_Kill		move.l	_IntBase(a5),a6
+		move.l	_Frame0(a5),a0
+		jsr	_LVODisposeObject(a6)
+
+WW_NoFrame
+
+		move.l	_IntBase(a5),a6
+		move.l	_Window(a5),a0
+		tst.l	_Window(a5)
+		beq.s	DSW_NoBitMap
+		jsr	_LVOCloseWindow(a6)
+
+DSW_NoBitMap	move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		move.l	_Screen(a5),a1
+		jsr	_LVOUnlockPubScreen(a6)
+
+WW_Fast		rts
+
+
+OpenWindow	move.l	_Frame0(a5),a0
+		lea	MButtonTag(pc),a1
+		move.l	_Dri(a5),drawinfo+4
+		bsr	NewButtonObj
+		move.l	d0,_Gadget0(a5)
+		beq	OW_Nolla
+
+		lea	WindowTag(pc),a1
+		;move.l	d0,4(a1)
+		move.l	_Screen(a5),pscreen+4
+		suba.l	a0,a0
+		move.l	_IntBase(a5),a6
+		jsr	_LVOOpenWindowTagList(a6)
+		move.l	d0,_Window(a5)
+		rts
+OW_Nolla	moveq	#0,d0
+		rts
+
+
+Handle		move.l	_Window(a5),a4
+		move.l	wd_UserPort(a4),a0
+		move.l	(a5),a6
+		jsr	_LVOWaitPort(a6)
+
+		move.l	wd_UserPort(a4),a0
+		jsr	_LVOGetMsg(a6)
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+
+
+		rts
+
+
+IntName		dc.b	"intuition.library",0
+		even
+GfxName		dc.b	"graphics.library",0
+		even
+UtilName	dc.b	"utility.library",0
+		even
+
+
+ButtonClass	dc.b	"buttongclass",0
+		even
+FrameClass	dc.b	"frameiclass",0
+		even
+
+FrameTag	dc.l	IA_FrameType,0
+		dc.l	IA_Width,20*8
+		dc.l	IA_Height,30
+		dc.l	IA_Pens,penne
+		dc.l	IA_EdgesOnly,TRUE
+		dc.l	TAG_END
+
+penne		dc.l	-1
+
+ButtonTag	dc.l	ICA_TARGET,ICTARGET_IDCMP
+		dc.l	GA_Border,0
+		dc.l	TAG_MORE,0
+
+drawinfo
+MButtonTag
+		dc.l	GA_DrawInfo,0
+		dc.l	GA_Left,100
+		dc.l	GA_Top,50
+		dc.l	GA_Width,20*8
+		dc.l	GA_Height,30
+		dc.l	GA_GZZGadget,TRUE
+		dc.l	GA_Text,labbro
+		dc.l	GA_ID,1
+		dc.l	GA_Immediate,TRUE
+		dc.l	TAG_END
+
+testo		dc.b	1,0,1,0
+		dc.w	5,5
+		dc.l	0,labbro,0
+		even
+
+labbro		dc.b	"Button!",0
+		even
+
+WindowTag	dc.l	TAG_IGNORE,0		; WA_Gadget,gadget
+pscreen		dc.l	WA_PubScreen,0
+		dc.l	WA_Flags,WFLG_ACTIVATE
+		dc.l	WA_IDCMP,IDCMP_IDCMPUPDATE
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	WA_Title,labbro
+		dc.l	TAG_END
+
+
+
+
+
+		SECTION	DataStores,BSS
+
+Stores		ds.b	STORES_SIZE
+
+
+		END

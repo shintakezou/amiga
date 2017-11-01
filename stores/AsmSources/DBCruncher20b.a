@@ -1,0 +1,1155 @@
+ ***************************************************************************
+ *                                                                         *
+ *                           DBCruncher V2.10                              *
+ *                                                                         *
+ *                                  by                                     *
+ *                                                                         *
+ *                            Mauro Panigada                               *
+ *                                                                         *
+ ***************************************************************************
+ 
+ ; VERSIONE 1.4 - 1.6 - 2.00 - 2.10
+ ;
+ ;    - 11 Agosto 1994: Finita versione 1.4 funzionante.
+ ;    -                 Static Huffman Tree.
+ ;    -                 !(NON ANCORA DB)!
+ ;
+ ;    - 12 Agosto 1994: Migliorato parser linea comandi (1.4)
+ ;    -                 Aggiunto una specie di CRC. (1.41)
+ ;
+ ;    - 26 Ottobre 1994: Versione 2.00 (inizio).
+ ;    -                  Uguale alla 1.41 ma intuitionizzata.
+ ;    -                  Stile OS2.0 (ma solo funzioni OS1.3!)
+ ;
+ ;    - 31 Gennaio 1995: Finita interfaccia grafica (GRAFICA!)
+ ;    -                  Decisione 1) sara` compatibile in decompressione
+ ;                                    con precedenti (solo V1.41!).
+ ;    -                  Decisione 2) adottare Dynamic Huffman.
+ ;    -  8 Giugno 1995: Iniziata la versione 1.6 con Dynamic Huffman, per
+ ;                      essere poi usato nella V2.00, mentre parallelamente
+ ;                      procede (?) lo sviluppo di questa per quanto ri-
+ ;                      guarda la gestione dei files...
+ ;    -                 Abbandonata l'intenzione di voler migliorare lo
+ ;                      scroll... Meglio finire tutto prima in modo decente,
+ ;                      poi fare migliorie!
+ ;    -                 Ho scoperto che ancora non funziona bene la rilettura
+ ;                      dei devices... tutta da riscrivere!
+ ;    - 14 Settembre 1995: Ho riprovato lo scroll e l'aggiornamento dei
+ ;                         devices. Mi sembra che vada... Sta allo stesso
+ ;                         punto di quando l'ho lasciato!
+ ;    - 10 Novembre 1995: (Dopo tanto tempo che non lo vedo). E` tanto
+ ;                        piu` comodo e piu` facile usare la reqtools.lib!
+ ;                        Ma per ora ancora gadgets stile 2 ma disegnati
+ ;                        a mano e tutto compatibile 1.3 (poi si vedra`
+ ;                        per fare tutto con le nuove funzioni e concezioni)
+ ;                        (rinominata V2.10)
+ ;    - 20 Dicembre 1995: finita interfaccia del cruncher con relative
+ ;                        preferences; no cruncher no archiver; ok save
+ ;                        file per prefs.
+ ;    -  4 Gennaio 1996:  Allocazione reqtools requester.
+ ;    - Al 28 Marzo 1996: Ancora come prima.
+ ;
+ ; $VER: DBCruncher v2.10 unfinished.
+ ;
+
+
+OSVERSION13	EQU	34
+OSVERSION20	EQU	37
+OSVERSION30	EQU	40
+
+
+VERSION		EQU	3		; V2.10
+VBIT		EQU	3
+
+LV		EQU	OSVERSION13		; ?? non lo ricordo mai
+
+
+;==== INCLUDES
+
+		;incdir	"devpac3.02b:include/"
+		incdir "dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"exec/exec.i"
+		include	"intuition/intuition.i"
+		include	"intuition/screens.i"
+		include	"intuition/intuition_lib.i"
+		include	"graphics/graphics_lib.i"
+		include	"graphics/rastport.i"
+
+
+;==== MACROS ED EQUs
+
+CALL		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+VAR0		MACRO
+VarLength	SET	0
+		ENDM
+
+VARB		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+1
+		ds.b	1
+		ENDM
+
+VARW		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+2
+		ds.w	1
+		ENDM
+
+VARL		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+4
+		ds.l	1
+		ENDM
+
+NAME		MACRO
+\1		EQU	VarLength
+		ENDM
+
+MEMB		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+\2
+		ds.b	\2
+		ENDM
+
+MEMW		MACRO
+		MEMB	\1,(\2*2)
+		ENDM
+
+MEML		MACRO
+		MEMB	\1,(\2*4)
+		ENDM
+
+
+SpecChar	EQU	0
+NumChar		EQU	256+SpecChar		; special char (reserved)
+FileLen		EQU	4
+HeadLen		EQU	4
+TotalWHead	EQU	FileLen+HeadLen
+
+RQBUF_LEN	EQU	$400
+
+LIMIT		EQU	0		; 0=limiti non attivi.
+MAXBIT		EQU	15
+REDUCTION	EQU	3
+
+_LVOPPLoadData		EQU	-30
+
+_LVOrtAllocRequestA	EQU	-$1e
+_LVOrtFreeRequest	EQU	-$24
+_LVOrtFileRequestA	EQU	-$36
+
+
+BOX		MACRO
+		dc.w	\1,\2
+		dc.b	\5,0,RP_JAM1,5
+		dc.l	GBox\@,GadgetBox2\@
+
+GBox\@		dc.w	0,0
+		dc.w	0,\4-1
+		dc.w	1,\4-1
+		dc.w	1,0
+		dc.w	\3-1,0
+
+GadgetBox2\@	dc.w	\1,\2
+		dc.b	\6,0,RP_JAM1,5
+		dc.l	GBox2\@,\7
+
+GBox2\@		dc.w	1,\4-1
+		dc.w	\3-1,\4-1
+		dc.w	\3-1,0
+		dc.w	\3-2,1
+		dc.w	\3-2,\4-1
+		ENDM
+
+LINE		MACRO
+		dc.w	\1,\2
+		dc.b	\4,0,RP_JAM1,2
+		dc.l	LBox\@,GLBox2\@
+
+LBox\@		dc.w	0,0
+		dc.w	\3,0
+
+GLBox2\@	dc.w	\1,\2+1
+		dc.b	\5,0,RP_JAM1,2
+		dc.l	LBox\@,\6
+		ENDM
+
+
+BGAD		MACRO		; func,x,y,dx,dy,name,next
+		dc.l	\7
+		dc.w	\2,\3,\4,\5
+		dc.w	GADGHCOMP,RELVERIFY,BOOLGADGET
+		dc.l	GadgetBox\@
+		dc.l	0,GadgetText\@,0,0
+		dc.w	0
+		dc.l	\1
+
+GadgetBox\@	BOX	0,0,\4,\5,2,1,0
+
+GName\@		dc.b	\6,0
+GName_len\@	EQU	*-GName\@
+		even
+
+GadgetText\@	dc.b	1,0,RP_JAM1,0
+		dc.w	(\4-(GName_len\@-1)*8)/2
+		dc.w	((\5-8)/2)			; +1 ?
+		dc.l	Topaz_80,GName\@,0
+		ENDM
+
+
+ITEXT		MACRO
+		dc.b	\4,\5		; front/backpen
+		dc.b	\6,0		; drawmode
+		dc.w	\2,\3		; left/top
+		dc.l	Topaz_80	; font
+		dc.l	\7		; text
+		dc.l	\1		; next
+		ENDM
+
+
+MGAD		MACRO
+		dc.l	\4
+		dc.w	\2,\3,32,11
+		dc.w	GADGHCOMP!GADGIMAGE!GADGHIMAGE,GADGIMMEDIATE,BOOLGADGET
+		dc.l	Image_1
+		dc.l	Image_2,MGad_IText\@,0,0
+		dc.w	0
+		dc.l	\1
+
+MGad_IText\@	ITEXT	0,34,2,1,0,RP_JAM1,\5
+		ENDM
+
+
+IMAGE		MACRO			; x,y,dx,dy,plan,data,a,b,next
+		dc.w	\1,\2,\3,\4
+		dc.w	\5
+		dc.l	\6
+		dc.b	\7,\8
+		dc.l	\9
+		ENDM
+
+
+SBOX		MACRO
+		BOX	\1,\2,\3,\4,\5,\6,SBox\@
+SBox\@		BOX	\1-2,\2-1,\3+4,\4+2,\6,\5,\7
+		ENDM
+
+
+;************** CODICE DEL PROGRAMMA ***************************************
+
+
+		SECTION	DBCruncher_code,CODE
+
+		bra	_Start
+
+DBCruncherVER	dc.b	"$VER: DBCruncher V2.10 by Mauro Panigada",0
+		even
+
+_Start		lea	VarZone,a5		; zona variabili
+		movea.l	4.w,a6
+		suba.l	a1,a1
+		CALL	FindTask
+		move.l	d0,a4
+		tst.l	pr_CLI(a4)
+		beq.s	FromWB
+
+		bra.s	FromCLI
+
+FromWB		lea	pr_MsgPort(a4),a0
+		move.l	a0,a3
+		CALL	WaitPort
+		move.l	a3,a0
+		CALL	GetMsg
+		move.l	d0,_ReturnMsg(a5)
+
+FromCLI		jsr	_Main(pc)		; programma vero e proprio
+
+		tst.l	_ReturnMsg(a5)
+		beq.s	ExitToDOS
+
+		CALL	Forbid
+		move.l	_ReturnMsg(a5),a1
+		CALL	ReplyMsg
+ExitToDOS	moveq	#0,d0
+		rts
+
+
+_Main		lea	DosName,a1		; apre dos
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_DosBase(a5)
+		bne.s	DosOK
+
+		moveq	#-30,d0
+		rts
+
+DosOK		lea	IntName,a1		; apre intuition
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_IntBase(a5)
+		beq	NoIntuition
+
+		lea	PPName,a1		; apre powerpacker
+		moveq	#0,d0
+		CALL	OpenLibrary		; se no, non decomprime
+		move.l	d0,_PPBase(a5)		; i files PP
+
+		lea	GfxName,a1		; apre gfx
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_GfxBase(a5)
+		beq	NoGfx
+
+;--------------------------------------------------
+; reqtools
+		move.l	#RQBUF_LEN,d0
+		move.l	#MEMF_PUBLIC,d1
+		CALL	AllocMem
+		move.l	d0,_ReqBuf(a5)
+		beq	NoReqTMem
+;--------------------------------------------------
+
+		lea	ReqToolsName,a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_ReqTBase(a5)
+		beq	NoReqTools
+
+		move.l	d0,a6
+		moveq	#0,d0
+		suba.l	a0,a0
+		CALL	rtAllocRequestA
+		move.l	d0,_ReqTMem(a5)
+		beq	NoReqTMem
+
+		move.l	_DosBase(a5),a6
+		CALL	Output			; output
+		move.l	d0,_Output(a5)
+		bne.s	OutOK
+
+		move.l	#ConsoleName,d1		; nel caso che non ci
+		move.l	#MODE_OLDFILE,d2	; sia std-out
+		CALL	Open
+		move.l	d0,_Output(a5)
+
+OutOK		lea	DBWindow,a0			; apre finestra
+		move.l	_IntBase(a5),a6
+		CALL	OpenWindow
+		move.l	d0,_DBWindow(a5)
+		beq	NoWin
+
+		move.l	d0,a0				; preleva rast
+		move.l	wd_RPort(a0),_RastPort(a5)	; e user port
+		move.l	wd_UserPort(a0),_UserPort(a5)
+
+		move.l	_IntBase(a5),a6
+
+		move.l	_RastPort(a5),a0	; traccia tutti i bordi
+		move.l	a0,a3
+		lea	Border_1,a1
+		moveq	#0,d0
+		moveq	#0,d1
+		CALL	DrawBorder
+
+		move.l	_GfxBase(a5),a6
+		move.l	a3,a1
+		moveq	#3,d0
+		CALL	SetAPen
+
+		jsr	_MaskPattern(pc)
+		move.l	a3,a1
+		moveq	#8,d0
+		moveq	#13,d1
+		move.w	#195,d2
+		move.w	#60,d3
+		CALL	RectFill
+		jsr	_NormalPattern(pc)
+
+		move.l	a3,a0
+		lea	IntuiText_1,a1
+		moveq	#0,d0
+		move.l	d0,d1
+		move.l	_IntBase(a5),a6
+		CALL	PrintIText
+
+		move.l	_DBWindow(a5),a0	; setta il puntatore
+		lea	MyPointer,a1
+		move.w	#12,d0			; altezza
+		move.w	#16,d1			; larghezza
+		move.w	#-1,d2
+		move.w	#-1,d3
+		CALL	SetPointer
+
+***************************************************************************
+
+		jsr	_LoadSettings(pc)
+
+		jsr	_SetMGadPref(pc)
+
+***************************************************************************
+
+MainLoop
+NoMessage	move.l	_UserPort(a5),a0	; attesa messaggi
+		movea.l	4.w,a6
+		CALL	WaitPort
+
+		move.l	_UserPort(a5),a0
+		CALL	GetMsg			; preleva messaggio
+		tst.l	d0
+		beq.s	NoMessage
+
+SkipMsg		move.l	d0,_IntMsg(a5)		; preleva informazioni
+		move.l	d0,a1			; dal messaggio
+		move.l	im_Class(a1),_IClass(a5)
+		move.w	im_Code(a1),_ICode(a5)
+		move.l	im_IAddress(a1),_IAddress(a5)
+		move.w	im_Qualifier(a1),_IQualifier(a5)
+		move.w	im_MouseX(a1),_MouseX(a5)
+		move.w	im_MouseY(a1),_MouseY(a5)
+
+		;move.l	_IntMsg(a5),a1
+		CALL	ReplyMsg		; messagio ok
+
+		;move.l	_UserPort(a5),a0	; altro?
+		;CALL	GetMsg
+		;tst.l	d0			; si`, ricicla, e prende
+		;bne.s	SkipMsg			; percio` solo l'ultimo
+
+		move.l	_IClass(a5),d0		; identifica i messaggi
+		cmp.l	#GADGETUP,d0
+		beq	GadgetCheck		; gadget premuto
+		cmp.l	#MOUSEBUTTONS,d0	; destro o sin premuto
+		beq	ButtonsCheck
+		cmp.l	#CLOSEWINDOW,d0
+		beq	Exit
+		bra	MainLoop
+
+
+GadgetCheck	move.l	_IAddress(a5),a0	; gestisce i gadgets
+		move.l	gg_UserData(a0),d0
+		beq	Exit
+GadSubJump	move.l	d0,a0			; indirizzo funzione
+		jsr	(a0)			; esegui gadfunction
+		bra	MainLoop
+
+
+ButtonsCheck	move.w	_ICode(a5),d0		; gestione tasti mouse
+		cmp.b	#IECODE_RBUTTON,d0
+		beq.s	RightButton			; destro
+		bra	MainLoop
+
+RightButton	jsr	_RightCheck(pc)		; idem come sopra
+		bra	MainLoop
+
+NoIntuition	move.l	#IntError,d2		; no intuition
+		move.l	#IntLen,d3
+		bra	ErrWrite
+
+NoReqTools	move.l	#ReqTError,d2
+		move.l	#ReqTLen,d3
+		bra	ErrWrite
+
+NoReqTMem	move.l	#ReqMemError,d2
+		move.l	#ReqMemLen,d3
+		bra	ErrWrite
+
+NoWin		move.l	#WinError,d2		; no window
+		move.l	#WinLen,d3
+		bra.s	ErrWrite
+
+NoGfx		move.l	#GfxError,d2		; no gfx
+		move.l	#GfxLen,d3
+ErrWrite	move.l	_Output(a5),d1
+		move.l	_DosBase(a5),a6		; scrive effettivamente
+		CALL	Write			; il messagggio di err.
+
+
+Exit		move.l	_DBWindow(a5),d0	; *USCITA*
+		beq.s	CloseGfx		; chiude e dealloca
+		move.l	d0,a0			; tutto.
+		move.l	_IntBase(a5),a6		; NB: si salta direttamente
+		CALL	CloseWindow		; a Exit perche` si preoc-
+						; cupa di chiudere solo
+						; quello che e` stato ef-
+						; fettivamente aperto o
+						; allocato.
+CloseGfx	move.l	_GfxBase(a5),d0
+		beq.s	ClosePP
+		move.l	d0,a1
+		move.l	4.w,a6
+		CALL	CloseLibrary
+ClosePP		move.l	_PPBase(a5),d0
+		beq.s	CloseInt
+		move.l	d0,a1
+		move.l	4.w,a6
+		CALL	CloseLibrary
+CloseInt	move.l	_IntBase(a5),d0
+		beq.s	CloseRMem
+		move.l	d0,a1
+		move.l	4.w,a6
+		CALL	CloseLibrary
+CloseRMem	move.l	_ReqTMem(a5),d0
+		beq.s	CloseReqT
+		move.l	d0,a1
+		move.l	_ReqTBase(a5),a6
+		CALL	rtFreeRequest
+CloseReqT	move.l	_ReqTBase(a5),d0
+		beq.s	CloseDos
+		move.l	d0,a1
+		move.l	4.w,a6
+		CALL	CloseLibrary
+CloseDos	move.l	_DosBase(a5),a1
+		move.l	4.w,a6			; (?)
+		CALL	CloseLibrary
+FreeRQMem	move.l	_ReqBuf(a5),d0
+		beq.s	F2Exit
+		move.l	d0,a1
+		move.l	#RQBUF_LEN,d0
+		movea.l	4.w,a6
+		CALL	FreeMem
+F2Exit		rts
+
+
+
+;************** ROUTINES VARIE *********************************************
+
+;===========================================================================
+;==
+;== SETTA PATTERN RETINATO
+;==
+;== a0 = *pattern da utilizzare (16 bit)
+;== a1 = rastport
+;== d0 = esponente a cui si eleva 2 per ottenere l'altezza del pattern
+;==
+
+_MaskPattern	lea	Pattern01,a0
+		move.b	#1,d0
+_SetPattern	move.l	a0,rp_AreaPtrn(a1)
+		move.b	d0,rp_AreaPtSz(a1)
+		rts
+
+
+;===========================================================================
+;==
+;== SETTA PATTERN NORMALE
+;==
+
+_NormalPattern	lea	Pattern11,a0
+		clr.b	d0
+		bra.s	_SetPattern
+
+
+;===========================================================================
+;==
+;== GESTIONE PRESSIONE TASTO DESTRO DEL MOUSE
+;==
+
+_RightCheck	move.l	_DBWindow(a5),a0
+		moveq	#0,d0
+		move.l	_IntBase(a5),a6
+		CALL	ModifyIDCMP
+
+		lea	DBPrefWin,a0
+		CALL	OpenWindow
+		move.l	d0,_DBPrefWin(a5)
+		beq	NoWin
+
+		move.l	d0,a0
+		move.l	wd_RPort(a0),_RastPort2(a5)
+		move.l	wd_UserPort(a0),_UserPort2(a5)
+
+		move.l	_DBPrefWin(a5),a0	; setta il puntatore
+		lea	MyPointer,a1
+		move.w	#12,d0			; altezza
+		move.w	#16,d1			; larghezza
+		move.w	#-1,d2
+		move.w	#-1,d3
+		CALL	SetPointer
+
+		move.l	_RastPort2(a5),a0	; traccia tutti i bordi
+		move.l	a0,a3
+		lea	Border_a1,a1
+		moveq	#0,d0
+		moveq	#0,d1
+		CALL	DrawBorder
+
+		move.l	_GfxBase(a5),a6
+
+		move.l	a3,a1
+		moveq	#0,d0
+		CALL	SetAPen
+
+		lea	IntuiText_a1,a1
+		move.l	a3,a0
+		moveq	#0,d0
+		move.l	d0,d1
+		move.l	_IntBase(a5),a6
+		CALL	PrintIText
+
+		jsr	_RefreshMGad(pc)
+
+DBPref_MsgLoop
+		move.l	4.w,a6
+NoMessage1	move.l	_UserPort2(a5),a0
+		CALL	WaitPort
+
+		move.l	_UserPort2(a5),a0
+		CALL	GetMsg
+		tst.l	d0
+		beq.s	NoMessage1
+
+		move.l	d0,_IntMsg(a5)
+		move.l	d0,a1
+		move.l	im_Class(a1),_IClass(a5)
+		move.w	im_Code(a1),_ICode(a5)
+		move.l	im_IAddress(a1),_IAddress(a5)
+		move.w	im_Qualifier(a1),_IQualifier(a5)
+		move.w	im_MouseX(a1),_MouseX(a5)
+		move.w	im_MouseY(a1),_MouseY(a5)
+
+		;move.l	d0,a1
+		CALL	ReplyMsg
+
+		move.l	_IClass(a5),d0
+		cmp.l	#GADGETUP,d0
+		beq.s	G_Control
+		cmp.l	#GADGETDOWN,d0
+		beq	M_Control
+		bra.s	DBPref_MsgLoop
+
+M_Control
+G_Control	move.l	_IAddress(a5),a0	; gestisce i gadgets
+		move.l	gg_UserData(a0),d0
+		beq.s	YesMOK
+		move.l	d0,a0			; indirizzo funzione
+		jsr	(a0)			; esegui gadfunction
+		bra	DBPref_MsgLoop
+
+
+YesMOK		move.l	_DBPrefWin(a5),a0
+		move.l	_IntBase(a5),a6
+		CALL	CloseWindow
+
+		move.l	_DBWindow(a5),a0
+		move.l	#WinIDCMP,d0
+		CALL	ModifyIDCMP
+
+		move.l	_DBWindow(a5),a0
+		move.l	wd_UserPort(a0),_UserPort(a5)
+		rts
+
+
+;===========================================================================
+;==
+;== GESTIONE DELLA (DE)COMPRESSIONE
+;==
+
+_Crunch		move.l	_ReqTBase(a5),a6
+		lea	ReqStruct,a0
+		move.l	_ReqTMem(a5),a1
+		move.l	_ReqBuf(a5),a2
+		move.l	a2,a4
+
+REQT_NAME	EQU	128
+
+		adda.w	#REQT_NAME,a2	; qui va il nome del file
+		lea	ReqTitle,a3
+		CALL	rtFileRequestA
+		tst.l	d0
+		beq	NoFileSel
+		move.l	_ReqTMem(a5),a1
+
+REQT_Path	EQU	$10
+
+		move.l	REQT_Path(a1),a2	; qui c'e` il path
+		move.l	a2,a3
+		adda.w	#REQT_NAME,a3
+LoopStrCopy	move.b	(a2)+,(a4)+
+		tst.b	-1(a2)
+		bne.s	LoopStrCopy
+		move.b	#"/",-1(a4)
+LoopFNameStr	move.b	(a3)+,(a4)+	; in ReqBuf(a5) c'e` il nome
+		tst.b	-1(a3)		; file completo di path.
+		bne.s	LoopFNameStr
+
+NoFileSel	rts
+
+
+;===========================================================================
+;==
+;== GESTIONE DELL'ARCHIVIAZIONE
+;==
+
+_Archive	rts
+
+
+
+;===========================================================================
+;==
+;== GESTIONE GADGETS MUTUALEXCLUDE CRUNCHER OPTION
+;==
+
+M_Func1		clr.b	_CprBlock(a5)
+M_DoMGad	bsr	_SetMGadPref
+		bra	_RefreshMGad
+
+M_Func2		move.b	#1,_CprBlock(a5)
+		bra.s	M_DoMGad
+
+M_Func3		move.b	#2,_CprBlock(a5)
+		bra.s	M_DoMGad
+
+M_Func4		clr.b	_CRCData(a5)
+		bra	M_DoMGad
+
+M_Func5		move.b	#1,_CRCData(a5)
+		bra	M_DoMGad
+
+M_Func6		move.b	#2,_CRCData(a5)
+		bsr	_SetMGadPref
+
+_RefreshMGad	move.l	_IntBase(a5),a6
+		lea	Gad2_4,a0
+		move.l	_DBPrefWin(a5),a1
+		suba.l	a2,a2
+		moveq	#-1,d0
+		CALL	RefreshGList
+		rts
+
+
+;===========================================================================
+;==
+;== LOAD SETTINGS
+;==
+
+_LoadSettings	move.b	#0,_CprBlock(a5)	; default
+		move.b	#1,_CRCData(a5)
+		move.l	_DosBase(a5),a6
+		move.l	#Pref_name,d1
+		move.l	#MODE_OLDFILE,d2
+		CALL	Open
+		tst.l	d0
+		beq	LS_Error
+		move.l	d0,d6
+		move.l	d6,d1
+		lea	R_Buffer(a5),a3
+		move.l	a3,d2
+		moveq	#Pref_hdr_len,d3
+		CALL	Read
+		lea	Pref_header,a2
+		move.l	(a3),d1
+		cmp.l	(a2),d1
+		bne	LS_Error0
+		lea	_CprBlock(a5),a3
+		move.l	a3,d2
+		move.l	d6,d1
+		moveq	#2,d3
+		CALL	Read
+LS_Error0	move.l	d6,d1
+		CALL	Close
+LS_Error	move.w	_CprBlock(a5),_CprBlock0(a5)	; dump
+		rts
+
+
+;==========================================================================
+
+MGADNUM		EQU	3
+MGADNUM1	EQU	3
+
+_SetMGadPref	moveq	#(MGADNUM-1),d1
+		lea	MGad_Block(pc),a1
+		bsr	SMG_DeSelect
+		moveq	#0,d0
+		move.b	_CprBlock(a5),d0
+		bsr	SMG_Select
+		moveq	#(MGADNUM1-1),d1
+		lea	MGad_Block2(pc),a1
+		bsr	SMG_DeSelect
+		moveq	#0,d0
+		move.b	_CRCData(a5),d0
+		bsr	SMG_Select
+		rts
+
+SMG_DeSelect	moveq	#0,d0
+		move.w	#SELECTED,d2
+		not.w	d2
+SMG_loop0	move.l	(a1,d0),a0		; ptr a gadget
+		and.w	d2,gg_Flags(a0)
+		add.l	#4,d0
+		dbf	d1,SMG_loop0
+		rts
+
+SMG_Select	lsl.w	#2,d0
+		move.l	(a1,d0),a0
+		or.w	#SELECTED,gg_Flags(a0)
+		rts
+
+
+MGad_Block	dc.l	Gad2_4
+		dc.l	Gad2_5
+		dc.l	Gad2_6
+
+MGad_Block2	dc.l	Gad2_7
+		dc.l	Gad2_8
+		dc.l	Gad2_9
+
+
+; =========================================================================
+
+_PrefSave	move.w	_CprBlock(a5),_CprBlock0(a5)
+		adda.l	#4,sp
+		bsr	_SetMGadPref
+		move.l	_DosBase(a5),a6
+		move.l	#Pref_name,d1
+		move.l	#MODE_NEWFILE,d2
+		CALL	Open
+		tst.l	d0
+		beq	PS_Error
+		move.l	d0,d6
+		move.l	d6,d1
+		move.l	#Pref_header,d2
+		moveq	#Pref_hdr_len,d3
+		CALL	Write		; non controlla se ci sono errori
+		move.l	d6,d1
+		lea	_CprBlock(a5),a0
+		move.l	a0,d2
+		moveq	#2,d3
+		CALL	Write		; idem
+		move.l	d6,d1
+		CALL	Close
+PS_Error	bra	YesMOK
+
+_PrefUse	move.w	_CprBlock(a5),_CprBlock0(a5)
+		adda.l	#4,sp
+		bsr	_SetMGadPref
+		bra	YesMOK
+
+_PrefCancel	move.w	_CprBlock0(a5),_CprBlock(a5)
+		adda.l	#4,sp
+		bsr	_SetMGadPref
+		bra	YesMOK
+
+
+
+;************** DATI DEL PROGRAMMA *****************************************
+
+
+		SECTION	DBCruncher_datas,DATA
+
+DosName		dc.b	'dos.library',0
+		even
+
+IntName		dc.b	'intuition.library',0
+		even
+
+PPName		dc.b	'powerpacker.library',0
+		even
+
+GfxName		dc.b	'graphics.library',0
+		even
+
+ReqToolsName	dc.b	'reqtools.library',0
+		even
+
+ConsoleName	dc.b	'*',0
+		even
+
+IntError	dc.b	"I can't open intuition.library! (V34)",10
+IntLen		EQU	*-IntError
+		even
+GfxError	dc.b	"I can't open graphics.library! (V34)",10
+GfxLen		EQU	*-GfxError
+		even
+WinError	dc.b	"I can't open my window!",10
+WinLen		EQU	*-WinError
+		even
+ReqTError	dc.b	"You need reqtools.library! (V34)",10
+ReqTLen		EQU	*-ReqTError
+		even
+ReqMemError	dc.b	"Error allocating ReqTools memory!",10
+ReqMemLen	EQU	*-ReqMemError
+		even
+
+WinIDCMP	EQU	GADGETUP!MOUSEBUTTONS!CLOSEWINDOW
+
+WY		EQU	((16*4)+1)
+WX		EQU	322
+
+DBWindow	dc.w	((640-WX)/2),((256-WY)/2)	; left/top edge
+		dc.w	WX,WY				; width, height
+		dc.b	0,1				; detail/block pen
+		dc.l	WinIDCMP			; IDCMP
+		dc.l	RMBTRAP!ACTIVATE!WINDOWDRAG!WINDOWCLOSE!WINDOWDEPTH
+		dc.l	Gad_1				; first gadget
+		dc.l	0				; checkmark
+		dc.l	DB_Title			; window title
+		dc.l	0				; screen
+		dc.l	0				; bitmap
+		dc.w	0,0
+		dc.w	0,0				; redimension value
+		dc.w	WBENCHSCREEN			; screentype
+
+WINOPT_Y	EQU	151
+WINOPT_X	EQU	230
+
+DBPrefWin	dc.w	((640-WINOPT_X))/2,((256-WINOPT_Y)/2)
+		dc.w	WINOPT_X,WINOPT_Y
+		dc.b	0,1
+		dc.l	GADGETUP!GADGETDOWN
+		dc.l	RMBTRAP!ACTIVATE!WINDOWDRAG!WINDOWDEPTH
+		dc.l	Gad2_1
+		dc.l	0,0,0,0
+		dc.w	0,0,0,0
+		dc.w	WBENCHSCREEN
+
+
+		;--> Border titolo
+Border_1	BOX	6,12,192,50,1,2,Border_2
+Border_2	BOX	198,12,118,50,1,2,0
+
+Border_a1	SBOX	8,25,214,103,2,1,Border_a2
+Border_a2	BOX	6,130,218,18,1,2,Border_a3
+Border_a3	LINE	12,75,205,1,2,0
+
+Gad_1		BGAD	_Crunch,200,13,114,16,<"(De)Crunch">,Gad_2
+Gad_2		BGAD	_Archive,200,29,114,16,<"Archive">,Gad_3
+Gad_3		BGAD	0,200,45,114,16,<"Quit">,0
+
+Gad2_1		BGAD	_PrefSave,8,131,60,16,<"Save">,Gad2_2
+Gad2_2		BGAD	_PrefUse,68,131,94,16,<"Use">,Gad2_3
+Gad2_3		BGAD	_PrefCancel,162,131,60,16,<"Cancel">,Gad2_4
+
+Gad2_4		MGAD	M_Func1,10,31,Gad2_5,MText_1
+MText_1		dc.b	"Total Compression",0
+		even
+
+Gad2_5		MGAD	M_Func2,10,45,Gad2_6,MText_2
+MText_2		dc.b	"1024 bytes blocks",0
+		even
+
+Gad2_6		MGAD	M_Func3,10,59,Gad2_7,MText_3
+MText_3		dc.b	"4096 bytes blocks",0
+		even
+
+Gad2_7		MGAD	M_Func4,10,82,Gad2_8,MText_4
+MText_4		dc.b	"No 16CRC",0
+		even
+
+Gad2_8		MGAD	M_Func5,10,96,Gad2_9,MText_5
+MText_5		dc.b	"16CRC per file",0
+		even
+
+Gad2_9		MGAD	M_Func6,10,110,0,MText_6
+MText_6		dc.b	"16CRC per block",0
+		even
+
+
+BX		EQU	202
+
+IntuiText_1b	ITEXT	IntuiText_2,(BX-TLen_1)/2,18,2,0,RP_JAM1,Text_1
+IntuiText_1	ITEXT	IntuiText_1b,((BX-TLen_1)/2)+1,19,1,0,RP_JAM1,Text_1
+Text_1		dc.b	"DBCruncher V2.10",0
+TLen_1		EQU	((*-Text_1)-1)*8
+		even
+
+IntuiText_2b	ITEXT	IntuiText_3,(BX-TLen_2)/2,38,2,0,RP_JAM1,Text_2
+IntuiText_2	ITEXT	IntuiText_2b,((BX-TLen_2)/2)+1,39,1,0,RP_JAM1,Text_2
+Text_2		dc.b	"by",0
+TLen_2		EQU	((*-Text_2)-1)*8
+		even
+
+IntuiText_3b	ITEXT	IntuiText_4,(BX-TLen_3)/2,48,2,0,RP_JAM1,Text_3
+IntuiText_3	ITEXT	IntuiText_3b,((BX-TLen_3)/2)+1,49,1,0,RP_JAM1,Text_3
+Text_3		dc.b	"Mauro Panigada",0
+TLen_3		EQU	((*-Text_3)-1)*8
+		even
+
+IntuiText_4b	ITEXT	0,(BX-TLen_4)/2,28,2,0,RP_JAM1,Text_4
+IntuiText_4	ITEXT	IntuiText_4b,((BX-TLen_4)/2)+1,29,1,0,RP_JAM1,Text_4
+Text_4		dc.b	"Data Cruncher&Archiver",0
+TLen_4		EQU	((*-Text_4)-1)*8
+		even
+
+IntuiText_a1	ITEXT	IntuiText_a1b,((WINOPT_X-TL1)/2)+1,15+1,1,0,RP_JAM1,Text_a1
+IntuiText_a1b	ITEXT	0,(WINOPT_X-TL1)/2,15,2,0,RP_JAM1,Text_a1
+Text_a1		dc.b	"Chruncher Options",0
+TL1		EQU	((*-Text_a1)-1)*8
+		even
+
+Topaz_80	dc.l	Topaz_name
+		dc.w	TOPAZ_EIGHTY
+		dc.b	FS_NORMAL,FPF_ROMFONT
+
+Topaz_name	dc.b	"topaz.font",0
+		even
+
+Image_1		IMAGE	0,0,30,11,2,BImage_1,3,0,0
+Image_2		IMAGE	0,0,30,11,2,BImage_2,3,0,0
+
+Pref_header	dc.b	"DBPREF"
+Pref_hdr_len	EQU	*-Pref_header
+		even
+
+Pref_name	dc.b	"s:DBCruncher.prefs",0
+		even
+
+DB_Title	dc.b	"Dynamic Bushman",0
+		even
+
+; --- tag items --- SCOPIAZZATO DA SMORE
+ReqStruct	dc.l	$80000003	; $80000003 tag_flags o simile
+		dc.l	$00000002	; $00000002 centra
+		dc.l	$80000029	; $80000029 tag_lunghezza
+		dc.l	230		; $000000e6 lunghezza y
+		dc.l	$80000028	; $80000028
+		dc.l	0		; 0
+		dc.l	TAG_DONE	; 0
+
+ReqTitle	dc.b	"Select a file",0
+		even
+
+
+
+;************** DATI BSS DEL PROGRAMMA *************************************
+
+
+		SECTION	DBCruncher_bss,BSS
+
+VarZone
+		VAR0
+
+		VARL	_DosBase
+		VARL	_PPBase
+		VARL	_IntBase
+		VARL	_GfxBase
+		VARL	_ReqTBase
+
+		VARL	_ReturnMsg
+
+		VARL	_ReqTMem
+		VARL	_ReqBuf
+
+		VARL	_DBWindow
+		VARL	_UserPort
+		VARL	_RastPort
+
+		VARL	_UserPort2
+		VARL	_RastPort2
+
+		VARL	_IntMsg
+		VARL	_IClass
+		VARW	_ICode
+		VARL	_IAddress
+		VARW	_IQualifier
+
+		VARW	_MouseX
+		VARW	_MouseY
+
+		VARL	_Output
+
+		VARW	_BitData		; per i/o a bit
+		VARW	_Counter		; per i/o a bit
+
+		VARB	_CtrlFlags
+		VARB	_Status
+
+		VARL	_DBPrefWin
+
+		VARB	_CprBlock	; 0 = all, 1 = 1024, 2 = 4096
+		VARB	_CRCData	; 0 = none, 1 = file, 2 = block
+
+		VARB	_CprBlock0	; dump
+		VARB	_CRCData0
+
+		MEMB	R_Buffer,8
+
+
+
+;************** DATI GRAFICI ***********************************************
+
+
+		SECTION	DBCruncher_dc,DATA_C
+
+Pattern01	dc.w	%1010101010101010
+		dc.w	%0101010101010101
+
+Pattern11	dc.w	%1111111111111111
+
+BImage_2	dc.l	%000000000000000000000000000000
+		dc.l	%000000001111111111111000000000
+		dc.l	%000000011000000000000000000000
+		dc.l	%000000110001111111100000000000
+		dc.l	%000000110011111111110000000000
+		dc.l	%000000110011111111110000000000
+		dc.l	%000000110011111111110000000000
+		dc.l	%000000110001111111100000000000
+		dc.l	%000000011000000000000000000000
+		dc.l	%000000001000000000000000000000
+		dc.l	%000000000000000000000000000000
+
+		dc.l	%000000000000000000000000000000
+		dc.l	%000000000000000000000100000000
+		dc.l	%000000000000000000000110000000
+		dc.l	%000000000001111111100011000000
+		dc.l	%000000000011111111110011000000
+		dc.l	%000000000011111111110011000000
+		dc.l	%000000000011111111110011000000
+		dc.l	%000000000001111111100011000000
+		dc.l	%000000000000000000000110000000
+		dc.l	%000000000111111111111100000000
+		dc.l	%000000000000000000000000000000
+
+BImage_1	dc.l	%000000000000000000000000000000
+		dc.l	%000000000000000000000100000000
+		dc.l	%000000000000000000000110000000
+		dc.l	%000000000000000000000011000000
+		dc.l	%000000000000000000000011000000
+		dc.l	%000000000000000000000011000000
+		dc.l	%000000000000000000000011000000
+		dc.l	%000000000000000000000011000000
+		dc.l	%000000000000000000000110000000
+		dc.l	%000000000111111111111100000000
+		dc.l	%000000000000000000000000000000
+
+		dc.l	%000000000000000000000000000000
+		dc.l	%000000001111111111111000000000
+		dc.l	%000000011000000000000000000000
+		dc.l	%000000110000000000000000000000
+		dc.l	%000000110000000000000000000000
+		dc.l	%000000110000000000000000000000
+		dc.l	%000000110000000000000000000000
+		dc.l	%000000110000000000000000000000
+		dc.l	%000000011000000000000000000000
+		dc.l	%000000001000000000000000000000
+		dc.l	%000000000000000000000000000000
+
+
+MyPointer	dc.w	0,0
+
+		dc.w	%0000000000000000,%0000000000000000
+		dc.w	%1100000000000000,%0100000000000000
+		dc.w	%0111000000000000,%1011000000000000
+		dc.w	%0011110000000000,%0100110000000000
+		dc.w	%0011111100000000,%0100001100000000
+		dc.w	%0001111111000000,%0010000011000000
+		dc.w	%0001111111000000,%0010000000000000
+		dc.w	%0000111100000000,%0001000100000000
+		dc.w	%0000110110000000,%0001001010000000
+		dc.w	%0000010011000000,%0000100101000000
+		dc.w	%0000010001100000,%0000100010100000
+		dc.w	%0000000000100000,%0000000001000000
+
+		dc.w	0,0
+
+
+
+		END

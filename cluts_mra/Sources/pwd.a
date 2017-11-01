@@ -1,0 +1,65 @@
+;
+; pwd v1.0                                          * PD *
+; written by Mauro Panigada
+;
+; $VER: pwd.a v1.0 (1996-12-19) by Mauro Panigada
+;
+; - Print Working Directory
+;   A DOS program from UNIX (HP-UX, HP-9000 workstation, "Using HP-UX",
+;   p. 5-6 Organizing Files in Directories, (c) 1987-1992 Hewlett-Packard
+;   Company)
+;
+; Requirements: Need at least OS2.x.
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+
+
+		bra.s	Start
+
+		dc.b	"$VER: pwd v1.0 (1996-12-19) by Mauro Panigada",0
+		even
+
+Start		lea	DOSName(pc),a1
+		moveq	#36,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	Sayonara
+
+		move.l	d0,a5
+		exg	a5,a6
+
+		link	a4,#-264
+		move.l	sp,d1
+		move.l	#256,d2
+		jsr	_LVOGetCurrentDirName(a6)
+
+		move.l	sp,a0
+Loop		tst.b	(a0)+
+		bne.s	Loop
+		move.b	#10,-1(a0)
+		clr.b	(a0)
+
+		move.l	sp,d1
+		jsr	_LVOPutStr(a6)
+
+		unlk	a4
+
+		exg	a5,a6
+		move.l	a5,a1
+		jsr	_LVOCloseLibrary(a6)
+
+Sayonara	moveq	#0,d0
+		rts
+
+
+DOSName		dc.b	"dos.library",0
+		even
+
+
+		END

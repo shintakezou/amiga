@@ -1,0 +1,67 @@
+
+
+		move.l	#$ffff,d0
+		move.l	#$1234,d1
+		bsr	mulu32
+		move.l	#$1234,d1
+		bsr	divu32
+		move.l	#$45000001,d0
+		move.l	#$10000,d1
+		bsr	divu32
+		rts
+
+;------------------------------------------------
+;
+; (simple) arithmetic subroutines
+;
+; d0=d0*d1
+;
+; d0/d1/d5/d6 affected...
+;
+mulu32
+	move.l	d0,d6
+	move.w	d0,d5
+	mulu	d1,d5			;lo*lo
+	swap	d1
+	mulu	d1,d0			;hi*lo
+	swap	d0
+	add.l	d5,d0
+	swap	d6
+	move.w	d6,d5
+	mulu	d1,d5			;hi*hi
+	swap	d1
+	mulu	d1,d6			;lo*hi
+	swap	d6
+	add.l	d6,d0
+	rts
+
+;
+; d0=d0/d1 (divu.l d1,d0)
+; => d2: remainder
+;
+;
+; d0/d1/d2/d5/d6 affected
+;
+divu32
+	cmp.l	d0,d1
+	bls.s	ll
+	move.l	d0,d2
+	moveq	#0,d0
+	rts
+
+ll	moveq	#0,d2
+	moveq	#0,d5
+	moveq	#31,d6
+loop:	add.l	d0,d0
+	addx.l	d2,d2
+	add.l	d5,d5
+	cmp.l	d1,d2
+	dbge	d6,loop
+	blt.s	out
+	sub.l	d1,d2
+	addq.b	#1,d5
+	dbra d6,loop
+out:	move.l	d5,d0
+	rts
+
+

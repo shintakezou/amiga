@@ -1,0 +1,327 @@
+;
+; ParseArg v1.0
+; written by Mauro Panigada
+;
+; $VER: ParseArg.a v1.0 (c) 1997 by Mauro Panigada
+;
+; Opened: 1997-04-07
+; Closed: 1997-04-08 (see history)
+;
+; History: 1997-04-08  finished but the second ReadArgs (used to parse
+;                      your string) fails (ERROR_TOO_MANY_ARGS). Why?
+;                      I don't know... So also the part above is not
+;                      tested... LEFT.
+;
+; Purpose: you can do a parse from a script. For example if you have
+;   a string in a var with multiple spaces and you want only the first
+;   word, you can now do:
+;
+;   .key TO/A
+;   program1 <TO>            ; this is the mysterous prg which fill HIF var
+;   ParseArg $HIF "WHERE,WHEN"
+;
+;  You will obtain in ParseArg/argA and ParseArg/argB the arguments.
+;  ParseArg warns (#10) when a required argument is not given.
+;  You can know when a not required argument is given (see exemplum)
+;  by the costruct "if exists". eg:
+;
+;  .key SPACEDSTRING/A
+;  ParseArg <SPACEDSTRING> "IFSE,AUN"
+;  if exists env:parsearg/argA
+;    ....
+;  endif
+;
+;*************
+;
+; Argument: STRING/A,TEMPLATE/A
+;
+; STRING: The string to be parsed, or a var (using $)
+; TEMPLATE: the template
+;
+; Known bugs: after 26 var, and the symbols []\` (and maybe others: see
+;   ascii codes) it restart with little a-z (before: A-Z), but a file
+;   named argA is the same file named arga... Suggestion: never use
+;   more than 26 arguments!
+;
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"dos/var.i"
+		include	"dos/rdargs.i"
+
+
+call		MACRO			; I don't like "call" can be
+		jsr	_LVO\1(a6)	; confused with a mnemonic istr,
+		ENDM			; but it's faster (no shift...)
+
+
+stov		MACRO
+		move.\0	\1,_\2(a5)
+		ENDM
+
+
+pos		MACRO
+		lea	_\1(a5),\2
+		ENDM
+
+putv		MACRO
+		move.\0	_\1(a5),\2
+		ENDM
+
+clrv		MACRO
+		clr.\0	_\1(a5)
+		ENDM
+
+
+
+openlib		MACRO
+		lea	\1name(pc),a1
+		moveq	#\2,d0
+		call	OpenLibrary
+		stov.l	d0,\1base
+		beq	exit
+		ENDM
+
+closelib	MACRO
+		putv.l	\1base,a1
+		call	CloseLibrary
+		ENDM
+
+base		MACRO
+		putv.l	\1base,a6
+		ENDM
+
+execbase	MACRO
+		move.l	(a5),a6
+		ENDM
+
+tstv		MACRO
+		tst.\0	_\1(a5)
+		ENDM
+
+
+	STRUCTURE ParseArgStores,0
+		LONG	_execbase
+		LONG	_dosbase
+		LONG	_string
+		LONG	_template
+		LONG	_arg
+		LONG	_arg2
+		LONG	_argobject
+		STRUCT	_buffer,256
+		STRUCT	_string0,128
+		LABEL	reserved_size
+
+
+
+
+		SECTION	ParseArg,CODE
+
+		move.l	4.w,a6
+		move.l	#reserved_size,d0
+		move.l	#MEMF_ANY|MEMF_CLEAR,d1
+		call	AllocMem
+		move.l	d0,a5
+		tst.l	d0
+		bne.s	start
+		rts
+
+		dc.b	"$VER: ParseArg v1.0 (c) 1997 by Mauro Panigada",0
+		even
+
+start		move.l	a6,(a5)
+		moveq	#0,d7
+		suba.l	a4,a4
+		suba.l	a3,a3
+
+		openlib	dos,37
+
+		move.l	d0,a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		moveq	#0,d3
+		pos	string,a0
+		move.l	a0,d2
+		call	ReadArgs
+		stov.l	d0,arg
+		beq	error
+
+		putv.l	template,a0
+		moveq	#0,d0
+loop		tst.b	(a0)
+		beq.s	ende
+		cmp.b	#",",(a0)+
+		bne.s	loop
+		addq.l	#1,d0
+		bra.s	loop
+ende		addq.l	#1,d0
+
+		move.l	d0,d4		; d4=numero delle long
+		lsl.l	#2,d0
+		add.l	#namesize+1,d0
+		move.l	d0,d6
+		move.l	#MEMF_ANY|MEMF_CLEAR,d1
+		execbase
+		call	AllocMem
+		tst.l	d0
+		beq	error2
+		move.l	d0,a4
+		move.l	a4,a3		; a3= stringa della var (file)
+		lea	namel(pc),a0
+lookup		move.b	(a0)+,(a4)+	; a4=array
+		tst.b	(a0)
+		bne.s	lookup
+		clr.b	(a4)+		; to not-odd address
+
+		base	dos
+		moveq	#DOS_RDARGS,d1
+		moveq	#0,d2
+		call	AllocDosObject
+		stov.l	d0,argobject
+		beq	exit
+
+		putv.l	string,a0
+		moveq	#0,d0
+luppel		tst.b	(a0)+
+		beq.s	finel
+		addq.l	#1,d0
+		bra.s	luppel
+finel		pos	string0,a1
+		putv.l	string,a0
+killo		move.b	(a0)+,(a1)+
+		tst.b	-1(a0)
+		bne.s	killo
+		move.b	#10,-1(a1)
+		clr.b	(a1)
+
+		putv.l	argobject,a0
+		move.l	d0,CS_Length(a0)
+		pos	string0,a1
+		move.l	a1,CS_Buffer(a0)
+		pos	buffer,a1
+		move.l	a1,RDA_Buffer(a0)
+		move.l	#255,RDA_BufSiz(a0)
+		move.l	a0,d3
+		putv.l	template,d1
+		move.l	a4,d2
+		call	ReadArgs
+		stov.l	d0,arg2
+		beq	merro
+		moveq	#0,d7
+		bra.s	stolp
+
+liip		addq.b	#1,14(a3)	; next lettera (A-B-C..ArgX)
+		addq.l	#4,d7
+stolp		subq.l	#1,d4
+lop
+		move.l	a3,d1
+		move.l	(a4,d7),a0
+		move.l	(a0),d2
+		beq.s	liip
+		move.l	d2,a0
+		moveq	#0,d0
+onna		tst.b	(a0)+
+		beq.s	finish
+		addq.w	#1,d0
+		bra.s	onna
+finish		move.l	d0,d3
+		move.l	d4,-(sp)
+		move.l	#GVF_GLOBAL_ONLY,d4
+		call	SetVar
+		move.l	(sp)+,d4
+		addq.b	#1,14(a3)
+		addq.l	#4,d7
+		dbf	d4,lop
+
+		moveq	#0,d7
+
+
+exit
+
+		putv.l	arg2,d1
+		beq.s	ex11
+		base	dos
+		call	FreeArgs
+ex11
+		putv.l	argobject,d2
+		beq.s	ex12
+		base	dos
+		moveq	#DOS_RDARGS,d1
+		call	FreeDosObject
+ex12
+
+		move.l	a3,d0
+		beq.s	ex_1
+		move.l	a3,a1
+		move.l	d6,d0
+		execbase
+		call	FreeMem
+ex_1
+		tstv.l	arg
+		beq.s	ex_0
+		putv.l	arg,d1
+		base	dos
+		call	FreeArgs
+ex_0
+		execbase
+		closelib dos
+		move.l	a5,a1
+		move.l	#reserved_size,d0
+		call	FreeMem
+		move.l	d7,d0
+		rts
+
+
+merro		base	dos
+		call	IoErr
+
+		moveq	#10,d0
+		bra.s	exit
+
+error2		moveq	#30,d0
+		bra.s	exit
+
+error		base	dos
+		call	IoErr
+		cmp.b	#$76,d0
+		beq.s	erko
+		lea	parsename(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		lea	errortext(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		moveq	#30,d7
+		bra	exit
+erko		lea	parsename(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		lea	errortext2(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		bra	exit
+
+
+
+dosname		dc.b	"dos.library",0
+		even
+parsename	dc.b	"ParseArg: ",0
+		even
+errortext	dc.b	"required argument missing",10,0
+		even
+errortext2	dc.b	"too many arguments!",10,0
+		even
+template	dc.b	"STRING/A,TEMPLATE/A",0
+		even
+namel		dc.b	"parsearg/argA",0
+namesize	EQU	*-namel
+		even
+
+		END

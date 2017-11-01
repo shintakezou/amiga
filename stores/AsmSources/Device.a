@@ -1,0 +1,237 @@
+**************
+** Device.a **
+**************
+
+; $VER: Device.a  v1.0  by MU (based on Roberto Larcher's C program)
+;
+; Reduced and rewritten into assembly by Mauro Panigada from
+; C source code by Roberto Larcher in:
+; Commodore Gazette, Nov 1991, VI, n. 5, p. 18
+;
+; FREEWARE
+;
+; (1996-06-12) Ha qualche bug di troppo, decisamente da rivedere.
+; device df0: [quando df0: non c'e` come disco]
+; **** fixed **** (era a6 che non aveva dos ma exec!)
+; >>>>>>> id_InUse  da` valori sballati (o sbaglio a leggerlo!) NO:
+; >>>>>>> infatti la doc dice LONG! Boooh!
+;
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+		include	"dos/filehandler.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"dos/dosasl.i"
+
+
+	STRUCTURE MUDevInfo,0
+		LONG	_dosbase
+		LONG	_readarg
+		LONG	_array
+		LONG	_devport
+		LONG	_myport
+		LONG	_packet
+		STRUCT	_infodata,id_SIZEOF
+		STRUCT	_msg,MN_SIZE
+		STRUCT	_argv,11*4
+		LABEL	MUDev_SIZEOF
+
+
+		SECTION	MUDevInfoCODE,CODE
+
+		bra.s	main
+
+		dc.b	"$VER: Device v1.0 by MU (based on Roberto"
+		dc.b	" Larcher's C program",0
+
+main		lea	mustores,a5
+		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#37,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_dosbase(a5)
+		bne.s	m_ok
+		rts
+
+m_ok		move.l	d0,a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		lea	_array(a5),a4
+		move.l	a4,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,_readarg(a5)
+		beq	m_noarg
+
+		move.l	4.w,a6
+		jsr	_LVOCreateMsgPort(a6)
+		move.l	d0,_myport(a5)
+		beq	exit
+
+		move.l	(a4),d1
+		move.l	_dosbase(a5),a6
+		jsr	_LVODeviceProc(a6)
+		move.l	d0,_devport(a5)
+		beq	exit
+
+		moveq	#0,d2
+		move.l	#DOS_STDPKT,d1
+		jsr	_LVOAllocDosObject(a6)
+		move.l	d0,_packet(a5)
+		beq	exit
+
+		lea	_msg(a5),a3
+		move.b	#NT_MESSAGE,LN_TYPE(a3)
+		move.l	d0,LN_NAME(a3)
+		move.l	_myport(a5),MN_REPLYPORT(a3)
+		move.w	#MN_SIZE,MN_LENGTH(a3)
+		move.l	d0,a2
+		move.l	a3,dp_Link(a2)
+		move.l	_myport(a5),dp_Port(a2)
+		move.l	#ACTION_DISK_INFO,dp_Type(a2)
+		lea	_infodata(a5),a4
+		move.l	a4,d0
+		lsr.l	#2,d0
+		move.l	d0,dp_Arg1(a2)
+
+		move.l	4.w,a6
+		move.l	_devport(a5),a0
+		move.l	a3,a1
+		jsr	_LVOPutMsg(a6)
+		move.l	_myport(a5),a0
+		jsr	_LVOWaitPort(a6)
+		move.l	a3,a1		;??????
+		jsr	_LVORemove(a6)
+
+		move.l	id_DiskType(a4),d0
+		cmp.l	#ID_NO_DISK_PRESENT,d0
+		beq.s	nodisk
+		cmp.l	#ID_UNREADABLE_DISK,d0
+		beq.s	noreadable
+		cmp.l	#ID_NOT_REALLY_DOS,d0
+		beq.s	nopdos
+		cmp.l	#ID_FFS_DISK,d0
+		beq.s	ffsdisk
+		cmp.l	#ID_DOS_DISK,d0
+		beq.s	dosdisk
+
+		lea	bo(pc),a0
+putm		move.l	a0,d1
+		move.l	_dosbase(a5),a6
+		jsr	_LVOPutStr(a6)
+		bra	exit
+
+nodisk		lea	nodiskm(pc),a0
+		bra.s	putm
+
+noreadable	lea	noreadm(pc),a0
+		bra.s	putm
+
+nopdos		lea	nopdosm(pc),a0
+		bra.s	putm
+
+ffsdisk		lea	ffs(pc),a0
+		move.l	a0,_argv+4(a5)
+		bra.s	doinfo
+
+dosdisk		lea	dos(pc),a0
+		move.l	a0,_argv+4(a5)
+
+doinfo		lea	mix(pc),a0
+		move.l	a0,d1
+		lea	_argv(a5),a0
+		move.l	a0,d2
+		move.l	_array(a5),a1
+		move.l	a1,(a0)
+		move.l	id_NumSoftErrors(a4),8(a0)
+		move.l	id_UnitNumber(a4),12(a0)
+		move.l	id_DiskState(a4),d0
+		sub.l	#80,d0
+		lsl.l	#2,d0
+		lea	millo(pc),a1
+		move.l	(a1,d0),16(a0)
+		move.l	id_NumBlocks(a4),20(a0)
+		move.l	id_NumBlocksUsed(a4),24(a0)
+		move.l	id_BytesPerBlock(a4),28(a0)
+		move.l	20(a0),d3
+		move.l	24(a0),d4
+		sub.l	d4,d3
+		move.l	d3,32(a0)
+		move.l	id_InUse(a4),36(a0)
+		move.l	_dosbase(a5),a6
+		jsr	_LVOVPrintf(a6)
+
+exit		move.l	_readarg(a5),d1
+		move.l	_dosbase(a5),a6
+		jsr	_LVOFreeArgs(a6)
+		bra.s	exit0
+m_noarg		lea	nom(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+exit0		move.l	_myport(a5),d0
+		beq.s	noport0
+		move.l	d0,a0
+		move.l	4.w,a6
+		jsr	_LVODeleteMsgPort(a6)
+noport0		move.l	_dosbase(a5),a6
+		move.l	_packet(a5),d1
+		beq.s	nopkt
+		jsr	_LVOFreeDosObject(a6)
+nopkt		move.l	_dosbase(a5),a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+		rts
+
+
+dosname		dc.b	"dos.library",0
+		even
+nom		dc.b	"Forgotten argument!",10,0
+		even
+template	dc.b	"DEVICE/A",0
+		even
+bo		dc.b	"UNKNOW TYPE!",10,0
+		even
+nodiskm		dc.b	"No disk present!",10,0
+		even
+noreadm		dc.b	"Unreadable disk!",10,0
+		even
+nopdosm		dc.b	"Not really dos!",10,0
+		even
+ffs		dc.b	"FFS",0
+dos		dc.b	"DOS",0
+
+mix		dc.b	10,"Information on: %s",10,10
+		dc.b	"Disk type: %s",10
+		dc.b	"Software errors: %ld",10
+		dc.b	"Unit: %ld",10
+		dc.b	"Disk state: %s",10
+		dc.b	"Number of blocks: %ld",10
+		dc.b	"Number of used blocks: %ld",10
+		dc.b	"Bytes per blocks: %ld",10
+		dc.b	"Free blocks: %ld",10
+		dc.b	"Disk in use (1=TRUE, 0=FALSE): %ld",10,10,0
+		even
+
+millo		dc.l	m0,m1,m2
+
+m0		dc.b	"Write protect",0
+		even
+m1		dc.b	"Validating",0
+		even
+m2		dc.b	"It exists and is writable",0
+		even
+
+
+
+		SECTION	MUDevInfoBSS,BSS
+
+mustores	ds.b	MUDev_SIZEOF
+
+
+		END

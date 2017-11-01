@@ -1,0 +1,18 @@
+
+$VER: RequestFile.doc 36.2 (c) 1999 by Mauro Panigada
+
+RequestFile 36.2
+=================
+
+(c) 1999 by Mauro Panigada
+
+RequestFile allow you to select a file through asl request file.. Simply it
+pass your arguments to the asl function, not so trascendental (?)
+Many kind of this program exist.. This one is the mine. Short, fast (!) and
+so on, of course original and mine.
+
+ 1> RequestFile ?
+
+for a little help. I believe and hope the template is self-explaining. If it is
+not so, try and enjoy yourself. Thanks.
+

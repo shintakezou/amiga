@@ -1,0 +1,333 @@
+;
+; $VER: RequestFile.a v36.2 (c) 1998 by Mauro Panigada
+;
+; Started:  1998.07.16
+; Finished: 1998.07.16
+;
+; Requirements: OS2.0 (#36), 020+
+; Purpose: replace the known RequestFile
+; Note: PURE
+;
+; Template: DRAWER,FILE/K,PATTERN/K,TITLE/K,POSITIVE/K,NEGATIVE/K,ACCEPTPATTERN/K,
+;   REJECTPATTERN/K,SAVEMODE/S,MULTISELECT/S,DRAWERSONLY/S,NOICONS/S,PUBSCREEN/K,
+;   NOQUOTES/S
+;
+; Note: * when in multiselect mode, the last drawers/file will have a space after
+;   him; but the program which analyzes that line, should not have any problem, if
+;   it is well written.
+;
+; History:     1998.07.16         v36.1
+;              1998.10.21         added NOQUOTES and enlarged AddPart buffer.
+;                                 v36.2
+;              1998.11.06         (first on Aminet release)
+;
+
+                incdir  "inc:"
+                include "exec/types.i"
+                include "exec/memory.i"
+                include "exec/libraries.i"
+                include "exec/exec_lib.i"
+                include "dos/dos.i"
+                include "dos/dosextens.i"
+                include "dos/dos_lib.i"
+                include "intuition/intuition.i"
+                include "intuition/intuition_lib.i"
+                include "libraries/asl.i"
+                include "libraries/asl_lib.i"
+
+
+call            MACRO
+                jsr     (_LVO\1,a6)
+                ENDM
+
+        STRUCTURE internal,0
+                LONG    execbase
+                LONG    dosbase
+                LONG    aslbase
+
+                LABEL   array
+                LONG    drawer
+                LONG    file
+                LONG    pattern
+                LONG    title
+                LONG    positive
+                LONG    negative
+                LONG    acceptpattern
+                LONG    rejectpattern
+                LONG    savemode
+                LONG    multiselect
+                LONG    drawersonly
+                LONG    noicons
+                LONG    pubscreen
+                LONG    noquotes
+
+                LONG    oldstack
+
+                WORD    returncode
+
+                STRUCT  buffer,150
+
+                STRUCT  rejectbuffer,32
+                STRUCT  acceptbuffer,32
+
+                LABEL   s_size
+
+
+                opt     p=68020         ; try with new style
+
+LIBVERSION      EQU     36
+
+
+        SECTION reqfile,CODE
+
+                bra.s   start
+
+                dc.b    "$VER: RequestFile 36.2 [020+] (1998.10.21) "
+                dc.b    "by Mauro Panigada",13,10,0
+                even
+
+start           move.l  sp,a0
+                move.w  #(s_size/2)-1,d0
+lup             clr.w   -(sp)
+                dbf     d0,lup
+                move.l  sp,a5
+                move.l  a0,(oldstack,a5)
+
+                move.b  #30,(returncode+1,a5)
+                move.l  (4).w,a6
+                move.l  a6,(a5)
+                lea     (dosname,pc),a1
+                moveq   #LIBVERSION,d0
+                call    OpenLibrary
+                move.l  d0,(dosbase,a5)
+                beq     exit0
+                lea     (aslname,pc),a1
+                moveq   #LIBVERSION,d0
+                call    OpenLibrary
+                move.l  d0,(aslbase,a5)
+                beq     exit0
+
+                clr.b   (returncode+1,a5)
+                move.l  (dosbase,a5),a6
+                lea     (template,pc),a0
+                move.l  a0,d1
+                move.l  a5,d2
+                add.l   #array,d2
+                moveq   #0,d3
+                call    ReadArgs
+                move.l  d0,d7                   ; d7 = readargs
+                beq     doserror
+
+; qui crea i tags per aprire il requester....
+
+                suba.l  a0,a0
+                moveq   #ASL_FileRequest,d0
+                move.l  (aslbase,a5),a6
+                call    AllocAslRequest
+                move.l  d0,d6                   ; d6 = asl request
+                beq     aslerror
+
+                move.l  (dosbase,a5),a6
+                move.l  sp,a4                   ; a4 = mediostack
+                clr.l   -(sp)
+                move.l  (pubscreen,a5),d0
+                beq.s   nops
+                move.l  d0,-(sp)
+                move.l  #ASLFR_PubScreenName,-(sp)
+nops            move.l  (drawer,a5),d0
+                beq.s   nodrawer
+                move.l  d0,-(sp)
+                move.l  #ASLFR_InitialDrawer,-(sp)
+nodrawer        move.l  (file,a5),d0
+                beq.s   nofile
+                move.l  d0,-(sp)
+                move.l  #ASLFR_InitialFile,-(sp)
+nofile          move.l  (pattern,a5),d0
+                beq.s   nopatt
+                move.l  d0,-(sp)
+                move.l  #ASLFR_InitialPattern,-(sp)
+                move.l  #1,-(sp)
+                move.l  #ASLFR_DoPatterns,-(sp)
+nopatt          move.l  (title,a5),d0
+                beq.s   notit
+                move.l  d0,-(sp)
+                move.l  #ASLFR_TitleText,-(sp)
+notit           move.l  (positive,a5),d0
+                beq.s   noposi
+                move.l  d0,-(sp)
+                move.l  #ASLFR_PositiveText,-(sp)
+noposi          move.l  (negative,a5),d0
+                beq.s   nonega
+                move.l  d0,-(sp)
+                move.l  #ASLFR_NegativeText,-(sp)
+nonega          move.l  (acceptpattern,a5),d1
+                beq.s   noap
+                lea     (acceptbuffer,a5),a0
+                move.l  a0,d2
+                moveq   #32,d3
+                call    ParsePatternNoCase
+                lea     (acceptbuffer,a5),a0
+                move.l  a0,-(sp)
+                move.l  #ASLFR_AcceptPattern,-(sp)
+noap            move.l  (rejectpattern,a5),d1
+                beq.s   norejp
+                lea     (rejectbuffer,a5),a0
+                move.l  a0,d2
+                moveq   #32,d3
+                call    ParsePatternNoCase
+                lea     (rejectbuffer,a5),a0
+                move.l  a0,-(sp)
+                move.l  #ASLFR_RejectPattern,-(sp)
+norejp          move.l  (savemode,a5),d0
+                beq.s   nosamo
+                move.l  d0,-(sp)
+                move.l  #ASLFR_DoSaveMode,-(sp)
+nosamo          move.l  (multiselect,a5),d0
+                beq.s   nomusel
+                move.l  d0,-(sp)
+                move.l  #ASLFR_DoMultiSelect,-(sp)
+nomusel         move.l  (drawersonly,a5),d0
+                beq.s   nodon
+                move.l  d0,-(sp)
+                move.l  #ASLFR_DrawersOnly,-(sp)
+nodon           move.l  (noicons,a5),d0
+                beq.s   nonoi
+                move.l  d0,-(sp)
+                move.l  #ASLFR_RejectIcons,-(sp)
+nonoi
+
+                move.b  #20,(returncode+1,a5)
+                move.l  d6,a0
+                move.l  sp,a1
+                move.l  (aslbase,a5),a6
+                call    AslRequest
+                move.l  a4,sp
+                tst.l   d0
+                beq     exit2
+
+                clr.b   (returncode+1,a5)
+                move.l  d6,a0
+                tst.l   (multiselect,a5)
+                bne     yesmulsel
+
+                move.l  (fr_File,a0),d2
+                bsr     CAddPart
+
+                lea     (replacet,pc),a0
+                tst.l   (noquotes,a5)
+                beq.s   rplnq
+                lea     (replacetn,pc),a0
+rplnq           bsr     CWrite
+                bra     exit2
+
+yesmulsel
+                move.l  (fr_NumArgs,a0),d4
+                subq.w  #1,d4                   ; numero argomenti
+                move.l  (fr_ArgList,a0),a4
+                cmp.l   #0,a4
+                beq     unknownerr
+
+yms_loop        addq.l  #4,a4
+                move.l  (a4)+,d2
+                bsr     CAddPart
+                lea     (replacet0,pc),a0
+                tst.l   (noquotes,a5)
+                beq.s   rplnq0
+                lea     (replacetn0,pc),a0
+rplnq0          bsr     CWrite
+                dbf     d4,yms_loop
+                lea     (accapo,pc),a0
+                move.l  a0,d1
+                call    PutStr
+
+
+exit2
+                move.l  d6,a0
+                move.l  (aslbase,a5),a6
+                call    FreeAslRequest
+exit1
+                move.l  d7,d1
+                move.l  (dosbase,a5),a6
+                call    FreeArgs
+exit0
+                move.l  (a5),a6
+                move.l  (dosbase,a5),a1
+                call    CloseLibrary
+                move.l  (aslbase,a5),a1
+                call    CloseLibrary
+                move.l  (oldstack,a5),sp
+                moveq   #0,d0
+                move.w  (returncode,a5),d0
+                rts
+
+doserror
+                call    IoErr
+                move.l  d0,d1
+                moveq   #0,d2
+                call    PrintFault
+frega0          move.b  #30,(returncode+1,a5)
+                bra.s   exit0
+
+aslerror
+                move.l  (dosbase,a5),a6
+                lea     (aslerrstr,pc),a0
+                move.l  a0,d1
+                call    PutStr
+                move.b  #30,(returncode+1,a5)
+                bra.s   exit1
+
+unknownerr      move.b  #30,(returncode+1,a5)
+                bra.s   exit2
+
+
+; IN   a0 = fr struct
+;      a5 = DO NOT TOUCH reserved base
+;      d2 = file to append
+;
+CAddPart        move.l  d6,a0
+                move.l  (fr_Drawer,a0),a1
+                lea     (buffer,a5),a2
+                move.l  a2,d1
+                moveq   #107,d3
+                not.b   d3
+                move.l  d3,d5
+                subq.w  #1,d3
+clup            move.b  (a1)+,(a2)+
+                tst.b   -1(a1)
+                dbeq    d3,clup
+                move.l  d5,d3
+                move.l  (dosbase,a5),a6
+                call    AddPart         ; quello che è uscito, è uscito!
+                rts
+
+; IN  a0 = replacetx
+;
+CWrite          lea     (buffer,a5),a1
+                move.l  a1,-(sp)
+                move.l  sp,d2
+                move.l  a0,d1
+                move.l  (dosbase,a5),a6
+                call    VPrintf
+                addq.l  #4,sp
+                rts
+
+
+;====================================================================================
+
+template        dc.b    "DRAWER,FILE/K,PATTERN/K,TITLE/K,POSITIVE/K,NEGATIVE/K,ACCEPTPATTERN/K,"
+                dc.b    "REJECTPATTERN/K,SAVEMODE/S,MULTISELECT/S,DRAWERSONLY/S,NOICONS/S,PUBSCREEN/K,NOQUOTES/S",0
+
+dosname         dc.b    "dos.library",0
+aslname         dc.b    "asl.library",0
+
+noicpatt        dc.b    "#?.info",0
+
+aslerrstr       dc.b    "Error while allocating requester!",10,0
+
+replacetn       dc.b    "%s",10,0
+replacet        dc.b    '"%s"'
+accapo          dc.b    10,0
+replacetn0      dc.b    "%s ",0
+replacet0       dc.b    '"%s" ',0
+
+                END

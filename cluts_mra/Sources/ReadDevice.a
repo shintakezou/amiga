@@ -1,0 +1,251 @@
+;
+; $VER: ReadDevice.a 37.1 (1998.07.20) by Mauro Panigada
+;
+; Requirements: os2.1 (#37), 68020+
+; Purpose: replace ReadDevice by ...
+; Note: PURE
+;
+; Usage: ReadDevice DEVICE/A
+;
+
+		incdir	"inc:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/filehandler.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+
+
+CALL		MACRO
+		jsr	(_LVO\1,a6)
+		ENDM
+
+EXECBASE	MACRO
+		move.l	(4).w,a6
+		ENDM
+
+	STRUCTURE internal,0
+		LONG	dosbase
+
+		LABEL	array
+		LONG	device
+
+		STRUCT	arguments,33*4
+
+		LABEL	s_sizeof
+
+
+		opt	p=68020
+
+
+LIBVERSION	EQU	37
+
+
+	SECTION	main,CODE
+
+		bra.s	start
+
+		dc.b	"$VER: ReadDevice 37.1 [020+] (1998.07.20) by Mauro Panigada"
+		dc.b	13,10,0
+		even
+
+start
+		EXECBASE
+		move.l	#s_sizeof,d0
+		move.l	#MEMF_ANY|MEMF_CLEAR,d1
+		CALL	AllocMem
+		move.l	d0,a5
+		beq	exit00
+
+		lea	(dosname,pc),a1
+		moveq	#LIBVERSION,d0
+		CALL	OpenLibrary
+		move.l	d0,(a5)
+		beq	exit01
+
+		move.l	d0,a6
+		lea	(template,pc),a0
+		move.l	a0,d1
+		move.l	a5,d2
+		addq.l	#array,d2
+		moveq	#0,d3
+		CALL	ReadArgs
+		move.l	d0,d7			; d7=readargs
+		beq	exit02err
+
+	*move.l	(device,a5),d1
+	*moveq	#SHARED_LOCK,d2
+	*CALL	Lock
+	*move.l	d0,d6			; d6=lock
+	*beq	exit03err
+	*lea	(devinfo,a5),a0
+	*move.l	a0,a4
+	*move.l	a0,d2
+	*move.l	d0,d1
+	*CALL	Info
+	*tst.l	d0
+	*beq	exit04err
+	*move.l	(id_VolumeNode,a4),d0
+	*lsl.l	#2,d0
+
+		moveq	#LDF_DEVICES|LDF_READ,d1
+		CALL	LockDosList
+		move.l	d0,d1
+		move.l	(device,a5),d2
+		moveq	#LDF_DEVICES,d3
+		CALL	FindDosEntry
+		tst.l	d0
+		beq	exit03err
+
+		move.l	d0,a4		;a4=dvi
+
+		move.l	(dvi_Startup,a4),a0
+		adda.l	a0,a0
+		adda.l	a0,a0
+		move.l	(fssm_Environ,a0),a2
+		adda.l	a2,a2
+		adda.l	a2,a2			a2=startup
+
+		lea	(arguments,a5),a3
+		move.l	a3,d2
+		move.l	(dvi_Name,a4),(a3)+
+		move.l	(dvi_Task,a4),(a3)+
+		move.l	(dvi_Handler,a4),(a3)+
+		move.l	(dvi_Stacksize,a4),(a3)+
+		move.l	(dvi_Priority,a4),(a3)+
+		move.l	(dvi_SegList,a4),d0
+		lsl.l	#2,d0
+		move.l	d0,(a3)+
+		move.l	(dvi_GlobVec,a4),d0
+		*lsl.l	#2,d0
+		move.l	d0,(a3)+
+		move.l	a0,(a3)+
+
+		move.l	a0,-(sp)
+		lea	(testone,pc),a0
+		move.l	a0,d1
+		CALL	VPrintf
+		move.l	(sp)+,a0
+
+		tst.l	a0
+		beq.s	nn1
+
+		move.l	a3,d2
+		move.l	(fssm_Device,a0),(a3)+
+		move.l	(fssm_Unit,a0),(a3)+
+		move.l	(fssm_Flags,a0),(a3)+
+
+		lea	(testone2,pc),a0
+		move.l	a0,d1
+		CALL	VPrintf
+
+nn0		tst.l	a2
+		beq.s	nn1
+
+		move.l	a3,d2
+		move.w	#(DosEnvec_SIZEOF/4)-1,d0
+loop0		move.l	(a2)+,(a3)+
+		dbf	d0,loop0
+
+		lea	(testone3,pc),a0
+		move.l	a0,d1
+		CALL	VPrintf
+
+nn1
+		bsr	unlockit
+
+exit99
+
+exit03
+		move.l	d7,d1
+		CALL	FreeArgs
+
+exit02
+		move.l	(a5),a1
+		EXECBASE
+		CALL	CloseLibrary
+
+exit01
+		move.l	a5,a1
+		move.l	#s_sizeof,d0
+		CALL	FreeMem
+
+exit00
+		rts
+
+exit02err
+		pea	(exit02,pc)
+		bra.s	exiterr
+exit03err
+		pea	(exit03,pc)
+		bsr	unlockit
+		lea	(messer,pc),a0
+		move.l	a0,d1
+		lea	(device,a5),a0
+		move.l	a0,d2
+		jmp	_LVOVPrintf(a6)
+
+exiterr
+		CALL	IoErr
+		move.l	d0,d1
+		moveq	#0,d2
+		CALL	PrintFault
+		rts
+
+unlockit	moveq	#LDF_DEVICES|LDF_READ,d1
+		CALL	UnLockDosList
+		rts
+
+
+
+;===============================================================================
+
+dosname		dc.b	"dos.library",0
+
+testone
+		dc.b	" Name = %b",10
+		dc.b	" Task = 0x%lx",10
+		dc.b	" Handler = %b",10
+		dc.b	" Stacksize = %lu",10
+		dc.b	" Priority = %ld",10
+		dc.b	" SegList = 0x%lx",10
+		dc.b	" GlobalVec = 0x%lx",10
+		dc.b	" Startup = 0x%lx",10,0
+testone2
+		dc.b	"FileSysStartupMsg info:",10
+		dc.b	" Device = %b",10
+		dc.b	" Unit = %lu",10
+		dc.b	" Flags = 0x%lx",10,0
+testone3
+		dc.b	"DosEnvec info:",10
+		dc.b	" TableSize = %lu",10
+		dc.b	" Block Size = %lu",10
+		dc.b	" SecOrg = %lu",10
+		dc.b	" Number of Heads = %lu",10
+		dc.b	" Sectors per Block = %lu",10
+		dc.b	" Blocks per Track = %lu",10
+		dc.b	" Reserved blocks at start = %lu",10
+		dc.b	" Reserved blocks at end = %lu",10
+		dc.b	" Interleave = %lu",10
+		dc.b	" Low Cylinder = %lu",10
+		dc.b	" High Cylinder = %lu",10
+		dc.b	" Number of DOS Buffers = %lu",10
+		dc.b	" Buffer Memory Type = 0x%lx",10
+		dc.b	" MaxTransfer = %lu",10
+		dc.b	" Memory Write Mask = 0x%lx",10
+		dc.b	" Boot Priority = %ld",10
+		dc.b	" DOS Type = 0x%lx",10
+		dc.b	" Baud = %lu",10
+		dc.b	" Handler Control Word = 0x%lx",10
+		dc.b	" Number of BootBlocks = %lu",10
+		dc.b	0
+
+template	dc.b	"DEVICE/A",0
+
+messer		dc.b	"Device %s not found.",10,0
+
+
+		END

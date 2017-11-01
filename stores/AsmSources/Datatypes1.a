@@ -1,0 +1,180 @@
+;
+; Datatypes1 v1.0
+; written by Mauro Panigada
+;
+; $VER: Datatypes1.a v1.0 (1996-07-29) by Mauro Panigada
+;
+; STARTED: 1996-07-29
+; FINISHED: 1996-07-29
+;
+; INFORMATION: See AmigaMagazine #60, "Usiamo i datatypes" by
+;   Vincenzo Gervasi. This is a translation...
+;
+; PURPOSE: Using datatyping. Example number one.
+; USAGE: 'Datatypes1 <FILENAME>' or 'Datatypes1 ?' for info
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"datatypes/datatypes.i"
+		include	"datatypes/datatypesclass.i"
+		include	"datatypes/datatypes_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+
+
+
+	STRUCTURE MyData,0
+		LONG	_ExecBase
+		LONG	_DataTypesBase
+		LONG	_DOSBase
+
+		LONG	_Array
+		LONG	_Args
+		LONG	_Lock
+
+		LONG	_Dtn
+
+		WORD	_TType
+
+		LONG	_ArrayMirror
+		LONG	_Name
+		LONG	_BaseName
+		LONG	_TDesc
+		LONG	_GDesc
+		LONG	_IDPtr
+
+		LONG	_ID
+
+		LABEL	MyData_SIZEOF
+
+
+
+		SECTION	DattypCODED,CODE
+
+		bra.s	Start
+
+		dc.b	"$VER: Datatypes1 v1.0 (1996-07-29) "
+		dc.b	"by Mauro Panigada",0
+		even
+
+Start		lea	Storage,a5
+
+		move.l	4.w,a6
+		move.l	a6,(a5)
+		lea	DataTypesName(pc),a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_DataTypesBase(a5)
+		beq	NoLibrary
+
+		lea	DOSName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_DOSBase(a5)
+		beq	NoLibrary
+
+		move.l	d0,a6
+		move.l	#Template,d1
+		lea	_Array(a5),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,_Args(a5)
+		beq	NoArg
+
+		move.l	_Array(a5),d1
+		move.l	#ACCESS_READ,d2
+		jsr	_LVOLock(a6)
+		move.l	d0,_Lock(a5)
+		beq	NoLock
+
+		move.l	#DTST_FILE,d0
+		move.l	_Lock(a5),a0
+		suba.l	a1,a1
+		move.l	_DataTypesBase(a5),a6
+		jsr	_LVOObtainDataTypeA(a6)
+		move.l	d0,_Dtn(a5)
+		beq	NoDataType
+
+		move.l	d0,a0
+		move.l	dtn_Header(a0),a4
+		move.w	dth_Flags(a4),d7
+		and.w	#DTF_TYPE_MASK,d7
+		move.w	d7,_TType(a5)
+
+		move.w	d7,d0
+		swap	d0
+		clr.w	d0
+		swap	d0
+		add.l	#DTMSG_TYPE_OFFSET,d0
+		jsr	_LVOGetDTString(a6)
+		move.l	d0,_TDesc(a5)
+
+		move.l	dth_GroupID(a4),d0
+		jsr	_LVOGetDTString(a6)
+		move.l	d0,_GDesc(a5)
+
+		move.l	dth_ID(a4),_ID(a5)
+		move.l	_Array(a5),_ArrayMirror(a5)
+		lea	_ID(a5),a0
+		move.l	a0,_IDPtr(a5)
+
+		move.l	dth_Name(a4),_Name(a5)
+		move.l	dth_BaseName(a4),_BaseName(a5)
+
+		move.l	_DOSBase(a5),a6
+		move.l	#String,d1
+		lea	_ArrayMirror(a5),a0
+		move.l	a0,d2
+		jsr	_LVOVPrintf(a6)
+
+		move.l	_Dtn(a5),a0
+		move.l	_DataTypesBase(a5),a6
+		jsr	_LVOReleaseDataType(a6)
+
+NoDataType	move.l	_DOSBase(a5),a6
+		move.l	_Lock(a5),d1
+		jsr	_LVOUnLock(a6)
+
+NoLock		move.l	_DOSBase(a5),a6
+		move.l	_Args(a5),d1
+		jsr	_LVOFreeArgs(a6)
+
+NoArg
+NoLibrary	move.l	(a5),a6
+		move.l	_DOSBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+
+		move.l	_DataTypesBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+
+		rts
+
+
+DataTypesName	dc.b	"datatypes.library",0
+		even
+DOSName		dc.b	"dos.library",0
+		even
+
+Template	dc.b	"FILENAME/A",0
+		even
+
+String		dc.b	"          File: %s",10
+		dc.b	"   Descrizione: %s",10
+		dc.b	"      BaseName: %s",10
+		dc.b	"          Tipo: %s",10
+		dc.b	"        Gruppo: %s",10
+		dc.b	"            ID: %s",10
+		dc.b	0
+
+
+
+		SECTION	Stores,BSS
+
+Storage		ds.b	MyData_SIZEOF
+
+
+		END

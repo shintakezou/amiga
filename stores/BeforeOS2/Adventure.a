@@ -1,0 +1,1793 @@
+***************************************************************************
+**									 **
+** 				Adventure.a				 **
+**									 **
+***************************************************************************
+
+; by Mauro Panigada, 1994
+;
+; Prova di come strutturare un adventure scritto in assembler. Sono sola-
+; mente otto stanze, ci sono due altri tizi oltre al vostro alter ego, lo
+; scopo e` quello di uscire (vivi) dai sotterranei (e` molto facile). Una
+; delle  due persone  vi e` amica, l'altra no. Dovrebbe essere facilmente
+; modificabile (per aggiungere stanze, trucchi, intrighi...).
+;
+; NON TERMINATO: SI TRATTA SOLO DI UN ESEMPIO (INCOMPLETO), PER UN GIORNO
+; IN CUI MI VERRA` IN MENTE DI FARE QUALCOSA DI PIU` BELLO...
+;
+; Attualmente riconosce i comandi di direzione, inventario, tutti i coman
+; di, ma molti non sono implementati. Questo perche`, essendo un esempio,
+; dopo aver visto come scrivere GET, DROP e qualche altro, per gli  altri
+; si tratta solo di scrivere (e ragionare un po')...
+
+
+OpenLibrary	EQU	-552		; exec
+CloseLibrary	EQU	-414
+AllocMem	EQU	-198
+FreeMem		EQU	-210
+
+Open		EQU	-30		; dos
+Close		EQU	-36
+Read		EQU	-42
+Write		EQU	-48
+Input		EQU	-54
+Output		EQU	-60
+
+MEMORY		EQU	256+32+32+32+32+32
+PUBLIC_MEM	EQU	$10000
+
+MODE_OLDFILE	EQU	1005
+MODE_NEWFILE	EQU	1006
+
+TOTBUFF_LEN	EQU	256
+COMBUFF_LEN	EQU	32
+WORD1BUFF_LEN	EQU	32
+WORD2BUFF_LEN	EQU	32
+WORD3BUFF_LEN	EQU	32
+WORD4BUFF_LEN	EQU	32
+
+
+starting
+
+		bra	program
+
+		dc.b	'KNARR''S PRISON'
+		even
+
+program		movea.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#0,d0
+		jsr	OpenLibrary(a6)
+		move.l	d0,dosbase
+		beq	exit0
+		move.l	#MEMORY,d0
+		add.l	#datas_len,d0		; per il save
+		move.l	#PUBLIC_MEM,d1
+		jsr	AllocMem(a6)
+		move.l	d0,totbuff
+		beq	exit1
+		move.l	dosbase,a6
+		add.l	#TOTBUFF_LEN,d0
+		move.l	d0,commandbuff
+		add.l	#COMBUFF_LEN,d0
+		move.l	d0,word1buff
+		add.l	#WORD1BUFF_LEN,d0
+		move.l	d0,word2buff
+		add.l	#WORD2BUFF_LEN,d0
+		move.l	d0,word3buff
+		add.l	#WORD3BUFF_LEN,d0
+		move.l	d0,word4buff
+		add.l	#WORD4BUFF_LEN,d0
+		move.l	d0,save_mem
+
+		jsr	Input(a6)
+		move.l	d0,inhand
+		beq	exit3
+		jsr	Output(a6)
+		move.l	d0,outhand
+		beq	exit3
+
+;==============	MAIN ======================================================
+
+main		bsr	_start
+		bsr	_look
+main_loop	bsr	_dothem
+
+		bsr	_mixed
+
+		tst.b	end_flag
+		bne	congratulation
+		tst.b	rt_flag
+		beq.s	main_loop
+
+;==============	EXIT ======================================================
+
+exit3		movea.l	4.w,a6
+exit2		move.l	totbuff,a1
+		move.l	#MEMORY,d0
+		jsr	FreeMem(a6)
+exit1		move.l	dosbase,a1
+		jsr	CloseLibrary(a6)
+exit0		moveq	#0,d0
+		rts
+
+
+invio		dc.b	10,0
+		even
+dosname		dc.b	'dos.library',0
+		even
+totbuff		dc.l	0
+commandbuff	dc.l	0
+word1buff	dc.l	0
+word2buff	dc.l	0
+word3buff	dc.l	0
+word4buff	dc.l	0
+save_mem	dc.l	0
+dosbase		dc.l	0
+inhand		dc.l	0
+outhand		dc.l	0
+rt_flag		dc.b	0
+end_flag	dc.b	0
+		even
+
+
+;============== THE END ===================================================
+
+congratulation	move.l	outhand,d1
+		move.l	#congr_m,d2
+		move.l	#congr_l,d3
+		jsr	Write(a6)
+		bra	exit3
+
+congr_m		dc.b	10,10,10
+		dc.b	'CONGRATULATIONS! You have just finished the hardest adventure of the',10
+		dc.b	'world! Now you are free.',10,10,10
+congr_l		EQU	*-congr_m
+		even
+
+
+;==============	MAIN SUBROUTINES ==========================================
+
+_start		move.l	d0,d4
+		move.l	d4,d1
+		move.l	#clr_scr_m,d2
+		move.l	#clr_scr_l,d3
+		jsr	Write(a6)
+		move.l	d4,d1
+		move.l	#about_m,d2
+		move.l	#about_l,d3
+		jmp	Write(a6)
+
+_look		lea	str_man0(pc),a0
+		move.l	MA_CurrentRoom(a0),a0
+		move.l	RM_Descr(a0),a0
+		bsr	_print
+
+		lea	direc_m(pc),a0
+		bsr	_print
+		lea	str_man0(pc),a0
+		move.l	MA_CurrentRoom(a0),a1
+		lea	north(pc),a0
+		tst.b	RM_NFlag(a1)
+		beq	vsud
+		bsr	_print
+		bsr	spazio
+vsud		lea	south(pc),a0
+		tst.b	RM_SFlag(a1)
+		beq	vest
+		bsr	_print
+		bsr	spazio
+vest		lea	east(pc),a0
+		tst.b	RM_EFlag(a1)
+		beq	vovest
+		bsr	_print
+		bsr	spazio
+vovest		lea	west(pc),a0
+		tst.b	RM_WFlag(a1)
+		beq.s	vfine
+		bsr	_print
+vfine		lea	accapo_m(pc),a0
+		bsr	_print
+
+		lea	inv_m(pc),a0
+		bsr	_print
+		lea	str_man0(pc),a0
+		move.l	MA_CurrentRoom(a0),a1
+		move.l	RM_FirstObj(a1),a1
+		cmpa.l	#0,a1
+		beq	noinroom
+
+obj_search	move.l	OBJ_Name(a1),a0
+		bsr	_print
+		bsr	spazio
+		move.l	OBJ_Next(a1),d0
+		beq.s	no_other_obj
+		move.l	d0,a1
+		bra.s	obj_search
+
+noinroom	lea	nobjrm_m(pc),a0
+		bra	_print
+
+nobjrm_m	dc.b	'NOTHING',10,10,0
+		even
+
+no_other_obj	lea	str_man0(pc),a0
+		move.l	MA_CurrentRoom(a0),a1
+		lea	control(pc),a2
+next_sman	move.l	(a2)+,d0
+		beq	no_man
+		move.l	d0,a3
+		cmp.l	a0,a3
+		beq	no_man
+		move.l	MA_CurrentRoom(a3),a0
+		cmp.l	a0,a1
+		bne	no_man
+		move.l	MA_Name(a3),a0
+		bsr	_print
+		bsr	spazio
+		bra	next_sman
+no_man		lea	accapo_m(pc),a0
+		bra	_print
+
+
+accapo_m	dc.b	10,10,0
+		even
+direc_m		dc.b	'You can go: ',0
+		even
+inv_m		dc.b	'You can see: ',0
+		even
+
+
+_dothem		lea	control(pc),a0
+next_ctrl	move.l	(a0),a1
+		cmp.l	#0,a1
+		beq.s	no_others
+		move.l	MA_CtrlRoutine(a1),a2
+		jsr	(a2)
+		adda.l	#4,a0
+		bra.s	next_ctrl
+no_others	rts
+
+
+clr_scr_m	dc.b	27,'c'
+clr_scr_l	EQU	*-clr_scr_m
+		even
+about_m		dc.b	10,'*** THE ADVENTURE ***',10,10
+		dc.b	' by Mauro Panigada, (c) 1994',10,10
+		dc.b	'Try to escape from Knarr''s prison!',10,10,10
+about_l		EQU	*-about_m
+		even
+
+;==============	CONTROL SUBROUTINES =======================================
+
+_man0		move.l	a0,-(sp)
+		tst.b	MA_Power(a1)
+		beq	the_death
+		move.l	MA_CurrentRoom(a1),a0
+		move.w	RM_Identity(a0),d0
+		cmp.w	#8,d0
+		beq	the_end
+		lea	prompt(pc),a0
+		bsr	_print
+		move.l	totbuff,a0
+		bsr	_keyread
+
+ctrl_com	move.l	totbuff,a0
+		bsr	_split
+		move.l	commandbuff,a0
+		bsr	_toupper
+		move.l	word1buff,a0
+		bsr	_toupper
+		move.l	word2buff,a0
+		move.l	commandbuff,a1
+		move.b	(a1),d0
+		cmp.b	#'#',d0
+		beq.s	nextupper
+		bsr	_toupper
+nextupper	move.l	word3buff,a0
+		bsr	_toupper
+
+		move.l	commandbuff,a0
+		move.b	(a0)+,d0
+		tst.b	(a0)
+		bne	csearch
+		cmp.b	#"X",d0
+		beq	set_rt
+		cmp.b	#"N",d0
+		beq	nord
+		cmp.b	#"S",d0
+		beq	sud
+		cmp.b	#"E",d0
+		beq	est
+		cmp.b	#"W",d0
+		beq	ovest
+		cmp.b	#"L",d0
+		beq	guarda
+		cmp.b	#"I",d0
+		beq	inventario
+		cmp.b	#"?",d0
+		beq	help
+		pea	csearch
+		pea	_decode
+		rts
+
+csearch		moveq	#0,d0
+		lea	commandlist(pc),a1
+		lea	commandfunc(pc),a2
+research	move.l	commandbuff,a0
+		move.l	(a1,d0),a3
+		cmp.l	#0,a3
+		beq	unknown
+cs_loop		move.b	(a3),d1
+		move.b	(a0),d2
+		cmp.b	d1,d2
+		bne	nextcom
+		tst.b	(a0)
+		beq	maybethis
+		add.l	#1,a0
+		add.l	#1,a3
+		bra.s	cs_loop
+nextcom		add.l	#4,d0
+reloop0		bra	research
+maybethis	tst.b	(a3)
+		bne.s	reloop0
+		move.l	(a2,d0),a1
+		jsr	(a1)
+
+ctrl_end	move.l	(sp)+,a0
+		rts
+
+
+set_rt		st	rt_flag
+label0		bra.s	ctrl_end
+nord		bsr	_north
+label1		bra.s	label0
+sud		bsr	_south
+label2		bra.s	label1
+est		bsr	_east
+label3		bra.s	label2
+ovest		bsr	_west
+label4		bra.s	label3
+guarda		bsr	_look
+label5		bra.s	label4
+inventario	bsr	_inventory
+		bra.s	label5
+
+
+prompt		dc.b	'> ',0
+		even
+
+commandlist	dc.l	sleep
+		dc.l	north
+		dc.l	south
+		dc.l	east
+		dc.l	west
+		dc.l	give
+		dc.l	move
+		dc.l	talk
+		dc.l	tell
+		dc.l	enter
+		dc.l	go
+		dc.l	examine
+		dc.l	get
+		dc.l	open
+		dc.l	close
+		dc.l	turn
+		dc.l	look
+		dc.l	wait
+		dc.l	wear
+		dc.l	throw
+		dc.l	unlock
+		dc.l	drink
+		dc.l	tie
+		dc.l	untie
+		dc.l	dig
+		dc.l	read
+		dc.l	push
+		dc.l	kill
+		dc.l	drop
+		dc.l	eat
+		dc.l	cut
+		dc.l	touch
+		dc.l	pull
+		dc.l	press
+		dc.l	put
+		dc.l	take
+		dc.l	load
+		dc.l	save
+		dc.l	inventory
+		dc.l	0
+
+commandfunc	dc.l	_sleep
+		dc.l	_north
+		dc.l	_south
+		dc.l	_east
+		dc.l	_west
+		dc.l	_give
+		dc.l	_move
+		dc.l	_talk
+		dc.l	_tell
+		dc.l	_enter
+		dc.l	_go
+		dc.l	_examine
+		dc.l	_get
+		dc.l	_open
+		dc.l	_close
+		dc.l	_turn
+		dc.l	_look
+		dc.l	_wait
+		dc.l	_wear
+		dc.l	_throw
+		dc.l	_unlock
+		dc.l	_drink
+		dc.l	_tie
+		dc.l	_untie
+		dc.l	_dig
+		dc.l	_read
+		dc.l	_push
+		dc.l	_kill
+		dc.l	_drop
+		dc.l	_eat
+		dc.l	_cut
+		dc.l	_touch
+		dc.l	_pull
+		dc.l	_press
+		dc.l	_put
+		dc.l	_take
+		dc.l	_load
+		dc.l	_save
+		dc.l	_inventory
+		dc.l	0
+
+; =========================================================================
+
+_north		lea	str_man0(pc),a1
+c_north		move.l	MA_CurrentRoom(a1),a0
+		move.l	RM_North(a0),d0
+		beq	youcant
+		tst.b	RM_NFlag(a0)
+		beq	youcant
+		move.l	d0,MA_CurrentRoom(a1)
+rt_ret		bra	_look
+
+; -------------------------------------------------------------------------
+
+_south		lea	str_man0(pc),a1
+c_south		move.l	MA_CurrentRoom(a1),a0
+		move.l	RM_South(a0),d0
+		beq	youcant
+		tst.b	RM_SFlag(a0)
+		beq	youcant
+		move.l	d0,MA_CurrentRoom(a1)
+		bra	_look
+
+; -------------------------------------------------------------------------
+
+_west		lea	str_man0(pc),a1
+c_west		move.l	MA_CurrentRoom(a1),a0
+		move.l	RM_West(a0),d0
+		beq	youcant
+		tst.b	RM_WFlag(a0)
+		beq	youcant
+		move.l	d0,MA_CurrentRoom(a1)
+		bra	_look
+
+; -------------------------------------------------------------------------
+
+_east		lea	str_man0(pc),a1
+c_east		move.l	MA_CurrentRoom(a1),a0
+		move.l	RM_East(a0),d0
+		beq	youcant
+		tst.b	RM_EFlag(a0)
+		beq	youcant
+		move.l	d0,MA_CurrentRoom(a1)
+		bra	_look
+
+; -------------------------------------------------------------------------
+
+_give		rts					; codice 0
+
+; -------------------------------------------------------------------------
+
+_move		rts					; codice 1
+
+; -------------------------------------------------------------------------
+
+_talk		rts
+
+; -------------------------------------------------------------------------
+
+_tell		rts
+
+; -------------------------------------------------------------------------
+
+_enter		rts
+
+; -------------------------------------------------------------------------
+
+_go		rts
+
+; -------------------------------------------------------------------------
+
+_examine	rts					; codice 2
+
+; -------------------------------------------------------------------------
+
+_take
+_get		pea	_getted				; codice 3
+		moveq	#0,d4
+		sf	get_flag
+		move.l	word1buff,a0
+		tst.b	(a0)
+		beq	getwhat
+		move.b	num_of_get,d0
+		cmp.b	#3,d0
+		beq	toomanyobjs
+		lea	str_man0(pc),a1
+		move.l	MA_CurrentRoom(a1),a2
+		move.l	RM_FirstObj(a2),d3
+		beq	nohere
+cercaobj	move.l	d3,a3
+		bsr	_whichobj
+		tst.b	d0
+		bne	thisobj
+		move.l	d3,d4
+		move.l	OBJ_Next(a3),d3
+		beq	fineget
+		bra.s	cercaobj
+thisobj		move.l	#3,d0				; codice di GET
+		move.l	OBJ_CtrlRoutine(a3),a4
+		jsr	(a4)
+		tst.b	d0
+		beq	nogetobj
+		bsr	join
+		move.l	OBJ_Next(a3),d2
+		beq	tozeroprec
+		clr.l	OBJ_Next(a3)
+		tst.l	d4
+		beq	firstobjinrm
+		move.l	d4,a1
+		move.l	d2,OBJ_Next(a1)
+		st	get_flag
+		rts
+
+firstobjinrm	move.l	d2,RM_FirstObj(a2)
+		st	get_flag
+		rts
+
+join		tst.l	MA_FirstObject(a1)
+		beq	joinhere
+		move.l	MA_FirstObject(a1),a4
+joinloop	tst.l	OBJ_Next(a4)
+		beq.s	joinobj
+		move.l	OBJ_Next(a4),a4
+		bra.s	joinloop
+joinobj		move.l	a3,OBJ_Next(a4)
+		rts
+joinhere	move.l	a3,MA_FirstObject(a1)
+		rts
+
+tozeroprec	tst.l	d4
+		beq	zeroroom
+		move.l	d4,a2
+		clr.l	OBJ_Next(a2)
+		st	get_flag
+		rts
+
+zeroroom	clr.l	RM_FirstObj(a2)
+		st	get_flag
+		rts
+
+_whichobj	movem.l	a3/a0,-(sp)
+		move.l	OBJ_Name(a3),a3
+objsearch	cmp.b	(a0)+,(a3)+
+		bne	nothisobj
+		tst.b	(a0)
+		beq	maybeobj
+		bra.s	objsearch
+nothisobj	sf	d0
+		movem.l	(sp)+,a3/a0
+		rts
+maybeobj	tst.b	(a3)
+		bne.s	nothisobj
+		st	d0
+		movem.l	(sp)+,a3/a0
+		rts
+
+nogetobj	lea	cantget_m(pc),a0
+		bsr	_print
+		move.l	word1buff,a0
+		bsr	_print
+		lea	doppio10(pc),a0
+		bra	_print
+
+cantget_m	dc.b	'I can''t get ',0
+		even
+
+getwhat		lea	getwhat_m(pc),a0
+		bra	_print
+
+getwhat_m	dc.b	'What must I get?',10,10,0
+		even
+
+nohere		bsr	isitman
+		lea	nohere_m(pc),a0
+		bsr	_print
+		move.l	word1buff,a0
+		bsr	_print
+		lea	here_m(pc),a0
+		bra	_print
+
+nohere_m	dc.b	'I don''t see ',0
+		even
+here_m		dc.b	' here.',10,10,0
+		even
+
+fineget		tst.b	get_flag
+		bne	endget
+		bsr	nohere
+endget		rts
+
+get_flag	dc.b	0
+		even
+
+_getted		tst.b	get_flag
+		beq	tornaget
+		add.b	#1,num_of_get
+		lea	getted_m(pc),a0
+		bsr	_print
+tornaget	rts
+
+num_of_get	dc.b	0
+		even
+
+getted_m	dc.b	'Getted.',10,10,0
+		even
+
+isitman		lea	control(pc),a1
+manrep		move.l	word1buff,a0
+		move.l	(a1)+,d0
+		beq	manfinish
+		move.l	d0,a2
+		move.l	MA_Name(a2),a3
+manrep0		tst.b	(a3)
+		beq	fineman
+		cmp.b	(a3)+,(a0)+
+		bne.s	manrep
+		bra.s	manrep0
+fineman		add.l	#4,sp
+		lea	str_man0(pc),a0
+		move.l	MA_CurrentRoom(a0),d0
+		move.l	MA_CurrentRoom(a2),d1
+		cmp.l	d0,d1
+		bne.s	manfinish
+		lea	noprendiman(pc),a0
+		bra	_print
+manfinish	rts
+
+noprendiman	dc.b	'I can''t get a man!',10,10,0
+		even
+
+toomanyobjs	lea	too_m(pc),a0
+		bra	_print
+
+too_m		dc.b	'You are carryng too many objects!',10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+_open		rts					; codice 4
+
+; -------------------------------------------------------------------------
+
+_close		rts					; codice 5
+
+; -------------------------------------------------------------------------
+
+_turn		rts					; codice 6
+
+; -------------------------------------------------------------------------
+
+_lock		rts					; codice 7
+
+; -------------------------------------------------------------------------
+
+_wait		lea	control(pc),a0
+wait_next	move.l	(a0)+,d0
+		beq.s	wait_end
+		move.l	d0,a1
+		move.b	MA_Power(a1),d0
+		beq.s	wait_next
+		cmp.b	#$fd,d0
+		bhi.s	wait_next
+		add.b	#2,d0
+		move.b	d0,MA_Power(a1)
+		bra.s	wait_next
+wait_end	lea	wait_m(pc),a0
+		bra	_print
+
+wait_m		dc.b	'You wait some minutes.',10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+_wear		rts					; codice 8
+
+; -------------------------------------------------------------------------
+
+_throw		rts					; codice 9
+
+; -------------------------------------------------------------------------
+
+_unlock		rts					; codice 10
+
+; -------------------------------------------------------------------------
+
+_drink		rts					; codice 11
+
+; -------------------------------------------------------------------------
+
+_tie		rts					; codice 12
+
+; -------------------------------------------------------------------------
+
+_untie		rts					; codice 13
+
+; -------------------------------------------------------------------------
+
+_dig		move.l	word1buff,a0
+		tst.b	(a0)
+		beq.s	_dig0
+		lea	some_m(pc),a0
+		bsr	_print
+_dig0		lea	dig_m(pc),a0
+		bsr	_print
+		lea	str_man0(pc),a0
+		move.b	MA_Power(a0),d0
+		cmp.b	#2,d0
+		bls.s	itzero
+		sub.b	#2,d0
+		move.b	d0,MA_Power(a0)
+		rts
+itzero		clr.b	MA_Power(a0)
+		rts
+
+dig_m		dc.b	'You try to dig, but you only hurt yourself.',10,10,0
+		even
+some_m		dc.b	'You can try to dig the floor...',10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+_read		rts					; codice 14
+
+; -------------------------------------------------------------------------
+
+_push		rts					; codice 15
+
+; -------------------------------------------------------------------------
+
+_kill		rts
+
+; -------------------------------------------------------------------------
+
+_drop		rts					; codice 16
+
+; -------------------------------------------------------------------------
+
+_eat		rts					; codice 17
+
+; -------------------------------------------------------------------------
+
+_cut		rts					; codice 18
+
+; -------------------------------------------------------------------------
+
+_touch		rts					; codice 19
+
+; -------------------------------------------------------------------------
+
+_pull		rts					; codice 20
+
+; -------------------------------------------------------------------------
+
+_press		rts					; codice 21
+
+; -------------------------------------------------------------------------
+
+_put		rts					; codice 22
+
+; -------------------------------------------------------------------------
+
+_load		move.l	word1buff,a0
+		tst.b	(a0)
+		beq	noload0
+		move.l	word1buff,d1
+		move.l	#MODE_OLDFILE,d2
+		move.l	dosbase,a6
+		jsr	Open(a6)
+		tst.l	d0
+		beq	noload1
+		move.l	d0,d7
+		move.l	d0,d1
+		move.l	save_mem,d2
+		move.l	#datas_len,d3
+		jsr	Read(a6)
+		move.l	#datas_len,d2
+		cmp.l	d0,d2
+		bne	noload2
+		bsr	_reloc
+		move.l	d7,d1
+		jsr	Close(a6)
+		lea	loadok(pc),a0
+		bsr	_print
+		rts
+
+loadok		dc.b	'Game loaded.',10,10,0
+		even
+
+noload0		lea	loaderr0(pc),a0
+		bra	_print
+
+loaderr0	dc.b	'You must tell me which file...',10,10,0
+		even
+
+noload1		lea	loaderr1(pc),a0
+		bsr	_print
+		move.l	word1buff,a0
+		bsr	_print
+		lea	doppio10(pc),a0
+		bra	_print
+
+loaderr1	dc.b	'I can''t open the file ',0
+		even
+
+noload2		lea	loaderr2(pc),a0
+		bra	_print
+
+loaderr2	dc.b	'Error in data reading.',10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+_save		move.l	word1buff,a0
+		tst.b	(a0)
+		beq	nosave0
+		move.l	word1buff,d1
+		move.l	#MODE_NEWFILE,d2
+		move.l	dosbase,a6		; non mi ricordo se gia`...
+		jsr	Open(a6)
+		tst.l	d0
+		beq	nosave1
+		move.l	d0,d7
+		bsr	_noreloc
+		move.l	d7,d1
+		move.l	save_mem,d2
+		move.l	#datas_len,d3
+		jsr	Write(a6)
+		move.l	#datas_len,d2
+		cmp.l	d0,d2
+		bne	nosave2
+		move.l	d7,d1
+		jsr	Close(a6)
+		lea	saveok(pc),a0
+		bsr	_print
+		rts
+
+saveok		dc.b	'Game saved.'
+doppio10	dc.b	10,10,0
+		even
+
+nosave0		lea	saverr0(pc),a0
+		bra	_print
+
+nosave1		lea	saverr1(pc),a0
+		bsr	_print
+		move.l	word1buff,a0
+		bsr	_print
+		lea	doppio10(pc),a0
+		bra	_print
+
+nosave2		lea	saverr2(pc),a0
+		bra	_print
+
+saverr0		dc.b	'You must tell me where...',10,10,0
+		even
+saverr1		dc.b	'I can''t open the file ',0
+		even
+saverr2		dc.b	'Error in datas writing!',10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+_sleep		lea	sleeping_m(pc),a0
+		bsr	_print
+		lea	str_man1(pc),a0		; una mossa di vantaggio
+						; per gli altri
+		move.l	MA_CtrlRoutine(a0),a1
+		jsr	(a1)
+		lea	str_man2(pc),a0
+		move.l	MA_CtrlRoutine(a0),a1
+		jsr	(a1)
+		rts
+
+sleeping_m	dc.b	'You sleep only somes minutes.',10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+_inventory	lea	invent_m(pc),a0
+		bsr	_print
+		lea	str_man0(pc),a1
+		move.l	MA_FirstObject(a1),a2
+		cmp.l	#0,a2
+		beq	inv_nothing
+		move.l	OBJ_Name(a2),a0
+		bsr	_print
+		bsr	spazio
+		move.l	a2,a0
+inv_next	move.l	OBJ_Next(a0),a1
+		cmp.l	#0,a1
+		beq	inv_fine
+		move.l	OBJ_Name(a1),a0
+		bsr	_print
+		bsr	spazio
+		move.l	a1,a0
+		bra.s	inv_next
+inv_fine	lea	doppio10(pc),a0
+		bra	_print
+
+invent_m	dc.b	'You are carring: ',0
+		even
+not_m		dc.b	'NOTHING',10,10,0
+		even
+
+
+inv_nothing	lea	not_m(pc),a0
+		bra	_print
+
+; =========================================================================
+
+north		dc.b	'NORTH',0
+		even
+south		dc.b	'SOUTH',0
+		even
+east		dc.b	'EAST',0
+		even
+west		dc.b	'WEST',0
+		even
+give		dc.b	'GIVE',0
+		even
+move		dc.b	'MOVE',0
+		even
+talk		dc.b	'TALK',0
+		even
+tell		dc.b	'TELL',0
+		even
+enter		dc.b	'ENTER',0
+		even
+go		dc.b	'GO',0
+		even
+examine		dc.b	'EXAMINE',0
+		even
+get		dc.b	'GET',0
+		even
+open		dc.b	'OPEN',0
+		even
+close		dc.b	'CLOSE',0
+		even
+turn		dc.b	'TURN',0
+		even
+look		dc.b	'LOOK',0
+		even
+wait		dc.b	'WAIT',0
+		even
+wear		dc.b	'WEAR',0
+		even
+throw		dc.b	'THROW',0
+		even
+unlock		dc.b	'UNLOCK',0
+		even
+drink		dc.b	'DRINK',0
+		even
+tie		dc.b	'TIE',0
+		even
+untie		dc.b	'UNTIE',0
+		even
+dig		dc.b	'DIG',0
+		even
+read		dc.b	'READ',0
+		even
+push		dc.b	'PUSH',0
+		even
+kill		dc.b	'KILL',0
+		even
+drop		dc.b	'DROP',0
+		even
+eat		dc.b	'EAT',0
+		even
+cut		dc.b	'CUT',0
+		even
+touch		dc.b	'TOUCH',0
+		even
+pull		dc.b	'PULL',0
+		even
+press		dc.b	'PRESS',0
+		even
+put		dc.b	'PUT',0
+		even
+take		dc.b	'TAKE',0
+		even
+load		dc.b	'LOAD',0
+		even
+save		dc.b	'SAVE',0
+		even
+inventory	dc.b	'INVENTORY',0
+		even
+sleep		dc.b	'SLEEP',0
+		even
+
+
+;==============	MEN'S ROUTINES ============================================
+
+_man1		rts
+
+_man2		rts
+
+
+;==============	OBJECTS' CONTROLS =========================================
+
+_obj0		move.l	a1,-(sp)
+		lea	obj0_t(pc),a1
+		move.b	(a1,d0),d0
+		move.l	(sp)+,a1
+		rts
+
+obj0_t		dc.b	-1,0,-1,-1,0,0,0,0,0,-1,0,0,0,0,0
+		dc.b	0,-1,0,0,0,0,0,-1
+
+_obj1		st	d0
+		rts
+
+_obj2		bra	_obj0
+
+_obj3		bra	_obj0
+
+_obj4		sf	d0
+		rts
+
+_obj14		sf	d0
+		rts
+
+_obj5		sf	d0
+		rts
+
+_obj6		st	d0
+		rts
+
+_obj7		sf	d0
+		rts
+
+_obj8		sf	d0
+		rts
+
+_obj18		sf	d0
+		rts
+
+_obj9		sf	d0
+		rts
+
+_obj19		bra	_obj0
+
+
+;--------------------------------------------------------------------------
+
+;==============	GAME DATA =================================================
+
+control		dc.l	str_man2
+		dc.l	str_man1
+		dc.l	str_man0
+		dc.l	0
+
+; Struttura "uomo". La seguente e` la vostra, le altre due degli altri due
+; tizi che gironzolano per queste stanze.
+
+prg_datas
+firstaddress	EQU	*
+
+MA_Identity	EQU	0
+MA_CurrentRoom	EQU	2
+MA_Power	EQU	6
+MA_HitPower	EQU	7
+MA_FirstObject	EQU	8
+MA_CtrlRoutine	EQU	12
+MA_Next		EQU	16
+MA_Name		EQU	20
+MA_Lenght	EQU	24
+
+str_man0	dc.w	0			; MA_Identity
+reloc0		dc.l	str_room0		; MA_CurrentRoom
+		dc.b	$fe			; MA_Power
+		dc.b	$10			; MA_HitPower
+reloc1		dc.l	0			; MA_FirstObject
+reloc2		dc.l	_man0			; MA_CtrlRoutine
+reloc3		dc.l	0			; MA_Next
+reloc4		dc.l	man0_name		; MA_Name
+str_man1	dc.w	1
+reloc5		dc.l	str_room3
+		dc.b	$ee,$80
+reloc6		dc.l	str_obj1
+reloc7		dc.l	_man1
+reloc8		dc.l	0
+reloc9		dc.l	man1_name
+str_man2	dc.w	2
+reloc10		dc.l	str_room7
+		dc.b	$ff,$18
+reloc11		dc.l	0
+reloc12		dc.l	_man2
+reloc13		dc.l	0
+reloc14		dc.l	man2_name
+
+RM_Identity	EQU	0
+RM_North	EQU	2
+RM_South	EQU	6
+RM_East		EQU	10
+RM_West		EQU	14
+RM_NFlag	EQU	18
+RM_SFlag	EQU	19
+RM_EFlag	EQU	20
+RM_WFlag	EQU	21
+RM_FirstObj	EQU	22
+RM_Descr	EQU	26
+RM_Lenght	EQU	30
+
+str_room0	dc.w	0			; RM_Identity 0
+reloc15		dc.l	str_room1		; RM_North    2
+reloc16		dc.l	str_room3		; RM_South    6
+reloc17		dc.l	str_room6		; RM_East     10
+reloc18		dc.l	0			; RM_West     14
+		dc.b	$ff			; RM_NFlag    18
+		dc.b	$00			; RM_SFlag    19
+		dc.b	$ff			; RM_EFlag    20
+		dc.b	$00			; RM_WFlag    21
+reloc19		dc.l	str_obj7		; RM_FirstObj 22
+reloc20		dc.l	d_room0			; RM_Descr
+str_room1	dc.w	1
+reloc21		dc.l	0
+reloc22		dc.l	str_room0
+reloc23		dc.l	str_room2
+reloc24		dc.l	0
+		dc.l	$00ffff00
+reloc25		dc.l	str_obj1
+reloc26		dc.l	d_room1
+str_room2	dc.w	2
+reloc27		dc.l	0
+reloc28		dc.l	str_room6
+reloc29		dc.l	0
+reloc30		dc.l	str_room1
+		dc.l	$00ff00ff
+reloc31		dc.l	str_obj2
+reloc32		dc.l	d_room2
+str_room3	dc.w	3
+reloc33		dc.l	str_room0
+reloc34		dc.l	0
+reloc35		dc.l	str_room4
+reloc36		dc.l	0
+		dc.l	$0000ff00
+reloc37		dc.l	0
+reloc38		dc.l	d_room3
+str_room4	dc.w	4
+reloc39		dc.l	0
+reloc40		dc.l	0
+reloc41		dc.l	str_room5
+reloc42		dc.l	str_room3
+		dc.l	$0000ffff
+reloc43		dc.l	str_obj6
+reloc44		dc.l	d_room4
+str_room5	dc.w	5
+reloc45		dc.l	0
+reloc46		dc.l	0
+reloc47		dc.l	0
+reloc48		dc.l	str_room4
+		dc.l	$000000ff
+reloc49		dc.l	str_obj8
+reloc50		dc.l	d_room5
+str_room6	dc.w	6
+reloc51		dc.l	str_room2
+reloc52		dc.l	0
+reloc53		dc.l	str_room7
+reloc54		dc.l	str_room0
+		dc.l	$ff00ffff
+reloc55		dc.l	str_obj3
+reloc56		dc.l	d_room6
+str_room7	dc.w	7
+reloc57		dc.l	0
+reloc58		dc.l	0
+reloc59		dc.l	str_room8
+reloc60		dc.l	str_room6
+		dc.l	$000000ff
+reloc61		dc.l	str_obj4
+reloc62		dc.l	d_room7
+str_room8	dc.w	8
+reloc63		dc.l	0
+reloc64		dc.l	0
+reloc65		dc.l	0
+reloc66		dc.l	0
+		dc.l	$00000000
+reloc67		dc.l	0
+reloc68		dc.l	d_room8
+
+OBJ_Identity	EQU	0
+OBJ_Next	EQU	2
+OBJ_Name	EQU	6
+OBJ_Descr	EQU	10
+OBJ_CtrlRoutine	EQU	14
+OBJ_Link	EQU	18
+OBJ_Lenght	EQU	22
+
+str_obj0	dc.w	0			; OBJ_Identity
+reloc69		dc.l	0			; OBJ_Next
+reloc70		dc.l	obj0_name		; OBJ_Name
+reloc71		dc.l	d_obj0			; OBJ_Descr
+reloc72		dc.l	_obj0			; OBJ_CtrlRoutine
+reloc73		dc.l	0			; OBJ_Link
+str_obj1	dc.w	1
+reloc74		dc.l	0
+reloc75		dc.l	obj1_name
+reloc76		dc.l	d_obj1
+reloc77		dc.l	_obj1
+reloc78		dc.l	0
+str_obj2	dc.w	2
+reloc79		dc.l	0
+reloc80		dc.l	obj2_name
+reloc81		dc.l	d_obj2
+reloc82		dc.l	_obj2
+reloc83		dc.l	0
+str_obj3	dc.w	3
+reloc84		dc.l	str_obj9
+reloc85		dc.l	obj3_name
+reloc86		dc.l	d_obj3
+reloc87		dc.l	_obj3
+reloc88		dc.l	0
+str_obj4	dc.w	4
+reloc89		dc.l	str_obj5
+reloc90		dc.l	obj4_name
+reloc91		dc.l	d_obj4
+reloc92		dc.l	_obj4
+reloc93		dc.l	str_obj14
+str_obj14	dc.w	14
+reloc94		dc.l	0
+reloc95		dc.l	obj14_name
+reloc96		dc.l	d_obj14
+reloc97		dc.l	_obj14
+reloc98		dc.l	0
+str_obj5	dc.w	5
+reloc99		dc.l	0
+reloc100	dc.l	obj5_name
+reloc101	dc.l	d_obj5
+reloc102	dc.l	_obj5
+reloc103	dc.l	0
+str_obj6	dc.w	6
+reloc104	dc.l	0
+reloc105	dc.l	obj6_name
+reloc106	dc.l	d_obj6
+reloc107	dc.l	_obj6
+reloc108	dc.l	0
+str_obj7	dc.w	7
+reloc109	dc.l	str_obj0
+reloc110	dc.l	obj7_name
+reloc111	dc.l	d_obj7
+reloc112	dc.l	_obj7
+reloc113	dc.l	0
+str_obj8	dc.w	8
+reloc114	dc.l	0
+reloc115	dc.l	obj8_name
+reloc116	dc.l	d_obj8
+reloc117	dc.l	_obj8
+reloc118	dc.l	str_obj18
+str_obj18	dc.w	18
+reloc119	dc.l	0
+reloc120	dc.l	obj18_name
+reloc121	dc.l	d_obj18
+reloc122	dc.l	_obj18
+reloc123	dc.l	0
+str_obj9	dc.w	9
+reloc124	dc.l	0
+reloc125	dc.l	obj9_name
+reloc126	dc.l	d_obj9
+reloc127	dc.l	_obj9
+reloc128	dc.l	str_obj19
+str_obj19	dc.w	19
+reloc129	dc.l	0
+reloc130	dc.l	obj19_name
+reloc131	dc.l	d_obj19
+reloc132	dc.l	_obj19
+reloc133	dc.l	0
+
+datas_len	EQU	*-prg_datas
+
+obj0_name	dc.b	'KRISS',0
+		even
+obj1_name	dc.b	'SPLINTER',0
+		even
+obj2_name	dc.b	'KEY',0
+		even
+obj3_name	dc.b	'ROPE',0
+		even
+obj4_name	dc.b	'CASKET',0
+		even
+obj14_name	dc.b	'HOOK',0
+		even
+obj5_name	dc.b	'HOOK',0
+		even
+obj6_name	dc.b	'PARCHMENT',0
+		even
+obj7_name	dc.b	'DOOR',0
+		even
+obj8_name	dc.b	'DOOR',0
+		even
+obj18_name	dc.b	'KEYHOLE',0
+		even
+obj9_name	dc.b	'WALL',0
+		even
+obj19_name	dc.b	'BRICK',0
+		even
+
+man0_name	dc.b	' ',0
+		even
+man1_name	dc.b	'PRISONER',0
+		even
+man2_name	dc.b	'KEEPER',0
+		even
+
+d_room0		dc.b	'You are in a little room without windows, but the light spreads all',10
+		dc.b	'around you. You know that if you want to exit  alive, you  have  to',10
+		dc.b	'find  the  way for the freedom.',10,10,0
+		even
+d_room1		dc.b	'You are in a small  cell. There  is a  window with bars. Here it is',10
+		dc.b	'impossible to escape!',10,10,0
+		even
+d_room2		dc.b	'You are in a small cell. There isn''t  any window and  the  wall  is',10
+		dc.b	'dirty with blood! It make you shudder: it is man''s  blood, and  you',10
+		dc.b	'think that he was a prisoner like you.',10,10,0
+		even
+d_room3		dc.b	'You are in the secret room! Maybe you are near the  exit! You  feel',10
+		dc.b	'happy, but suddenly a new thought make you shudder: is it  the way?',10,10,0
+		even
+d_room4		dc.b	'You  are  in a  lovely room: it is  peopled! You  feel  very  happy',10
+		dc.b	'because of your new fellow. There is an inscription on the wall. It',10
+		dc.b	'says: "Dreaming the freedom".',10,10,0
+		even
+d_room5		dc.b	'You are in a awful room. On the floor there are strange  scratches,',10
+		dc.b	'they look like a writing, but you can''t make them out.',10,10,0
+		even
+d_room6		dc.b	'It is only a room like the others!',10,10,0
+		even
+d_room7		dc.b	'Oh! You are in the room of the keeper. He knows how to  escape, but',10
+		dc.b	'he is a Knarr''s follower and you can''t  ask  him this  information.',10
+		dc.b	'You have to kill him... How?',10,10,0
+		even
+d_room8		dc.b	'Freedom!!! You remember  an  inscription: "Dreaming  the  freedom".',10
+		dc.b	'But now you can TOUCH FREEDOM and go back home!.',10,10,0
+		even
+d_obj0		dc.b	'It is a rusty wavy knife.',10,10,0
+		even
+d_obj1		dc.b	'It is a triangular splinter.',10,10,0
+		even
+d_obj2		dc.b	'It is a red key.',10,10,0
+		even
+d_obj3		dc.b	'It is a rope. You can use it to tie something...',10,10,0
+		even
+d_obj4		dc.b	'It is a red casket. Maybe it contains something...',10,10,0
+		even
+d_obj14		dc.b	'It is a steel hook.',10,10,0
+		even
+d_obj5		dc.b	'It is an iron hook.',10,10,0
+		even
+d_obj6		dc.b	'It seems an old prachment.',10,10,0
+		even
+d_obj7		dc.b	'It is a strong-steel door.',10,10,0
+		even
+d_obj8		dc.b	'It is an iron door.',10,10,0
+		even
+d_obj18		dc.b	'It is the keyhole of the door.',10,10,0
+		even
+d_obj9		dc.b	'It is a normal wall, like the others, but...',10,10,0
+		even
+d_obj19		dc.b	'A brick which juts out.',10,10,0
+		even
+
+; =========================================================================
+
+the_end		st	end_flag
+		move.l	(sp)+,a0
+		rts
+
+; -------------------------------------------------------------------------
+
+the_death	st	rt_flag
+		lea	morto_m(pc),a0
+		bsr	_print
+		move.l	(sp)+,a0
+		rts
+
+; -------------------------------------------------------------------------
+
+_print		movem.l	a0-a1/d0-d3,-(sp)
+		move.l	a0,d2
+		bsr	_countlen
+		move.l	d0,d3
+		move.l	outhand,d1
+		jsr	Write(a6)
+		movem.l	(sp)+,a0-a1/d0-d3
+		rts
+
+; -------------------------------------------------------------------------
+
+_countlen	moveq	#0,d0
+count		tst.b	(a0)+
+		beq.s	foundlen
+		add.w	#1,d0
+		bra.s	count
+foundlen	rts
+
+; -------------------------------------------------------------------------
+
+_keyread	move.l	a0,d2
+		move.l	a0,a3
+		move.l	inhand,d1
+		move.l	#255,d3
+		jsr	Read(a6)
+		clr.b	-1(a3,d0)
+		lea	invio(pc),a0
+		bsr	_print
+		rts
+
+; -------------------------------------------------------------------------
+
+_toupper	move.b	(a0)+,d0
+		beq	nochars
+		cmp.b	#"Z",d0
+		bls.s	_toupper
+		sub.b	#("a"-"A"),d0
+		move.b	d0,-1(a0)
+		bra.s	_toupper
+nochars		rts
+
+; -------------------------------------------------------------------------
+
+_split		move.l	commandbuff,a1
+cmd_split	move.b	(a0)+,d0
+		beq.s	end_split
+		cmp.b	#$20,d0
+		beq.s	word1_split
+		move.b	d0,(a1)+
+		bra.s	cmd_split
+end_split	rts
+word1_split	clr.b	(a1)
+		move.l	word1buff,a1
+w1_split	move.b	(a0)+,d0
+		beq.s	end_split
+		cmp.b	#$20,d0
+		beq.s	word2_split
+		move.b	d0,(a1)+
+		bra.s	w1_split
+word2_split	clr.b	(a1)
+		move.l	word2buff,a1
+w2split		move.b	(a0)+,d0
+		beq	end_split
+		cmp.b	#$20,d0
+		beq.s	word3_split
+		move.b	d0,(a1)+
+		bra.s	w2split
+word3_split	clr.b	(a1)
+		move.l	word3buff,a1
+w3split		move.b	(a0)+,d0
+		beq.s	endi_split
+		cmp.b	#$20,d0
+		beq.s	endi_split
+		move.b	d0,(a1)+
+		bra.s	w3split
+endi_split	clr.b	(a1)
+		move.l	word4buff,a1
+w4split		move.b	(a0)+,d0
+		beq.s	endi
+		cmp.b	#$20,d0
+		beq.s	endi
+		move.b	d0,(a1)+
+		bra.s	w4split
+endi		clr.b	(a1)
+		rts
+
+; -------------------------------------------------------------------------
+
+youcant		lea	cant_m(pc),a0
+		bra	_print
+
+cant_m		dc.b	'You can''t go in that direction!',10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+unknown		move.l	commandbuff,a0
+		move.b	(a0),d0
+		beq.s	unknowend
+		cmp.b	#10,d0
+		beq.s	unknowend
+		lea	unknown_m(pc),a0
+		bsr	_print
+		move.l	commandbuff,a0
+		bsr	_print
+		lea	doubleenter(pc),a0
+		bsr	_print
+unknowend	move.l	(sp)+,a0
+		rts
+
+unknown_m	dc.b	'I don''t know the command ',0
+		even
+doubleenter	dc.b	10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+_mixed		move.l	commandbuff,a0
+		moveq	#31,d0
+		move.l	d0,d1
+loopi1		clr.b	(a0)+
+		dbf	d0,loopi1
+		move.l	word1buff,a0
+		move.l	d1,d0
+loopi2		clr.b	(a0)+
+		dbf	d0,loopi2
+		move.l	word2buff,a0
+		move.l	d1,d0
+loopi3		clr.b	(a0)+
+		dbf	d0,loopi3
+		move.l	word3buff,a0
+loopi4		clr.b	(a0)+
+		dbf	d1,loopi4
+nomorto		lea	carrybyte(pc),a0
+		move.b	(a0),d0
+		eor.b	#$7f,d0
+		move.b	d0,(a0)
+		rts
+
+
+morto_m		dc.b	10,10,10,'You are died.',10,10,10,0
+		even
+
+; -------------------------------------------------------------------------
+
+spazio		lea	spazio_m(pc),a0
+		bra	_print
+
+spazio_m	dc.b	' ',0
+		even
+
+
+trucco_flag	dc.b	0
+		even
+
+; -------------------------------------------------------------------------
+
+_decode		lea	Freude(pc),a0
+		cmp.b	#"#",d0
+		bne	einundzwanzig
+		move.l	word1buff,a1
+sechzehn	move.b	(a0)+,d0
+		move.b	(a1)+,d1
+		not.b	d0
+		cmp.b	#$ff,d0
+		beq	funfzehn
+		cmp.b	d0,d1
+		beq	sechzehn
+einundzwanzig	rts
+funfzehn	tst.b	d1
+		beq.s	meinefreundin
+		rts
+
+Freude		dc.b	$b9,$ad,$ba,$aa,$bb,$ba,0
+		even
+decodedbuff	dc.b	0,0
+		even
+
+meinefreundin	bsr	predecode
+		lea	lieber0(pc),a3
+		lea	decodedbuff(pc),a0
+ihope		move.l	word2buff,a1
+		move.b	(a3)+,d0
+		beq	ausgang
+		move.b	(a1)+,d1
+		beq	einundzwanzig
+		move.b	(a1)+,d2
+		beq	einundzwanzig
+		sub.b	d1,d2
+		sub.b	d2,d0
+		ror.b	d1,d0
+		move.b	carrybyte,d4
+		and.b	d4,d0
+		move.b	d0,decodedbuff
+		bsr	_print
+		bra	ihope
+ausgang		bsr	_clearl
+		lea	accapo_m(pc),a0
+		bra	_print
+
+carrybyte	dc.b	$7f
+		even
+
+lieber		dc.l	$58a39fba,$bc9d9714,$be9d1596
+		dc.l	$b0a915bc,$c00bb1b2,$540b71b2
+		dc.l	$31df71be,$b0274914,$3a2b4334
+		dc.l	$3a2d38e8,$708d9db8,$a03f157a
+		dc.l	$a8a3c196,$a4a7a714,$7c8db1bc
+		dc.l	$a8a796e8,$72b5af30,$1671a7ac
+		dc.l	$c28da3b0,$a80b6d96,$c0af9748
+		dc.l	$162f3542,$42313b38,$39df81a6
+		dc.l	$980b61b8,$98a79bb2,$a2a9b1bc
+		dc.l	$a00b3b3e,$ea1f2914,$8a95b5b4
+		dc.l	$b4a3b3b0,$a80b57ac,$a0b1bba6
+		dc.l	$980b2928,0
+meiner		EQU	*-lieber
+		even
+lieber0		ds.b	meiner
+		even
+
+predecode	lea	lieber(pc),a0
+		move.l	word3buff,a1
+		lea	lieber0(pc),a2
+		move.l	(a1),d1
+preloop		move.l	(a0)+,d0
+		beq	prefine
+		add.l	d1,d0
+		move.l	d0,(a2)+
+		bra.s	preloop
+prefine		rts
+
+; -------------------------------------------------------------------------
+
+_clearl		lea	lieber0(pc),a0
+		move.l	#meiner,d0
+		lsr.l	#2,d0
+		sub.l	#1,d0
+		moveq	#0,d1
+clloop		move.l	d1,(a0)+
+		dbf	d0,clloop
+		rts
+
+; -------------------------------------------------------------------------
+
+_noreloc	bsr	_copydatas
+		move.l	save_mem,a0
+		lea	reloctable(pc),a1
+		move.l	#starting,d2
+relocloop	move.l	(a1)+,d0
+		beq	relocend
+		move.l	(a0,d0),d1
+		beq.s	relocloop
+		sub.l	d2,d1
+		move.l	d1,(a0,d0)
+		bra.s	relocloop
+relocend	rts
+
+; -------------------------------------------------------------------------
+
+_reloc		move.l	save_mem,a0
+		lea	reloctable(pc),a1
+		move.l	#starting,d2
+relochl		move.l	(a1)+,d0
+		beq.s	relocend0
+		move.l	(a0,d0),d1
+		beq.s	relochl
+		add.l	d2,d1
+		move.l	d1,(a0,d0)
+		bra.s	relochl
+relocend0	bsr	_datascopy
+		rts
+
+; -------------------------------------------------------------------------
+
+_copydatas	move.l	save_mem,a0
+		lea	prg_datas(pc),a1
+overcopy	move.l	#datas_len-1,d0
+coploop		move.b	(a1)+,(a0)+
+		dbf	d0,coploop
+		rts
+
+; -------------------------------------------------------------------------
+
+_datascopy	move.l	save_mem,a1
+		lea	prg_datas(pc),a0
+		bra.s	overcopy
+
+; -------------------------------------------------------------------------
+
+_deletedatas	move.l	save_mem,a0
+		move.l	#datas_len-1,d0
+deloop		clr.b	(a0)+
+		dbf	d0,deloop
+		rts
+
+; -------------------------------------------------------------------------
+
+help		lea	help_m(pc),a0
+		bsr	_print
+		bra	ctrl_end
+
+help_m		dc.b	"This is only a demo, so it is very simple: try to type 'move kriss'!",10
+		dc.b	"The Adv will tell you: «I can't ...». This is because this action is",10
+		dc.b	"useless. Are there bugs? I don't know... But the game is rotten.",10,10
+
+		cnop	0,4
+
+reloctable	dc.l	reloc0-firstaddress
+		dc.l	reloc1-firstaddress,reloc68-firstaddress
+		dc.l	reloc2-firstaddress,reloc69-firstaddress
+		dc.l	reloc3-firstaddress,reloc70-firstaddress
+		dc.l	reloc4-firstaddress,reloc71-firstaddress
+		dc.l	reloc5-firstaddress,reloc72-firstaddress
+		dc.l	reloc6-firstaddress,reloc73-firstaddress
+		dc.l	reloc7-firstaddress,reloc74-firstaddress
+		dc.l	reloc8-firstaddress,reloc75-firstaddress
+		dc.l	reloc9-firstaddress,reloc76-firstaddress
+		dc.l	reloc10-firstaddress,reloc77-firstaddress
+		dc.l	reloc11-firstaddress,reloc78-firstaddress
+		dc.l	reloc12-firstaddress,reloc79-firstaddress
+		dc.l	reloc13-firstaddress,reloc80-firstaddress
+		dc.l	reloc14-firstaddress,reloc81-firstaddress
+		dc.l	reloc15-firstaddress,reloc82-firstaddress
+		dc.l	reloc16-firstaddress,reloc83-firstaddress
+		dc.l	reloc17-firstaddress,reloc84-firstaddress
+		dc.l	reloc18-firstaddress,reloc85-firstaddress
+		dc.l	reloc19-firstaddress,reloc86-firstaddress
+		dc.l	reloc20-firstaddress,reloc87-firstaddress
+		dc.l	reloc21-firstaddress,reloc88-firstaddress
+		dc.l	reloc22-firstaddress,reloc89-firstaddress
+		dc.l	reloc23-firstaddress,reloc90-firstaddress
+		dc.l	reloc24-firstaddress,reloc91-firstaddress
+		dc.l	reloc25-firstaddress,reloc92-firstaddress
+		dc.l	reloc26-firstaddress,reloc93-firstaddress
+		dc.l	reloc27-firstaddress,reloc94-firstaddress
+		dc.l	reloc28-firstaddress,reloc95-firstaddress
+		dc.l	reloc29-firstaddress,reloc96-firstaddress
+		dc.l	reloc30-firstaddress,reloc97-firstaddress
+		dc.l	reloc31-firstaddress,reloc98-firstaddress
+		dc.l	reloc32-firstaddress,reloc99-firstaddress
+		dc.l	reloc33-firstaddress,reloc100-firstaddress
+		dc.l	reloc34-firstaddress,reloc101-firstaddress
+		dc.l	reloc35-firstaddress,reloc102-firstaddress
+		dc.l	reloc36-firstaddress,reloc103-firstaddress
+		dc.l	reloc37-firstaddress,reloc104-firstaddress
+		dc.l	reloc38-firstaddress,reloc105-firstaddress
+		dc.l	reloc39-firstaddress,reloc106-firstaddress
+		dc.l	reloc40-firstaddress,reloc107-firstaddress
+		dc.l	reloc41-firstaddress,reloc108-firstaddress
+		dc.l	reloc42-firstaddress,reloc109-firstaddress
+		dc.l	reloc43-firstaddress,reloc110-firstaddress
+		dc.l	reloc44-firstaddress,reloc111-firstaddress
+		dc.l	reloc45-firstaddress,reloc112-firstaddress
+		dc.l	reloc46-firstaddress,reloc113-firstaddress
+		dc.l	reloc47-firstaddress,reloc114-firstaddress
+		dc.l	reloc48-firstaddress,reloc115-firstaddress
+		dc.l	reloc49-firstaddress,reloc116-firstaddress
+		dc.l	reloc50-firstaddress,reloc117-firstaddress
+		dc.l	reloc51-firstaddress,reloc118-firstaddress
+		dc.l	reloc52-firstaddress,reloc119-firstaddress
+		dc.l	reloc53-firstaddress,reloc120-firstaddress
+		dc.l	reloc54-firstaddress,reloc121-firstaddress
+		dc.l	reloc55-firstaddress,reloc122-firstaddress
+		dc.l	reloc56-firstaddress,reloc123-firstaddress
+		dc.l	reloc57-firstaddress,reloc124-firstaddress
+		dc.l	reloc58-firstaddress,reloc125-firstaddress
+		dc.l	reloc59-firstaddress,reloc126-firstaddress
+		dc.l	reloc60-firstaddress,reloc127-firstaddress
+		dc.l	reloc61-firstaddress,reloc128-firstaddress
+		dc.l	reloc62-firstaddress,reloc129-firstaddress
+		dc.l	reloc63-firstaddress,reloc130-firstaddress
+		dc.l	reloc64-firstaddress,reloc131-firstaddress
+		dc.l	reloc65-firstaddress,reloc132-firstaddress
+		dc.l	reloc66-firstaddress,reloc133-firstaddress
+		dc.l	reloc67-firstaddress,0
+		even
+
+		END

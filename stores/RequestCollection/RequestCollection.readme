@@ -1,0 +1,16 @@
+Short: A collection of "request" tools
+Author: PANIGADA Mauro (musashi_7@libero.it)
+Type: util/cli
+
+A Collection of Only-From-CLI program, useful in script, e.g.
+
+RequestFile
+
+RequestChoice
+
+RequestLV
+RequestLVMUI
+
+RequestString
+
+RequestModeID

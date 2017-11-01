@@ -1,0 +1,139 @@
+;
+; Peek v1.0
+; written by Mauro Panigada
+;
+; $VER: Peek.a v1.0 (1996-12-11) by Mauro Panigada
+;
+; STARTED: 1996-12-11
+; FINISHED: 1996-12-11
+;
+; PURPOSE: Do you remember Basic PEEK? It is the same thing, but for
+;   cli... Short, pure... simple to use... etc.
+;
+; NOTE: Why only word and byte? 'Cause it is thought for manipulator of
+;   hardware, and Amiga hard-register are word or byte.
+;   ATTENTION: I hope you know some register are write-only, and often
+;   (=always) they have their mirror-register (read-only)... Be careful.
+;
+; HISTORY: 1996-12-11   First version v1.0, decimal address
+;          1996-12-12   v1.2 with hexadecimal address... But without
+;                       control: be sure to write only [0-9] and [a-f]
+;
+
+* A: Oh, well, it's very nice! Why don't you write POKE?
+* B: Wack! POKE is dangerous! You can destroy it, if you don't know
+*    what you are doing...
+* A: Only for expert users...
+* B: Expert users don't need PEEk and POKE, they just do it and stop!
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+
+
+		bra.s	PeekMain
+
+		dc.b	"$VER: Peek v1.0 (1996-12-11) by Mauro Panigada"
+		even
+
+PeekMain	move.l	4.w,a6
+		lea	DOSName(pc),a1
+		moveq	#39,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	PeekSayonara
+
+		link	a5,#-(4*2)	; a5 = linked space
+		move.l	sp,a4		; create low-high workspace
+		moveq	#0,d1
+		move.l	d1,(a4)
+		move.l	d1,4(a4)
+
+		move.l	d0,a6
+		lea	Template(pc),a0
+		move.l	a0,d1
+		move.l	a4,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d7			; d7 = args
+		beq	NoArgument
+
+		moveq	#0,d6
+		move.l	(a4)+,a1
+		bsr	ParseHex
+		tst.l	(a4)
+		beq.s	ByteFalse
+ODDERROR
+ByteTrue	lea	ByteTxt(pc),a0
+		move.b	(a1),d6
+		bra.s	PeekOK
+ByteFalse	lea	WordTxt(pc),a0
+		move.l	a1,d0
+		lsr.b	#1,d0
+		bcs.s	ODDERROR	; be careful: odd on 68000...
+		move.w	(a1),d6		; (it could be 68020+, I will
+					; check it...)
+
+; d6 = value to write; a4 = a5-8
+
+PeekOK		move.w	d6,(sp)		; -> -8(a4)
+		move.l	a0,d1
+		move.l	sp,d2
+		jsr	_LVOVPrintf(a6)
+
+		move.l	d7,d1
+		jsr	_LVOFreeArgs(a6)
+
+NoArgument	move.l	a6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+
+		unlk	a5
+PeekSayonara	rts
+
+
+ParseHex	movem.l	d0-d2/a0/a2,-(sp)
+		moveq	#0,d2
+		moveq	#0,d0
+		moveq	#0,d1
+		move.l	a1,a2
+PH_Loop0	tst.b	(a1)+
+		bne.s	PH_Loop0
+		subq.l	#1,a1
+PH_Loop		cmpa.l	a1,a2
+		beq.s	PH_End
+		moveq	#0,d0
+		move.b	-(a1),d0
+		cmp.b	#"9",d0
+		bhi.s	PH_HexAlfa
+PH_HexNum	sub.b	#"0",d0
+		lsl.l	d2,d0
+		add.l	d0,d1
+		addq.w	#4,d2
+		bra.s	PH_Loop
+PH_HexAlfa	sub.b	#"a",d0
+		add.b	#10,d0
+		lsl.l	d2,d0
+		add.l	d0,d1
+		addq.w	#4,d2
+		bra.s	PH_Loop
+PH_End		move.l	d1,a1
+		movem.l	(sp)+,d0-d2/a0/a2
+		rts
+
+
+DOSName		dc.b	"dos.library",0
+		even
+
+ByteTxt		dc.b	"Peeked byte: %x",10,0
+		even
+WordTxt		dc.b	"Peeked word: %x",10,0
+		even
+
+Template	dc.b	"HEXADDRESS/A,BYTE/S",0
+		even
+
+
+		END

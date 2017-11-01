@@ -1,0 +1,381 @@
+;
+; BackEx v0.9
+; written by Mauro Panigada
+;
+; FREEWARE
+;
+; $VER: BackEx.a  v0.9  by Mauro Panigada
+;
+;   ORIGINAL  BY  Hans Buehler  coded in C
+;
+; I translated it into assembler: faster (!) and shorter. I hope that there
+; won't problems because of this fact! (Original is freeware as mine).
+;
+; IMPORTANT: It is freeware, it is short (1320 bytes against 4040!), it
+;  is in 100% assembly, it is also PURE! Make it resident!
+;
+; PURPOSE: Executes a batch file in background. The original source code
+;  in C can be found easily, and so its docfile and the executable code,
+;  that is long 4040 bytes. It is freeware by Hans Buehler. You can read
+;  it and use mine as his one.
+;
+; USAGE: Read above: if you want a doc, you can read it getting original
+;  by Hans Buehler, with source code in C and quite good usage doc.
+;
+; NOTE: As Hans said, use it at your own risk! And about FREEWARE: you
+;  can use it, spread it, but without any kind of fee or what (is all
+;  zero-cost). You can modify this source code only if you make it
+;  better, and my name and all names that I write in this header must be
+;  also in yours, or in your doc (of course also your name will appear!).
+;  Use this code only for PD or FREEWARE, ABSOLUTELY NOT for SHAREWARE
+;  or COMMERCIAL. Remember...
+;
+; PS: It is FREEWARE, it is short, it is in 100% assembly, it is also
+;  PURE. Make it resident!
+;
+; 1996-06-26: It does not work well because of Arguments (the detatch
+;             routine seems to work well, but when a ReadArgs is done,
+;             there is some problem!)
+;
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"intuition/intuition.i"
+		include	"dos/dos.i"
+		include	"dos/dostags.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+		include	"intuition/intuition_lib.i"
+
+
+LIBRARYVER	EQU	36
+
+
+	STRUCTURE BackExBase,0
+		LONG	_ExecBase
+		LONG	_DosBase
+		LONG	_IntuitionBase
+		LONG	_Args
+		LABEL	_Array
+		LONG	_FileName
+		LONG	_OutName
+		LONG	_InName
+		LONG	_Quiet
+		LONG	_Out
+		LONG	_In
+		LONG	_Tag0
+		LONG	_TData0
+		LONG	_Tag1
+		LONG	_TData1
+		LONG	_TagEnd		; must be always ZERO
+		STRUCT	_Buffer,256
+		LABEL	BackExBase_SIZEOF
+
+
+BUCK		EQU	BackExBase_SIZEOF
+MEMBUFFER	EQU	0-BUCK-4
+
+
+		SECTION	Detach,CODE
+PSeg
+		lea	DosName,a1
+		move.l	4.w,a6
+		moveq	#LIBRARYVER,d0
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	ChitsuE
+		move.l	d0,a5
+		exg.l	a5,a6
+		jsr	_LVOInput(a6)
+		lea	DTags(pc),a3
+		move.l	d0,36(a3)
+		lea	PSeg(pc),a4
+		move.l	-4(a4),d7
+		clr.l	-4(a4)
+		move.l	#PName,20(a3)
+		move.l	d7,4(a3)
+		exg.l	a5,a6
+		jsr	_LVOForbid(a6)
+		exg.l	a5,a6
+		move.l	a3,d1
+		jsr	_LVOCreateNewProc(a6)
+		tst.l	d0
+		bne.s	Arigato
+		move.l	d7,-4(a4)
+Arigato		exg.l	a5,a6
+		jsr	_LVOPermit(a6)
+		move.l	a5,a1
+		jsr	_LVOCloseLibrary(a6)
+ChitsuE		rts
+
+DTags		dc.l	NP_Seglist,0,NP_FreeSeglist,-1,NP_Name,0
+		dc.l	NP_Arguments,-1,NP_Input,0,TAG_END
+
+
+
+************************************************************************
+******************* * * * * * * * * * * * * * * * * ********************
+******************** * * * * * * * * * * * * * * * *********************
+************************************************************************
+
+		SECTION	BackExCD,CODE
+
+		bra.s	Start
+
+		dc.b	"$VER: "
+PName		dc.b	"BackEx  v0.9 (c) 1996 by Mauro Panigada",0
+		even
+
+Start		link	a4,#MEMBUFFER
+		move.l	sp,a5
+		move.l	a5,a0
+		move.l	#BUCK-1,d0
+ClrLoop		clr.b	(a0)+
+		dbf	d0,ClrLoop
+		move.l	4.w,a6
+		move.l	a6,(a5)
+
+		lea	DosName(pc),a1
+		moveq	#LIBRARYVER,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_DosBase(a5)
+		beq	ERR_DosError
+
+		lea	IntuitionName(pc),a1
+		moveq	#LIBRARYVER,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_IntuitionBase(a5)
+		beq	ERR_IntuitionError
+
+		lea	Template(pc),a0
+		move.l	a0,d1
+		lea	_Array(a5),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		move.l	_DosBase(a5),a6
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,_Args(a5)
+		beq	ERR_Args
+
+		lea	_Buffer(a5),a0
+		move.l	#"Exec",(a0)+
+		move.l	#"ute ",(a0)+
+		move.l	_FileName(a5),a1
+CopyLoop	tst.b	(a1)
+		beq.s	CopyEnd
+		move.b	(a1)+,(a0)+
+		bra.s	CopyLoop
+
+CopyEnd		clr.b	(a0)
+		move.l	_OutName(a5),d1
+		bne.s	OutDO
+		lea	DefOut(pc),a0
+		move.l	a0,d1
+OutDO		move.l	#MODE_OLDFILE,d2
+		jsr	_LVOOpen(a6)
+		move.l	d0,_Out(a5)
+		beq	ERR_Output
+
+		move.l	_InName(a5),d1
+		bne.s	InDO
+		lea	DefIn(pc),a0
+		move.l	a0,d1
+InDO		move.l	#MODE_OLDFILE,d2
+		jsr	_LVOOpen(a6)
+		move.l	d0,_In(a5)
+		beq	ERR_Input
+
+		lea	_Buffer(a5),a0
+		move.l	a0,d1
+		lea	_Tag0(a5),a0
+		move.l	#SYS_Input,_Tag0(a5)
+		move.l	_In(a5),_TData0(a5)
+		move.l	#SYS_Output,_Tag1(a5)
+		move.l	_Out(a5),_TData1(a5)
+		move.l	a0,d2
+		jsr	_LVOSystemTagList(a6)
+		tst.l	d0
+		bmi	ERR_Fail
+		tst.l	_Quiet(a5)
+		bne.s	Exit
+		tst.l	d0
+		bne	ERR_Returned
+
+Exit		move.l	_In(a5),d1
+		beq.s	Exit2
+		move.l	_DosBase(a5),a6
+		jsr	_LVOClose(a6)
+Exit2		move.l	_Out(a5),d1
+		beq.s	Exit3
+		move.l	_DosBase(a5),a6
+		jsr	_LVOClose(a6)
+Exit3		move.l	_Args(a5),d1
+		beq.s	Exit4
+		move.l	_DosBase(a5),a6
+		jsr	_LVOFreeArgs(a6)
+Exit4		move.l	(a5),a6
+		move.l	_IntuitionBase(a5),a1
+		jsr	_LVOCloseLibrary(a6)
+Exit5		move.l	_DosBase(a5),a1
+		move.l	(a5),a6
+		jsr	_LVOCloseLibrary(a6)
+Exit0		unlk	a4
+		moveq	#0,d0
+		rts
+
+
+ERR_DosError	lea	DosName(pc),a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_DosBase(a5)
+		beq.s	Exit0
+
+		move.l	d0,a6
+		jsr	_LVOOutput(a6)
+		move.l	d0,d1
+		beq.s	ERR_Dos0
+		lea	MSG_DosError(pc),a0
+		move.l	a0,d2
+		move.l	#MSG_DosErrorL,d3
+		jsr	_LVOWrite(a6)
+ERR_Dos0	bra	Exit	
+
+
+ERR_IntuitionError
+		move.l	_DosBase(a5),a6
+		lea	ERR_IntError(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		bra.s	ERR_Dos0
+
+
+ERR_Args	lea	ES_Args(pc),a1
+		lea	_Tag0(a5),a3
+		lea	Template(pc),a0
+		move.l	a0,(a3)
+		lea	ARG_Text(pc),a0
+		move.l	a0,es_TextFormat(a1)
+		bsr	ISayError
+		bra	Exit
+
+
+ISayError	lea	ResumeText(pc),a0	; E` necessario che lo
+		move.l	a0,es_GadgetFormat(a1)	; faccia una sola volta,
+		lea	TitleText(pc),a0
+		move.l	a0,es_Title(a1)
+		suba.l	a0,a0			; comunque...
+		suba.l	a2,a2
+		move.l	_IntuitionBase(a5),a6
+		jmp	_LVOEasyRequestArgs(a6)
+
+
+ERR_Output	lea	OutText(pc),a2
+ERR_Do		jsr	_LVOIoErr(a6)
+		lea	ES_Args(pc),a1
+		lea	_Tag0(a5),a0
+		move.l	a0,a3
+		move.l	_OutName(a5),(a0)+
+		move.l	a2,(a0)+
+		move.l	d0,(a0)
+		lea	IO_Text(pc),a0
+		move.l	a0,es_TextFormat(a1)
+		bsr	ISayError
+		bra	Exit
+
+ERR_Input	lea	InText(pc),a2
+		move.l	_InName(a5),_OutName(a5)
+		bra.s	ERR_Do
+
+ERR_Fail	jsr	_LVOIoErr(a6)
+		lea	ES_Args(pc),a1
+		lea	_Tag0(a5),a3
+		move.l	_FileName(a5),(a3)
+		move.l	d0,4(a3)
+		lea	FailText(pc),a0
+		move.l	a0,es_TextFormat(a1)
+ERR_Do0		bsr	ISayError
+		bra	Exit
+
+ERR_Returned	lea	ES_Args(pc),a1
+		lea	_Tag0(a5),a3
+		move.l	_FileName(a5),(a3)
+		move.l	d0,4(a3)
+		lea	ReturnText(pc),a0
+		move.l	a0,es_TextFormat(a1)
+		bra.s	ERR_Do0
+
+
+
+****************************************************========*************
+****************************************************= DATA =*************
+****************************************************========*************
+
+
+DosName		dc.b	"dos.library",0
+		even
+IntuitionName	dc.b	"intuition.library",0
+		even
+
+Template	dc.b	"BATCHFILE/A,OUTPUT,INPUT,QUIT/S",0
+		even
+
+DefOut		dc.b	"CON:0/100/-1/200/BackEx IO [Close me to resume]"
+		dc.b	"/WAIT/CLOSE/AUTO",0
+		even
+
+DefIn		dc.b	"NIL:",0
+		even
+
+ResumeText	dc.b	"Resume",0
+		even
+
+MSG_DosError	dc.b	"You need dos.library V36+!",10
+MSG_DosErrorL	EQU	*-MSG_DosError
+		even
+
+ERR_IntError	dc.b	"Wah! Where is intuition.library V36+?",10,0
+		even
+
+ARG_Text	dc.b	"BackEx v0.9  (c) 1996",10
+		dc.b	"written by Mauro Panigada",10,10
+		dc.b	"Original in C by Hans Buehler",10,10
+		dc.b	"Template: %s",0
+		even
+
+IO_Text		dc.b	"Can't open '%s' (%s):",10
+		dc.b	"DOS error %ld",10,10
+		dc.b	"Use AskErr by Mauro Panigada to know what it means!"
+		dc.b	0
+		even
+
+OutText		dc.b	"output",0
+		even
+InText		dc.b	"input",0
+		even
+
+FailText	dc.b	"Failed to execute '%s':",10
+		dc.b	"DOS error %ld",0
+		even
+
+ReturnText	dc.b	"'%s' returned",10
+		dc.b	"error code %ld !",0
+		even
+
+TitleText	dc.b	"BackEx",0
+		even
+
+ES_Args		dc.l	EasyStruct_SIZEOF
+		dc.l	0,0,0,0
+
+
+
+*******************************************************************
+** +------------+                                                **
+** | SOURCE END |  Another master piece by Mauro Panigada (MU) ! **
+** +------------+                                                **
+*******************************************************************
+
+		END

@@ -1,0 +1,274 @@
+;
+; FreeX v1.0
+; written by Mauro Panigada
+;
+; $VER: FreeX.a v1.0 (1997.04.17) by Mauro Panigada
+;
+; Opened: 1997.04.17
+; Closed: 1997.04.18
+;
+; Shows Volume Name, FileSystem, Total bytes, Free Bytes, Total
+; blocks, Free Blocks.
+;
+; Inspired by a dos, too long program, Free (unknow author)...
+;
+; Pure.
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/memory.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dosextens.i"
+		include	"dos/dos_lib.i"
+		include	"utility/utility_lib.i"
+
+
+stov		MACRO
+		move.\0	\1,\2(a5)
+		ENDM
+
+putv		MACRO
+		move.\0	\1(a5),\2
+		ENDM
+
+clrv		MACRO
+		clr.\0	\1(a5)
+		ENDM
+
+tstv		MACRO
+		tst.\0	\1(a5)
+		ENDM
+
+
+openlib		MACRO
+		lea	\1name(pc),a1
+		moveq	#\2,d0
+		call	OpenLibrary
+		stov.l	d0,_\1base
+		beq	exit
+		ENDM
+
+closelib	MACRO
+		putv.l	_\1base,a1
+		call	CloseLibrary
+		ENDM
+
+
+call		MACRO
+		IFEQ	NARG-1
+		jsr	_LVO\1(a6)
+		ELSE
+		putv.l	_\2base,a6
+		jsr	_LVO\1(a6)
+		ENDC
+		ENDM
+
+base		MACRO
+		move.l	_\1base(a5),a6
+		ENDM
+
+
+
+	STRUCTURE reserved,0
+
+		LONG	_execbase
+		LONG	_dosbase
+		LONG	_utilitybase
+
+		LABEL	_array
+		LONG	_name
+
+		STRUCT	_idstruct,id_SIZEOF
+
+		STRUCT	_buffer,32
+
+		LONG	_disktype
+		BYTE	unusable
+		BYTE	_kludge
+
+		LABEL	_argument
+		LONG	_volname
+		LONG	_system
+		LONG	_numblocks
+		LONG	_numblocksfree
+		LONG	_numbytes
+		LONG	_freebytes
+
+		LABEL	reserved_size
+
+
+
+	SECTION	FreeX,CODE
+
+		bra.s	start
+
+		dc.b	"$VER: "
+		dc.b	"FreeX 1.0 (1997.04.17) "
+		dc.b	"by Mauro Panigada",13,10,0
+		even
+
+start
+		moveq	#reserved_size,d0
+		move.l	4.w,a6
+		move.l	#MEMF_ANY|MEMF_CLEAR,d1
+		call	AllocMem
+		tst.l	d0
+		bne.s	allocok
+		rts
+allocok		move.l	d0,a5
+
+		moveq	#0,d7		; d7 = error exit
+		move.l	a6,(a5)
+
+		moveq	#0,d6
+		move.l	d6,d5
+
+		openlib	dos,39
+		openlib	utility,39
+
+		lea	_array(a5),a0
+		move.l	a0,d2
+		lea	template(pc),a0
+		move.l	a0,d1
+		moveq	#0,d3
+		call	ReadArgs,dos
+		move.l	d0,d6		; d6 = rdargs
+		bne.s	rdok
+
+		lea	standard(pc),a0
+		stov.l	a0,_name
+		bra.s	rdok
+
+error0		call	IoErr
+		move.l	d0,d1
+		lea	tasky(pc),a0
+		move.l	a0,d2
+		call	PrintFault
+		moveq	#RETURN_FAIL,d7
+		bra	exit
+
+rdok
+		putv.l	_name,d1
+		moveq	#ACCESS_READ,d2
+		call	Lock
+		move.l	d0,d5		; d5 = lock
+		beq.s	error0
+
+		lea	_idstruct(a5),a0
+		move.l	a0,a3
+		move.l	a0,d2
+		move.l	d0,d1
+		call	Info
+		tst.l	d0
+		beq.s	error0
+
+		move.l	id_NumBlocks(a3),d0
+		stov.l	d0,_numblocks
+		move.l	id_NumBlocksUsed(a3),d1
+		move.l	d0,d2			; d2=blocks
+		sub.l	d1,d0			; d0=free blocks
+		stov.l	d0,_numblocksfree
+		move.l	id_BytesPerBlock(a3),d3
+		move.l	d3,d1
+		call	UMult32,utility
+		stov.l	d0,_freebytes
+		move.l	d3,d1
+		putv.l	_numblocks,d0
+		call	UMult32
+		stov.l	d0,_numbytes
+
+		stov.l	id_DiskType(a3),_disktype
+		lea	_disktype(a5),a0
+		cmp.b	#1,3(a0)
+		bne.s	noffs
+		lea	ffs.label(pc),a0
+noffs		cmp.b	#2,3(a0)
+		bne.s	noidos
+		lea	idos.label(pc),a0
+noidos		cmp.b	#3,3(a0)
+		bne.s	noiffs
+		lea	iffs.label(pc),a0
+noiffs		cmp.b	#4,3(a0)
+		bne.s	nofddos
+		lea	fddos.label(pc),a0
+nofddos		cmp.b	#5,3(a0)
+		bne.s	nofdffs
+		lea	fdffs.label(pc),a0
+nofdffs
+		stov.l	a0,_system
+
+		move.l	id_VolumeNode(a3),a0
+		adda.l	a0,a0
+		adda.l	a0,a0		; bptr to aptr
+		move.l	dl_Name(a0),a0
+		adda.l	a0,a0
+		adda.l	a0,a0
+		moveq	#0,d0
+		move.b	(a0)+,d0
+		lea	_buffer(a5),a1
+		stov.l	a1,_volname
+		subq.w	#1,d0
+loopi		move.b	(a0)+,(a1)+
+		dbf	d0,loopi
+		clr.b	(a1)
+
+		lea	testo(pc),a0
+		move.l	a0,d1
+		lea	_argument(a5),a0
+		move.l	a0,d2
+		call	VPrintf,dos
+
+exit
+		move.l	d6,d1
+		beq.s	ex0
+		call	FreeArgs,dos
+
+ex0		move.l	d5,d1
+		beq.s	ex1
+		call	UnLock,dos
+ex1
+		closelib dos
+		closelib utility
+
+		move.l	(a5),a6
+		move.l	a5,a1
+		moveq	#reserved_size,d0
+		call	FreeMem
+
+		rts
+
+
+
+dosname		dc.b	"dos.library",0
+		even
+utilityname	dc.b	"utility.library",0
+		even
+template	dc.b	"DEVICE",0
+		even
+tasky		dc.b	"FreeX",0
+		even
+testo		dc.b	"Volume name:  %s",10
+		dc.b	"Filesystem:   %s",10
+		dc.b	"Total blocks: %ld",10
+		dc.b	"Free blocks:  %ld",10
+		dc.b	"Total bytes:  %ld",10
+		dc.b	"Free bytes:   %ld",10
+		dc.b	0
+		even
+ffs.label	dc.b	"FFS",0
+idos.label	dc.b	"INTERNATIONAL DOS",0
+		even
+iffs.label	dc.b	"INTERNATIONAL FFS",0
+		even
+fddos.label	dc.b	"FASTDIR DOS",0
+		even
+fdffs.label	dc.b	"FASTDIR FFS",0
+		even
+standard	dc.b	"sys:",0
+		even
+
+
+		END

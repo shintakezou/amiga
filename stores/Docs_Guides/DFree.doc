@@ -1,0 +1,26 @@
+
+                                 DFree v1.2
+                                ============
+
+                         written by Mauro Panigada
+
+                     from the original source code in C
+
+                               by Max Francis
+
+
+	I am the Knight of Shortness.
+	I am a bird I can fly.
+	I love assembler.
+
+	Therefore when I see a in concepts simple program too long
+according to me (about 5k!), I decide to write it ex novo. Basing on
+the original if there is a source code, or on the output and actions.
+
+	So you can find a better doc in DFree by Max Francis.
+
+	Very simple to be used: it is enough to specify a device, and
+you will see an output. The precise length is unuseful to understand
+how much space exist on a disk. So the free space, the result given,
+is put in k, M or G bytes.
+

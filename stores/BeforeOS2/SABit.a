@@ -1,0 +1,115 @@
+***********************************************************************
+*                                                                     *
+*    Program................... Sub a BitPlane or Add it!             *
+*    Purpose................... Dedicated to  who has memory problem  *
+*    Use....................... SABit - || + (- sub, + add)           *
+*    Version................... 1.00 -- 1992                          *
+*    Autor..................... I'm Mauro Panigada!                   *
+*    Bugs...................... When you must add bp, use two + (++)  *
+*                               It goes only if the bps are two!      *
+*                                                                     *
+***********************************************************************
+
+; This are Exec Offsets
+
+OpenLibrary	EQU	-552		; a1=*libname, d0=version
+CloseLibrary	EQU	-414		; a1=that one is resulted by OpenLib
+
+; This is Gfx Offset
+
+FreeRaster	EQU	-498		; a0=*plane, d0/d1=widht/height
+AllocRaster	EQU	-492		; d0/d1=widht/height
+BltClear	EQU	-300		; a1=*mem, d0=byte, d1=flags
+
+; This are Int Offsets
+
+RemakeDisplay	EQU	-384		; nothing to give him
+ViewAddress	EQU	-294		; >a0=*firstscr viewptr
+
+; Some offset for my variable
+
+gfxbase		EQU	0
+intbase		EQU	4
+firstscr	EQU	8
+
+; Now I'll start to examine opt, then I'll do sub or add...
+
+		move.l	a0,-(sp)
+		lea	varbase(pc),a4
+		movea.l	4,a6
+		lea	gfxname(pc),a1
+		moveq	#0,d0
+		jsr	OpenLibrary(a6)
+		tst.l	d0
+		beq.s	failgfx
+		move.l	d0,gfxbase(a4)
+		moveq	#0,d0
+		lea	intname(pc),a1
+		jsr	OpenLibrary(a6)
+		tst.l	d0
+		bne.s	nofail
+		move.l	gfxbase(a4),a1
+		jsr	CloseLibrary(a6)
+failgfx		adda.l	#4,sp
+		moveq	#30,d0
+		rts
+
+nofail		move.l	d0,intbase(a4)
+		move.l	d0,a6
+		jsr	ViewAddress(a6)
+		move.l	(a0),a0
+		suba.l	#44,a0
+		move.l	a0,firstscr(a4)
+		move.l	(sp)+,a0
+		cmp.b	#10,(a0)
+		beq.s	subplane
+		cmp.b	#'-',(a0)
+		bne.s	addplane
+subplane	movea.l	firstscr(a4),a2
+		movea.l	a2,a3
+		adda.l	#184,a2			; so I find BitMap
+		cmp.b	#1,5(a2)		; 5(a2)=Depth
+		beq.s	sorrybit
+		move.l	12(a2),a0		; bm_Plane_1
+		move.w	12(a3),d0		; Widht
+		move.w	14(a3),d1		; Height
+		move.l	gfxbase(a4),a6
+		jsr	FreeRaster(a6)
+		sub.b	#1,5(a2)
+remake_all	move.l	intbase(a4),a6
+		jsr	RemakeDisplay(a6)
+sorrybit	move.l	a6,a1
+		movea.l	4,a6
+		jsr	CloseLibrary(a6)
+		move.l	gfxbase(a4),a1
+		jmp	CloseLibrary(a6)
+		
+addplane	movea.l	firstscr(a4),a2
+		movea.l	a2,a3
+		adda.l	#184,a2
+		cmp.b	#2,5(a2)
+		beq.s	sorrybit
+		move.w	12(a3),d0
+		move.w	14(a3),d1
+		move.l	gfxbase(a4),a6
+		jsr	AllocRaster(a6)
+		move.l	d0,12(a2)
+		move.l	d0,a1
+		moveq	#0,d0
+		moveq	#0,d1
+		move.w	12(a3),d0
+		lsr.w	#3,d0
+		mulu	14(a3),d0
+		jsr	BltClear(a6)
+		addq.b	#1,5(a2)
+		bra.s	remake_all
+
+gfxname		dc.b	'graphics.library',0
+		even
+intname		dc.b	'intuition.library',0
+		even
+varbase		dc.l	0			; gfxbase
+		dc.l	0			; intbase
+		dc.l	0			; firstscr
+		
+		END

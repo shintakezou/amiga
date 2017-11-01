@@ -1,0 +1,70 @@
+;
+; $VER: Inhibitor.a v1.1 by Mauro Panigada
+;
+; Started: 15-04-1996 (day/month/year)  FREEWARE
+;
+; Purpose: Unknow. (If you want to inhibit a device...)
+; Usage: Inhibitor DEVICE [OFF] (default to ON)
+;  Hit 'Inhibitor ?' for a dos-like help.
+; Bugs: Unknow.
+; Done: Now it is pure (and shorter).
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+
+
+		bra.s	main
+
+		dc.b	"$VER: Inhibitor v1.1 (1996-04-15)"
+		dc.b	" written by Mauro Panigada",0
+		even
+
+main		link	a4,#-8
+		clr.l	-8(a4)
+		clr.l	-4(a4)
+		moveq	#0,d7
+		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#36,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,d6
+		beq.s	exit
+		move.l	d0,a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		lea	-8(a4),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,d7
+		beq.s	help
+		move.l	-8(a4),d1
+		move.l	-4(a4),d2
+		jsr	_LVOInhibit(a6)
+exit		move.l	d7,d1		; if d7<>0 surely a6=dos
+		beq.s	next
+		jsr	_LVOFreeArgs(a6)
+next		move.l	d6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+		unlk	a4
+		rts
+
+help		lea	info(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		bra.s	exit
+
+
+dosname		dc.b	"dos.library",0
+		even
+template	dc.b	"DEVICE/A,OFF/S",0
+		even
+info		dc.b	"Inhibitor v1.1 written by Mauro Panigada",10
+		dc.b	0
+
+		END

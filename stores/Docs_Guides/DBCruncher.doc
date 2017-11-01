@@ -1,0 +1,56 @@
+
+                              DBCruncher v1.42
+                             ==================
+
+                         written by Mauro Panigada
+
+
+	It works well also under OS1.3+.
+
+	There is a period of my life when i was very fond of
+crunching methods. I wonder how a big file becomes a little one.
+So I decided to study the problem, but how? Luckly I found several
+articles on a italian magazine which were about crunching.
+I began from the beginning: the simpler Static Huffman Encoding, but
+my purpose was to reach Dynamic Huffman Encoding and, as waterfall,
+Lempel-Ziv-Welch. I never reached that, but the effort was great.
+
+	DB means Dynamic Bushman, I mocked the way used, the Huffman
+trees and leaves, and so in my imagination they became little bushes.
+And Huffman was a man, the Man of Bush.
+
+	Now it crunches well, but the ratio is very very low (about
+40% if the file is very repetitive, but 20% and less for non-ascii
+but strange data files).
+
+	It crunches only data, this means the executables will treated
+as data and made not executable.
+
+	Because of its low ratio, you can try to crunch a file again,
+sometimes you will save other bytes.
+
+	You must pay attention to the kind of file you are crunching:
+if it is a file already well frozen, my little cruncher can only lose
+bytes: but in crunching mode the internal buffer has the same length of
+the original file (supposing the crunched one will be shorter!), so
+if loses bytes, it will go out of the buffer, maybe corrupting something.
+Normally crunching twice a originally non-crunched file will give a
+better result.
+
+	I am sorry tha source code is not so clear as you maybe hope.
+As cruncher it is too stupid to be used, but maybe to encrypt and save
+some byte....
+
+	When the specified file is a file already crunched with
+powerpacker, it will first decrunch it, and then crunch it again. The
+file surely will be longer than ppacked.
+
+	Using:
+
+	DBCruncher [coms] <source> [<destination>]
+
+	SOURCE must be given. COMS now is only the re-crunch option.
+DESTINATION can be missed. In this case the destination has the same
+name and path of the source, but with a suffix added.
+
+

@@ -1,0 +1,260 @@
+@DATABASE xcom.guide
+@AUTHOR "Mauro Panigada"
+@$VER: xcom.guide 2.73 (1997.04.16)
+
+@NODE Main "General Index"
+
+                                @{b}XCom v2.73@{ub}
+
+                        written by Mauro Panigada
+
+
+                              @{" Introduction " LINK Introduction}
+                              @{" Requirements " LINK Req}
+                              @{" Using XCom   " LINK Using}
+                              @{" History      " LINK History}
+
+@{i}
+   THIS PROGRAM IS FREEWARE. THIS MEANS YOU CAN USE AND COPY IT FREELY.
+             IT CAN BE INCLUDED IN FREDFISH OR WHATEVER FREE.
+         IT AND ITS CODE CAN NOT BE USED FOR COMMERCIAL PRODUCT.
+@{ui}
+
+                              @{" Click me     " LINK Yeap}
+@ENDNODE
+
+@NODE Introduction "An Introduction to the problem"
+
+                               @{b}Introduction@{ub}
+
+   Ordering is a great program, which does (almost) anything you want.
+   But a little problem you can see using it, if you use it, when you
+   want to set the same comment to all selected file (or directory).
+
+   I am doing an example:
+   You have in dh1: four files that belong to a main program, eg named
+   MickyMice. You want to set this comment to all files: "this belongs
+   to MickyMice". Through Ordering, you select all file, then click
+   on <Comment> gadget. It asks for a string of comment, then you say
+   OK, then it sets the comment to the first selected, and asks again
+   for the next and then the next ones. But... The comment, yes it, it
+   is the same for all files.
+
+   How can you solve this problem (if you need solving it)?
+   Using XCom, because it has multiple files, filenote haven't.
+
+   XCom is a cli program, but we know, Ordering can call extern tools.
+   It can be useful, very useful and powerful, in scripts and from
+   cli you can use it more powerfully. But it solves that problem, too.
+
+   XCom can clone, show and set a comment. Supports pattern-matching
+   and multiple files. So you can trash your long filenote command!
+   XCom does everything it does and more.
+
+
+@ENDNODE
+
+@NODE Using "Its features and its use"
+
+                               @{b}Its features@{ub}
+
+                         * Very short
+                         * Multiple files with pattern-matching
+                         * (Of course) pure
+
+             It is written in 100% assembly by Mauro Panigada
+
+                   (This is a very important feature!)
+
+
+                                 @{b}Using it@{ub}
+
+  Using XCom is very simple. The TEMPLATE is:
+
+                       @{"FILE/A/M,C=COMMENT/K,QUIET/S" LINK Template}
+
+  Now I am going to show you how XCom can "understand" what you want.
+  In fact it can do three different actions, it dipends how you
+  teach it.
+
+@{fg highlight}Set comment mode@{fg text}
+
+  If you want to set a comment (the same for all) to several files,
+  you only must write the C or COMMENT keyword, the comment follow.
+
+  1> xcom df4:#? C ""
+
+  This command line will set a null comment to all files in df4:
+  It is the same of
+
+  1> filenote df4:#?
+
+  The ALL switch you can see in filenote template is not implemented
+  in my own XCom. I think it makes XCom command longer and it is not
+  so useful. When do you need to set a comment recursively?
+  So
+
+  1> filenote dh0: ALL
+
+  is not available on my XCom. But, be careful, it will delete all
+  comments of all files of your hd partition. When do you need it?
+  Probably I will never do it, if you think it can be useful, keep
+  filenote AND XCom... both.
+
+  Attention, the pattern will match also the directory, and will set
+  that comment to the directory, bu not to what it contains.
+
+  1> xcom dh0:jch df2:dog df3:god df0:goddog C "greek"
+
+  This line will set "greek" comment to all specified files, in the
+  different device... With filenote:
+
+  1> filenote dh0:jch "greek"
+  1> filenote df2:dog "greek"                       and so on...
+
+
+@{fg highlight}Clone mode@{fg text}
+
+  This is the main function, and for this this program was written.
+  Simply not specifing C or COMMENT keyword and giving two or more
+  files, it will clone the comment from the first to the second,
+  the third and so on...
+
+  1> xcom dh0:file df4:#?kk#? df2:mice df1:ux/hpux/#?
+
+  Only a note: the pattern matching has no sense for the first
+  argument, which must be a file that exists, or an error will be
+  shown.
+
+
+@{fg highlight}Get comment mode@{fg text}
+
+  Time ago (two or three days ago, see @{"history" LINK History}), XCom was named
+  clcom (clone comment) and it cloned from a file to one or many files.
+  Near it laid getcom, which got a comment from a file and wrote it.
+  Now XCom do it.
+
+  1> XCom df0:mouse
+
+  In this mode, pattern matching has no sense. So QUIET switch. This
+  mode can be used also to fill a var with the comment of a file.
+  Link @{"Ordering" LINK Ordering} to know....
+
+@ENDNODE
+
+@NODE History "History"
+
+                                 @{b}History@{ub}
+
+
+  1997.04.10               v1.0 finished. Only comment cloner 
+                           and comment setter, but without pattern
+                           matching but only multiple files
+
+  1997.04.11               fixed the behavior when QUIET switch is
+                           specified
+
+  1997.04.11               v2.0, multiple pattern matching only for
+                           the second argument(s) (<TO/A/M>). Cloner
+                           and comment setter, but (!) at least two files!
+
+  1997.04.14               v2.73, clones; sets also to a file alone;
+                           now also shows a comment
+
+  1997.04.16               mainly fixed (twice!) QUIET behavior and fixed
+                           little bugs (2) that do not ruin its work.
+
+  1997.04.16               first guide file
+
+@ENDNODE
+
+@NODE Req "Requirements"
+
+                               @{b}Requirements@{ub}
+
+  You need an Amiga, of course, with at least OS3.0 (V39).
+  It is tested on an Amiga500 ROM 1.3, OS3.0 installed, 4 Mb RAM,
+  512 kb CHIP (OCS, FatAgnus), 68000. You do not need special
+  processor (as 68020) only because of odd addresses... (they are
+  slower than even)
+
+  That's all.
+
+@ENDNODE
+
+@NODE Template "Short"
+
+For those that haven't time...
+
+
+@{b}Set comment@{ub}
+
+  xcom FILE1 FILE2 [...] FILEn C "a comment"
+
+  where FILE can contains wildcards
+
+@{b}Clone comment@{ub}
+
+  xcom FROM TO1 TO2 [...] TOn
+
+  where only TO can contains wildcards
+
+@{b}Get comment@{ub}
+
+  xcom FILE
+
+  where FILE is a file, no wildcards
+
+@ENDNODE
+
+@NODE Yeap "Oh"
+
+ What do you think you can do? I add this node because I thought something
+ now I have forgotten! Yeap.
+
+@ENDNODE
+
+@NODE Ordering "Using it with Ordering"
+
+                          @{b}Using it with Ordering@{ub}
+
+  Load edit preferences program. Click on button. Select a gadget, where
+  you want put this function. It dipends on your taste. In the system I
+  use it is inserted in the first bank, the last gadget of the second
+  line.
+
+  Now you will give me a name, eg "XComment". The search and click on
+  "External tools".
+  Fill the string gadget:
+
+  C:XCOM C "%sr" %ase QUIET
+
+  And make on/off what you want, about runback, output window (in this
+  case you won't specify QUIET)... Useful: reread source directory.
+
+
+  Through Ordering the cloner mode is not usable. A bypass:
+
+  On the same gadget (if you want), in the right mouse button function,
+  you will choose external tools, and write this string:
+
+  C:XCOM >ENV:comment %ase
+
+  ATTENTION, even if %ase, you MUST select only ONE file, otherwise
+  it will go in cloner mode, and it will clone the first to the others,
+  and ENV:comment will be filled with the standard output while it
+  does that operation. %ase is specified to permit Ordering to pass
+  directory, too, and get comment from them, too.
+
+  Now, save and reread preferences.
+
+  Test it: choose a file, rmb on the XComment gadget, choose one or
+  many files, lmb on XComment, $comment as string, the game is done.
+
+@ENDNODE
+
+@NODE finto "finto"
+
+  
+
+@ENDNODE

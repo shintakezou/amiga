@@ -1,0 +1,252 @@
+;
+; $VER: RequestSlide.a 39.0 (1998.10.01) by Mauro Panigada
+;
+; RequestSlide 39.0
+; written by Mauro Panigada
+;
+; Operating System: v39
+; CPU: 68020+
+;
+; RequestSlide: show a slide to choose value between two ranges. Before,
+;   you have to use RequestString also to insert numeric value eg between
+;   100 and 1000. Now you can use RequestSlide.
+;
+; Template: TITLE,TEXT,FROM/N/K,TO/N/K,VALUE/K/N,CENTER/S,MOUSEPOS/S,
+;   HEX/S,HEXPREFIX/K,STEP/N/K,UNSIGNED/S,PUBSCREEN/K
+;
+; TITLE: title of the window (default: Request)
+; TEXT: text in the window for the slide (default: nothing)
+; FROM: start value (default 0)
+; TO: end value (required)
+; VALUE: initial value (default: 0)
+; CENTER: center the slide window in the screen
+; MOUSEPOS: open the window so that the mouse is on slide
+; HEX: output in hex form (noprefix)(default: decimal)
+; HEXPREFIX: the hex string prefix (eg $, 0x ...) (automatically, sets HEX)
+; STEP: step value in pixel (1 value point per X pixels) (default, calculated)
+: UNSIGNED: all value unsigned, default signed (so in 32 bit, you will
+;   have a range from -2,147,483,648  to 2,147,483,647, or full 32bit unsigned)
+; PUBSCREEN: publicscreen (default: Workbench)
+;
+
+		incdir	"inc:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/intuition_lib.i"
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i"
+
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+		OPT	p=68020
+
+CALL		MACRO
+		jsr	(_LVO\1,a6)
+		ENDM
+
+TAG		MACRO
+		LABEL	\1
+		LONG	\1_1
+		LONG	\1_2
+		ENDM
+
+	STRUCTURE mywindow,0
+		TAG	WindowWidth
+		TAG	WindowHeight
+		TAG	WindowLeftEdge
+		TAG	WindowTopEdge
+		TAG	WindowGadgets
+		TAG	WindowTitle
+		TAG	WindowFlags
+		TAG	WindowIDCMP
+		TAG	WindowPubScreen
+		LONG	WTAGEND		;mantenere a zero! (keep to zero!)
+		LABEL	MyWindow_SIZE
+
+	STRUCTURE slidertag,0
+		TAG	SliderMin
+		TAG	SliderMax
+		TAG	SliderLevel
+		TAG	SliderLevelFormat
+		TAG	SliderDispFunc
+		LONG	STAGEND
+		LABEL	SliderTAG_SIZE
+
+	STRUCTURE stringtag,0
+		TAG	StringString
+		TAG	StringMaxChars
+		LONG	SLTAGEND
+		LABEL	StringTAG_SIZE
+
+
+	STRUCTURE internal,0
+		LONG	DOSBase
+		LONG	IntuitionBase
+		LONG	GadToolsBase
+
+		LABEL	Arguments
+		LONG	_Title
+		LONG	_Text
+		LONG	_From
+		LONG	_To
+		LONG	_Value
+		LONG	_Center
+		LONG	_MousePos
+		LONG	_Hex
+		LONG	_HexPrefix
+		LONG	_Step
+		LONG	_Unsigned
+		LONG	_PubScreen
+
+		LONG	Args
+		LONG	PubScreenLock
+
+		STRUCT	MyWindow,MyWindow_SIZE
+
+		STRUCT	Slider,gng_SIZEOF
+		STRUCT	Increment1,gng_SIZEOF
+		STRUCT	Increment2,gng_SIZEOF
+		STRUCT	Decrement1,gng_SIZEOF
+		STRUCT	Decrement2,gng_SIZEOF
+		STRUCT	OKGadget,gng_SIZEOF
+		STRUCT	CancelGadget,gng_SIZEOF
+		STRUCT	StringGadget,gng_SIZEOF
+		STRUCT	HexDec,gng_SIZEOF
+
+		STRUCT	SliderTAG,SliderTAG_SIZE
+		STRUCT	StringTAG,StringTAG_SIZE
+
+		LABEL	internal_sizeof
+
+
+DEF_FROM	EQU	0
+DEF_VALUE	EQU	0
+DEF_1000	EQU	1000
+DEF_100		EQU	100
+DEF_10		EQU	10
+
+
+	SECTION	RSlide,CODE
+
+		bra.s	Start
+
+		dc.b	"$VER: RequestSlide 39.0 (1998.10.01) [020+] by Mauro Panigada"
+		dc.b	13,10,0
+		even
+
+Start		move.l	(4).w,a6
+		move.l	#internal_sizeof,d0
+		move.l	#MEMF_ANY|MEMF_CLEARED,d1
+		CALL	AllocMem
+		move.l	d0,a5
+		tst.l	d0
+		beq	ErrorExit0
+
+		clr.l	(ErrorCode,a5)
+
+		lea	(DOSName,pc),a1
+		moveq	#39,d0
+		CALL	OpenLibrary
+		move.l	d0,(a5)		;dosbase
+		beq	Exit
+
+		lea	(IntuitionName,pc),a1
+		moveq	#39,d0
+		CALL	OpenLibrary
+		move.l	d0,(IntuitionBase,a5)
+		beq	Exit
+
+		lea	(GadToolsBase,pc),a1
+		moveq	#39,d0
+		CALL	OpenLibrary
+		move.l	d0,(GadToolsBase,a5)
+		beq	Exit
+
+		move.l	(a5),a6
+		lea	(Template,pc),a0
+		move.l	a0,d1
+		move.l	a5,d2
+		add.l	#Arguments,d2
+		moveq	#0,d3
+		CALL	ReadArgs
+		move.l	d0,(Args,a5)
+		bne.s	Argument1OK
+
+		CALL	IoErr
+		move.l	d0,d1
+		lea	(ReqSlideName,pc),a0
+		move.l	a0,d2
+		CALL	PrintFault
+		move.b	#RETURN_FAIL,(ErrorCode+3,a5)
+		bra	Exit
+
+Argument1OK	tst.l	(_To,a5)
+		bne.s	Argument2OK
+
+		lea	(ReqSlideName,pc),a0
+		move.l	a0,d1
+		CALL	PutStr
+		lea	(PostFix,pc),a0
+		move.l	a0,d1
+		CALL	PutStr
+		lea	(NoReqArgs.err,pc),a0
+		move.l	a0,d1
+		CALL	PutStr
+		move.b	#RETURN_FAIL,(ErrorCode+3,a5)
+		bra	Exit
+
+Argument2OK
+
+; Fa il lock allo schermo pubblico specificato, o al Workbench, sebbene per questo
+; ultimo non ce ne dovrebbe essere bisogno...
+;
+		lea	(WorkbenchName,pc),a0
+		tst.l	(_PubScreen,a5)
+		beq.s	NoPubScreen
+		move.l	(_PubScreen,a5),a0
+NoPubScreen	move.l	(IntuitionBase,a5),a6
+		CALL	LockPubScreen
+		move.l	d0,(PubScreenLock,a5)
+		bne.s	ScreenGiven
+
+		move.b	#RETURN_FAIL,(ErrorCode+3,a5)
+		bra	Exit
+ScreenGiven
+
+
+
+
+
+*============================================================= strutture, costanti..
+*
+MyWinFlags	dc.l	WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_ACTIVATE|WFLG_RMBTRAP
+MyWinIDCMP	dc.l	IDCMP_GADGETUP|IDCMP_GADGETDOWN|IDCMP_CLOSEWINDOW|IDCMP_VANILLAKEY
+WindowTags	dc.l	WA_Width,WA_Height,WA_Left,WA_Top
+		dc.l	WA_Gadgets,WA_Title,WA_Flags,WA_IDCMP,WA_PubScreen
+WindowTagsNum	EQU	(*-WindowTags)/4
+;^deve coicidere con lo spazio nella struttura tag, ovviamente
+SliderTags	dc.l	GTSL_Min,GTSL_Max,GTSL_Level
+		dc.l	GTSL_LevelFormat
+		dc.l	GTSL_DispFunc
+SliderTagsNum	EQU	(*-SliderTags)/4
+
+*========================================================================== stringhe
+*
+DOSName		dc.b	"dos.library",0
+IntuitionName	dc.b	"intuition.library",0
+GadToolsName	dc.b	"gadtools.library",0
+Template	dc.b	"TITLE,TEXT,FROM/N/K,TO/N/K,VALUE/K/N,"
+		dc.b	"CENTER/S,MOUSEPOS/S,HEX/S,HEXPREFIX/K,STEP/N/K,UNSIGNED/S,PUBSCREEN/K",0
+ReqSlideName	dc.b	"RequestSlide",0
+Postfix		dc.b	":"
+Space		dc.b	" ",0
+NoReqArgs.err	dc.b	"at least TO keyword must be specified.",10,0
+
+
+		END

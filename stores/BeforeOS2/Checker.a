@@ -1,0 +1,2411 @@
+*
+* CHECKER     by Mauro Panigada 1991
+*
+**** The following comment was added for the github release:
+*
+* The antivirus code is copied by Berserker: it is
+* said in an about string (mi3), but not in the header, and it is
+* not mentioned the author, Ralf Thanner.
+*
+* In his own words about Berserker:
+*
+*   Executable program and source code are both in the PUBLIC-DOMAIN!
+*
+* check e.g. http://ftp.funet.fi/pub/amiga/fish/301-400/ff355/
+*
+****
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"intuition/intuition.i"
+
+_LVOOpenLibrary	 EQU	-552		; d0/a1, #version,*namelib
+_LVOCloseLibrary EQU	-414		; a1, *baselib
+OpenScreen	 EQU	-198		; a0, *newscreen
+ScreenToBack	 EQU	-246		; a0, *scr
+ScreenToFront	 EQU	-252		; a0, *scr
+MoveScreen	 EQU	-162		; a0/d0/d1, *scr,#dx,#dy
+CloseScreen	 EQU	-66		; a0, *scr
+AllocMem	 EQU	-198		; d0/d1, #len,#type
+FreeMem		 EQU	-210		; d0/a1, #len,*mem
+WaitPort	 EQU	-384		; a0, *port
+GetMsg		 EQU	-372		; a0, *port
+ReplyMsg	 EQU	-378		; a1, *message
+FindTask	 EQU	-294		; a1, *taskname
+AddPort		 EQU	-354		; a1, *port
+AddTask		 EQU	-282		; I don't call it
+CloseDevice	 EQU	-450		; a1, *stdio
+RemPort		 EQU	-360		; a1, *port
+RemTask		 EQU	-288		; I don't call it
+SumKickData	 EQU	-612		; nothing
+Open		 EQU	-30		; d1/d2, *name,#mode
+Close		 EQU	-36		; d1, *handler
+Write		 EQU	-48		; d1/d2/d3, *handler,*buff,#len
+Read		 EQU	-42		; d1/d2/d3, *handler,*buff,#len
+Lock		 EQU	-84		; d1/d0, *name,#mode
+UnLock		 EQU	-90		; d1, *lock
+LoadSeg		 EQU	-150		; d1, *name
+UnLoadSeg	 EQU	-156		; d1, *segment
+DrawBorder	 EQU	-108		; d0/d1/a0/a1, #x,#y,*rp,*border
+OldOpenLibrary	 EQU	-408		; a1, *namelib
+DoIO		 EQU	-456		; a1, *stdio
+OpenDevice	 EQU	-444		; d0/d1/a0/a1, #drive,#opt,*name,*stdio
+OpenWindow	 EQU	-204		; a0, *window
+CloseWindow	 EQU	-72		; a0, *window
+SetMenuStrip	 EQU	-264		; a0/a1, *win,*menu 
+PrintIText	 EQU	-216		; d0/d1/a0/a1, #x,#y,*rp,*intmes
+Delay		 EQU	-198		; d1, #time
+Supervisor	 EQU	-30		; a5, *code
+FindName	 EQU	-276		; a0, *name
+RefreshWindow	 EQU	-456		; a0, *window
+AvailMem	 EQU	-216		; d1, requir
+WindowToFront	 EQU	-312		; a0, *win
+RefreshGList	 EQU	-432
+FileRequester	 EQU	-84		; a0, *fr_memptr
+FreeReqMem	 EQU	-$72		; a0, *fr_memptr
+
+GMemLen		 EQU	(256+256+356+160+80+160+80+518)
+HeadLen		 EQU	10
+
+BOX		MACRO
+		dc.w	0,0
+		dc.b	\5,0,0,5
+		dc.l	box_\@,\6
+box_\@		dc.w	\1,\2,\3,\2,\3,\4,\1,\4,\1,\2
+		ENDM
+
+AUTOGADGET	MACRO
+		dc.l	\9
+		dc.w	\1,\2,\3,\4
+		dc.w	0,1,1
+		dc.l	agad\@_box,0,agad\@_text,0,0
+		dc.w	\8,0,0
+
+agad\@_box	BOX	-1,-1,\3,\4,2,0
+		even
+
+ag_t_str\@	dc.b	\7,0
+ag_t_str\@_end	EQU	*-ag_t_str\@
+		even
+
+agad\@_text	dc.b	2,0,0,0
+		dc.w	(\3-(ag_t_str\@_end-1)*8)/2+1,((\4-8)/2)+1
+		dc.l	0,ag_t_str\@,agtext2\@
+agtext2\@	dc.b	\6,0,0,0
+		dc.w	(\3-(ag_t_str\@_end-1)*8)/2,(\4-8)/2
+		dc.l	0,ag_t_str\@,0
+		ENDM
+
+AUTOGADGET2	MACRO
+		dc.l	\9
+		dc.w	\1,\2,\3,\4
+		dc.w	GADGHCOMP!SELECTED,RELVERIFY!TOGGLESELECT,BOOLGADGET
+		dc.l	AG2adget\@_Box
+		dc.l	0,AG2adget\@_Text,0,0
+		dc.w	\8,0,0
+
+AG2adget\@_Box	BOX	-1,-1,\3,\4,\5,0
+		even
+
+AG2_T_String\@	dc.b	\7,0
+AG2_T_String\@_End	
+		even
+
+AG2adget\@_Text	dc.b	2,0,RP_JAM1,0
+		dc.w	((\3-(AG2_T_String\@_End-AG2_T_String\@-1)*8)/2)+1,((\4-8)/2)+1
+		dc.l	0,AG2_T_String\@,AG2_Text2_\@
+
+AG2_Text2_\@	dc.b	\6,0,RP_JAM1,0
+		dc.w	(\3-(AG2_T_String\@_End-AG2_T_String\@-1)*8)/2,(\4-8)/2
+		dc.l	0,AG2_T_String\@,0
+		ENDM
+
+AUTOWIN1	MACRO
+		dc.w	\1,\2,\3,\4
+		dc.b	\5,\6
+		dc.l	\7,\8,\9
+		ENDM
+
+AUTOWIN2	MACRO
+		dc.l	\1,\2,\3,\4
+		dc.w	\5,\6,\7,\8,\9
+		even
+		ENDM
+
+INTUITEXT	MACRO
+		dc.b	\1,\2,\3,\4
+		dc.w	\5,\6
+		dc.l	\7,\8,\9
+		even
+		ENDM
+
+AUTOMENU	MACRO
+		dc.l	\1
+		dc.w	\2,\3,\4,\5,\6
+		dc.l	\7,\8
+		dc.w	0,0,0,0
+		even
+		ENDM
+
+AUTOITEM	MACRO
+		dc.l	\1
+		dc.w	\2,\3,\4,\5,ITEMTEXT!HIGHCOMP!ITEMENABLED
+		dc.l	0,\6,0
+		dc.b	0,' '
+		dc.l	\7
+		dc.w	0
+		even
+		ENDM
+
+AUTOITEM2	MACRO
+		dc.l	\1
+		dc.w	\2,\3,\4,\5,ITEMTEXT!HIGHBOX!ITEMENABLED
+		dc.l	0,\6,0
+		dc.b	0,' '
+		dc.l	\7
+		dc.w	0
+		even
+		ENDM
+
+*********** Inizio (Apre le librerie, etc.)
+
+		move.l	sp,initstack
+		movea.l	4,a6
+		bsr	getalvec
+		move.l	#512,d0			; alloca buf. per Boot 
+		move.l	#$10002,d1
+		jsr	AllocMem(a6)
+		tst.l	d0
+		beq	ausgang
+		lea	buff(pc),a0
+		move.l	d0,(a0)
+		move.l	#GMemLen,d0
+		move.l	#$10000,d1
+		jsr	AllocMem(a6)
+		tst.l	d0
+		beq	ausgang
+		lea	set_info3(pc),a0
+		move.l	d0,(a0)
+		lea	set_info4(pc),a0
+		add.l	#256,d0
+		move.l	d0,(a0)
+		add.l	#256,d0
+		lea	fr_memptr(pc),a0
+		move.l	d0,(a0)
+		add.l	#356,d0
+		move.l	d0,fr_dir
+		add.l	#160,d0
+		move.l	d0,fr_file
+		add.l	#80,d0
+		move.l	d0,fr_dir1
+		add.l	#160,d0
+		move.l	d0,fr_file1
+		add.l	#80,d0
+		move.l	d0,option_mem
+
+*********** Apre le librerie
+
+		moveq	#0,d0
+		lea	reqname(pc),a1
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,reqbase
+		beq	ausgang
+		moveq	#0,d0
+		lea	intname(pc),a1
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	ausgang
+		lea	intbase(pc),a0
+		move.l	d0,(a0)
+		moveq	#0,d0
+		lea	gfxname(pc),a1
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	ausgang
+		lea	gfxbase(pc),a0
+		move.l	d0,(a0)
+		move.l	intbase(pc),a6
+		lea	_newscr(pc),a0
+		jsr	OpenScreen(a6)
+		move.l	d0,scrbase
+		beq	ausgang
+		lea	window(pc),a0
+		move.l	d0,nw_Screen(a0)
+		move.w	#CUSTOMSCREEN,nw_Type(a0)
+		jsr	OpenWindow(a6)
+		tst.l	d0
+		beq	ausgang
+		lea	winbase(pc),a0
+		move.l	d0,(a0)
+		move.l	fr_memptr(pc),a0
+		move.l	d0,fr_Window(a0)
+
+*********** Sistema i menu
+
+		move.l	d0,a0
+		lea	menu(pc),a1
+		jsr	SetMenuStrip(a6)
+		move.l	winbase(pc),a0
+		lea	userport(pc),a1
+		lea	rastport(pc),a2
+		move.l	86(a0),(a1)		; save userport
+		move.l	50(a0),(a2)		; save rastport
+
+*********** Apre la DOS
+
+		lea	dosname(pc),a1
+		movea.l	4,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	ausgang
+		lea	dosbase(pc),a0
+		move.l	d0,(a0)
+
+*********** Traccia i bordi
+
+		move.l	intbase(pc),a6
+		move.l	rastport(pc),a0
+		lea	s_border(pc),a1
+		moveq	#0,d0
+		moveq	#0,d1
+		jsr	DrawBorder(a6)
+		bsr	get_opt
+		bra	check
+
+*********** ROUTINES DI CHIUSURA
+
+ausgang		movea.l	4,a6
+		move.l	dosbase(pc),a1
+		cmp.l	#0,a1
+		beq.s	exit4
+		jsr	_LVOCloseLibrary(a6)
+exit4		move.l	winbase(pc),a0
+		movea.l	intbase(pc),a6
+		cmp.l	#0,a0
+		beq.s	exit45
+		jsr	CloseWindow(a6)
+exit45		move.l	scrbase(pc),a0
+		cmp.l	#0,a0
+		beq.s	exit3
+		jsr	CloseScreen(a6)
+exit3		movea.l	4,a6
+		move.l	gfxbase(pc),a1
+		cmp.l	#0,a1
+		beq.s	exit2
+		jsr	_LVOCloseLibrary(a6)
+exit2		move.l	intbase(pc),a1
+		cmp.l	#0,a1
+		beq.s	exit24
+		jsr	_LVOCloseLibrary(a6)
+exit24		move.l	reqbase(pc),a1
+		cmp.l	#0,a1
+		beq.s	exit25
+		jsr	_LVOCloseLibrary(a6)
+exit25		move.l	set_info3(pc),a1
+		cmp.l	#0,a1
+		beq.s	exit1
+		move.l	#GMemLen,d0
+		jsr	FreeMem(a6)
+exit1		move.l	buff(pc),a1
+		cmp.l	#0,a1
+		beq.s	exit0
+		move.l	#512,d0
+		jsr	FreeMem(a6)
+exit0		move.l	initstack,sp
+		rts
+
+
+*********** Aspetta un messaggio
+
+retor
+waitmsgi	movea.l	4.w,a6
+		move.l	userport(pc),a0
+		jsr	WaitPort(a6)
+		move.l	userport(pc),a0
+		jsr	GetMsg(a6)
+		tst.l	d0
+		beq	waitmsgi
+skipmsg		lea	imgwfe(pc),a0
+		move.l	d0,(a0)
+
+*********** E` un gadget o un menu?
+
+checkmf		move.l	d0,a0
+		lea	class(pc),a1
+		move.l	im_Class(a0),(a1)
+		lea	code(pc),a1
+		move.w	im_Code(a0),(a1)
+		lea	gadgds(pc),a1
+		move.l	im_IAddress(a0),(a1)
+		move.l	imgwfe(pc),a1
+		jsr	ReplyMsg(a6)
+		move.l	userport(pc),a0
+		jsr	GetMsg(a6)
+		tst.l	d0
+		bne	skipmsg
+		move.l	class(pc),d0
+		cmp.l	#$100,d0		; $100 = MENU CLASS
+		beq.s	chk2
+chk0		cmp.l	#$40,d0			; $40 = GADGETUP CLASS
+		beq	gadcont
+		bra	retor
+chk2		move.w	code(pc),d2
+		cmp.w	#$ffff,d2		; $ffff = nothing
+		beq	retor
+		move.w	d2,d1
+		and.w	#%11111,d1		; solo il # di menu
+		move.l	d1,d3
+		cmp.w	#0,d3			; menu 0
+		beq	projmen
+		cmp.w	#1,d3			; menu 1
+		beq	searx
+		cmp.w	#2,d3			; menu 2
+		beq	specmen
+		cmp.w	#3,d3			; menu 3
+		beq	scr_ctrl
+ciao		bra	retor
+
+*********** Menu SCREEN
+
+scr_ctrl	move.w	d2,d1
+		and.w	#%11111100000,d1
+		lsr.w	#5,d1
+		beq	scrtoback
+		cmp.w	#1,d1
+		beq	scrtofront
+		cmp.w	#2,d1
+		beq	halfscr
+		cmp.w	#3,d1
+		beq	totscr
+		bra	retor
+
+*********** Menu SEARCH
+
+searx		move.w	d2,d1
+		and.w	#%11111100000,d1	; only item << 5
+		lsr.w	#5,d1			; d1 >> 5 = item OK
+		beq	subsearc		; item 0
+		cmp.w	#1,d1
+		beq	brain_sub
+		cmp.w	#2,d1
+		beq	mv_learn
+		bra	retor
+
+brain_sub	move.l	d2,d1
+		lsr.w	#8,d1
+		lsr.w	#3,d1
+		beq	brn_load
+		cmp.w	#1,d1
+		beq	brn_add
+		cmp.w	#2,d1
+		beq	brn_save
+		cmp.w	#3,d1
+		beq	brn_set
+		bra	retor
+
+subsearc	move.l	d2,d1
+		lsr.w	#8,d1
+		lsr.w	#3,d1
+		beq.s	sonly
+		cmp.w	#1,d1
+		bne	retor
+sdestroy	bsr	_aysure
+		lea	virusc(pc),a1
+		bset	#31,(a1)
+		bra.s	_rev
+
+*********** Controlla i virus
+
+sonly		lea	virusc(pc),a1
+		bclr	#31,(a1)
+
+_rev
+searcx		moveq	#0,d7
+		bsr	REVKiller		; revenge(0)
+		tst.l	d7
+		bne	revengev
+		bsr	del_rev
+_xeno		moveq	#0,d7
+		bsr	XENOKiller		; xeno(1)
+		tst.l	d7
+		bne	xenov
+		bsr	del_xeno
+_irq		moveq	#0,d7
+		bsr	IRQKiller		; irq(2)
+		tst.l	d7
+		bne	irqv
+		bsr	del_irq
+_gadaf		moveq	#0,d7
+		bsr	GADKiller		; gadaffi(3)
+		tst.l	d7
+		bne	gadaffiv
+		bsr	del_gad
+_revb		moveq	#0,d7
+		bsr	rev_boot		; revenge boot(4)
+		tst.l	d7
+		bne	rev_bootv
+		bsr	del_revboot
+_lamer		moveq	#0,d7			; lamer exterminator(5)
+		bsr	lam_ex
+		tst.l	d7
+		bne	_lam_ex
+		bsr	del_lamex
+_disk_doc	moveq	#0,d7			; disk doctor(6)
+		bsr	disk_doctor
+		tst.l	d7
+		bne	_dd_virus
+		bsr	del_diskdoc
+_bsg9		moveq	#0,d7			; bsg9(7)
+		bsr	bsg
+		tst.l	d7
+		bne	_bsg_v
+		bra	del_bsg
+
+*********** Scrive i virus trovati
+
+revengev	lea	rev_msg(pc),a1
+		move.l	#400,d0
+		move.l	#14,d1
+		bsr	_ptr
+		bra	_xeno
+xenov		lea	xeno_msg(pc),a1
+		move.l	#400,d0
+		move.l	#24,d1
+		bsr	_ptr
+		bra	_irq
+irqv		lea	irq_msg(pc),a1
+		move.l	#400,d0
+		move.l	#34,d1
+		bsr	_ptr
+		bra	_gadaf
+gadaffiv	lea	gad_msg(pc),a1
+		move.l	#400,d0
+		move.l	#44,d1
+		bsr	_ptr
+		bra	_revb
+rev_bootv	lea	revb_msg(pc),a1
+		move.l	#400,d0
+		move.l	#54,d1
+		bsr	_ptr
+		bra	_lamer
+_lam_ex		lea	lam_msg(pc),a1
+		move.l	#400,d0
+		move.l	#64,d1
+		bsr	_ptr
+		bra	_disk_doc
+_dd_virus	lea	dd_msg(pc),a1
+		move.l	#400,d0
+		move.l	#74,d1
+		bsr	_ptr
+		bra	_bsg9
+_bsg_v		lea	bsg_msg(pc),a1
+		move.l	#400,d0
+		move.l	#84,d1
+		bsr	_ptr
+		bra	retor
+
+*********** Toglie i virus che non ci sono piu`
+
+del_rev		lea	rev_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#14,d1
+		bsr	_ptr
+		lea	rev_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		rts
+del_xeno	lea	xeno_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#24,d1
+		bsr	_ptr
+		lea	xeno_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		rts
+del_irq		lea	irq_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#34,d1
+		bsr	_ptr
+		lea	irq_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		rts
+del_gad		lea	gad_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#44,d1
+		bsr	_ptr
+		lea	gad_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		rts
+del_revboot	lea	revb_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#54,d1
+		bsr	_ptr
+		lea	revb_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		rts
+del_lamex	lea	lam_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#64,d1
+		bsr	_ptr
+		lea	lam_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		rts
+del_diskdoc	lea	dd_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#74,d1
+		bsr	_ptr
+		lea	dd_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		rts
+del_bsg		lea	bsg_msg(pc),a1
+		move.b	#2,3(a1)
+		clr.b	(a1)
+		move.l	#400,d0
+		move.l	#84,d1
+		bsr	_ptr
+		lea	bsg_msg(pc),a1
+		clr.b	3(a1)
+		move.b	#3,(a1)
+		bra	retor
+
+*********** Smistamento gadgets
+
+gadcont		move.l	gadgds(pc),a0
+		moveq	#0,d0
+		move.w	38(a0),d0
+		subq	#1,d0
+		lsl.l	#2,d0
+		lea	vett(pc),a1
+		move.l	(a1,d0),a1
+		jmp	(a1)
+
+*********** Menu PROJECT
+
+projmen		move.w	d2,d1
+		and.w	#%11111100000,d1	; only item << 5
+		lsr.w	#5,d1			; = item >> 5
+		beq	refres
+		cmp.w	#1,d1
+		beq	availm
+		cmp.w	#2,d1
+		beq	ausgang
+		bra	retor
+
+*********** Avail Mem
+
+availm		lea	win_avail(pc),a0
+		move.l	intbase,a6
+		move.l	scrbase,nw_Screen(a0)
+		move.w	#CUSTOMSCREEN,nw_Type(a0)
+		jsr	OpenWindow(a6)
+		tst.l	d0
+		beq	no_avail
+		move.l	d0,avail_space
+		move.l	4.w,a6
+		move.l	#2,d1
+		jsr	AvailMem(a6)
+		move.l	d0,chip_mem
+		move.l	#4,d1
+		jsr	AvailMem(a6)
+		move.l	d0,fast_mem
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	avail_space(pc),a0
+		move.l	#100,d0
+		move.l	#40,d1
+		bsr	print_2
+		lea	buffint(pc),a0
+		move.l	chip_mem,d0
+		bsr	hexconv
+		move.l	avail_space,a0
+		move.l	#100,d0
+		move.l	#18,d1
+		bsr	print_2
+		lea	av_mask(pc),a1
+		moveq	#0,d0
+		moveq	#0,d1
+		move.l	avail_space,a0
+		move.l	50(a0),a0
+		move.l	intbase(pc),a6
+		jsr	PrintIText(a6)
+		move.l	avail_space,a0
+		move.l	86(a0),a0
+		movea.l	4,a6
+		jsr	WaitPort(a6)
+		move.l	avail_space,a0
+		move.l	86(a0),a0
+		jsr	GetMsg(a6)
+		move.l	d0,a1
+		jsr	ReplyMsg(a6)
+		move.l	intbase,a6
+		move.l	avail_space,a0
+		jsr	CloseWindow(a6)
+no_avail	bra	retor
+
+*********** Refresh Window
+
+refres		move.l	intbase(pc),a6
+		lea	winbase(pc),a0
+		jsr	RefreshWindow(a6)
+		movea.l	4,a6
+		bra	retor
+
+*********** Menu SPECIAL
+		
+specmen		move.w	d2,d1
+		and.w	#%11111100000,d1	; only item << 5
+		lsr.w	#5,d1			; = item >> 5
+		beq	moreinfo		; item 0
+		cmp.w	#2,d1
+		beq	_bootblock
+		cmp.w	#3,d1
+		beq	_installer
+		cmp.w	#4,d1
+		beq	_formatter
+		bra	retor
+
+moreinfo	lea	win_minfo(pc),a0
+		move.l	intbase(pc),a6
+		move.l	scrbase,nw_Screen(a0)
+		move.w	#CUSTOMSCREEN,nw_Type(a0)
+		jsr	OpenWindow(a6)
+		move.l	d0,d7
+		beq	mi_end
+		move.l	d7,a0
+		jsr	WindowToFront(a6)
+		move.l	d7,a0
+		move.l	50(a0),a0
+		lea	mi_text(pc),a1
+		move.l	#10,d0
+		move.l	#12,d1
+		jsr	PrintIText(a6)
+		move.l	d7,a0
+		move.l	86(a0),a0
+		move.l	4,a6
+		jsr	WaitPort(a6)
+		move.l	d7,a0
+		move.l	86(a0),a0
+		jsr	GetMsg(a6)
+		move.l	d0,a1
+		jsr	ReplyMsg(a6)
+		move.l	d7,a0
+		move.l	intbase(pc),a6
+		jsr	CloseWindow(a6)
+mi_end		bra	retor
+
+_bootblock	bra	retor
+_installer	bra	retor
+_formatter	bra	retor
+
+brn_load	bra	retor
+brn_add		bra	retor
+brn_save	bra	retor
+mv_learn	bra	retor
+
+_cdf0		moveq	#0,d0
+		moveq	#CMD_READ,d7
+		bsr	_rdt0
+td_rep		tst.b	d6
+		bne	td_error
+		bsr	_showboot
+		bsr	_exboot
+		bra	retor
+_cdf1		moveq	#1,d0
+		moveq	#CMD_READ,d7
+		bsr	_rdt0
+		bra.s	td_rep
+td_error	bra	retor			; messaggio "Insert a disk"
+
+_showboot	rts
+_exboot		rts
+
+*************** in d0 il drive (0,1); in d7 il comando.
+
+_rdt0		move.l	d0,-(sp)
+		movea.l	4.w,a6
+		suba.l	a1,a1
+		jsr	FindTask(a6)
+		lea	ports(pc),a1
+		move.l	d0,$10(a1)
+		jsr	AddPort(a6)
+		lea	iostd(pc),a1
+		lea	name(pc),a0
+		move.l	(sp)+,d0
+		moveq	#0,d1
+		jsr	OpenDevice(a6)
+		lea	iostd(pc),a1
+		lea	ports(pc),a3
+		move.l	a3,$0e(a1)
+		move.l	buff(pc),$28(a1)
+		move.w	d7,$1c(a1)
+		move.l	#512,$24(a1)
+		clr.l	$2c(a1)
+		jsr	DoIO(a6)
+		cmp.b	#$1d,d0
+		beq	_indsk
+		clr.b	d6
+dsk_ex		lea	iostd(pc),a1
+		move.w	#9,$1c(a1)
+		clr.l	$24(a1)
+		jsr	DoIO(a6)
+		lea	iostd(pc),a1
+		jsr	CloseDevice(a6)
+		lea	ports(pc),a1
+		jsr	RemPort(a6)
+		bra	_clr_drive
+_indsk		st	d6
+		bra.s	dsk_ex
+
+scrtoback	move.l	scrbase,a0
+		movea.l	intbase,a6
+		jsr	ScreenToBack(a6)
+		bra	retor
+scrtofront	move.l	scrbase,a0
+		movea.l	intbase,a6
+		jsr	ScreenToFront(a6)
+		bra	retor
+halfscr		move.l	scrbase,a0
+		movea.l	intbase,a6
+		moveq	#0,d0
+		move.l	#128,d1
+		jsr	MoveScreen(a6)
+		bra	retor
+totscr		move.l	scrbase,a0
+		movea.l	intbase,a6
+		moveq	#0,d0
+		move.l	#-128,d1
+		jsr	MoveScreen(a6)
+		bra	retor
+
+brn_set		move.l	intbase(pc),a6
+		lea	bset_win(pc),a0
+		move.l	scrbase,nw_Screen(a0)
+		move.w	#CUSTOMSCREEN,nw_Type(a0)
+		jsr	OpenWindow(a6)
+		move.l	d0,d7
+		beq	brn_ex4
+brn_repeat	move.l	d7,a0
+		move.l	86(a0),a0
+		move.l	4.w,a6
+		jsr	WaitPort(a6)
+		move.l	d7,a0
+		move.l	86(a0),a0
+		jsr	GetMsg(a6)
+		move.l	d0,a0
+		move.l	im_IAddress(a0),a5
+		move.l	d0,a1
+		jsr	ReplyMsg(a6)
+		moveq	#0,d0
+		move.w	38(a5),d0
+		tst.l	d0
+		beq	brn_repeat
+		subq.l	#1,d0
+		lsl.l	#2,d0
+		lea	brn_vet0(pc),a1
+		move.l	(a1,d0),a0
+		jmp	(a0)
+brn_ret		move.l	d7,a0
+		move.l	intbase(pc),a6
+		jsr	CloseWindow(a6)
+brn_ex4		bra	retor
+
+_split		tst.b	(a1)
+		beq	splt_ret1
+		move.l	a1,a3
+splt_rep	tst.b	(a1)+
+		bne.s	splt_rep
+splt_fol	cmp.b	#"/",(a1)
+		beq	splt_file
+		cmp.b	#":",(a1)
+		beq	splt_file
+		cmp.l	a1,a3
+		beq.s	splt_file0
+		suba.l	#1,a1
+		bra.s	splt_fol
+splt_file	adda.l	#1,a1
+		move.l	a1,a4
+splt_t		move.l	fr_file(pc),a2
+splt_rep1	move.b	(a1)+,(a2)+
+		tst.b	(a1)
+		bne.s	splt_rep1
+		tst.b	dir_flag
+		bne.s	no_dir
+		clr.b	(a2)
+		move.l	fr_dir(pc),a2
+splt_cdir	move.b	(a3)+,(a2)+
+		cmp.l	a3,a4
+		bne.s	splt_cdir
+		clr.b	(a2)
+splt_ret1	rts
+splt_file0	st	dir_flag
+		move.l	a1,a4
+		bra.s	splt_t
+no_dir		clr.b	(a2)
+		move.l	#155,d0
+		move.l	fr_dir(pc),a1
+		move.l	#"SYS:",(a1)+
+dr_loop		clr.b	(a1)+
+		dbf	d0,dr_loop
+		rts
+
+_split1		tst.b	(a1)
+		beq	splt_ret2
+		move.l	a1,a3
+splt_rep10	tst.b	(a1)+
+		bne.s	splt_rep10
+splt_fol1	cmp.b	#"/",(a1)
+		beq	splt_file1
+		cmp.b	#":",(a1)
+		beq	splt_file1
+		cmp.l	a1,a3
+		beq.s	splt_file00
+		suba.l	#1,a1
+		bra.s	splt_fol1
+splt_file1	adda.l	#1,a1
+		move.l	a1,a4
+splt_t1		move.l	fr_file1(pc),a2
+splt_rep2	move.b	(a1)+,(a2)+
+		tst.b	(a1)
+		bne.s	splt_rep2
+		tst.b	dir_flag
+		bne.s	no_dir1
+		clr.b	(a2)
+		move.l	fr_dir1(pc),a2
+splt_cdir1	move.b	(a3)+,(a2)+
+		cmp.l	a3,a4
+		bne.s	splt_cdir1
+		clr.b	(a2)
+splt_ret2	rts
+splt_file00	st	dir_flag
+		move.l	a1,a4
+		bra.s	splt_t1
+no_dir1		clr.b	(a2)
+		move.l	#155,d0
+		move.l	fr_dir1(pc),a1
+		move.l	#"SYS:",(a1)+
+dr_loop1	clr.b	(a1)+
+		dbf	d0,dr_loop1
+		rts
+
+brn_sload	move.l	fr_memptr(pc),a0
+		move.l	set_info3(pc),a1
+		move.l	a1,PathName(a0)
+		bsr	_split
+		sf	dir_flag
+		move.l	fr_dir,Dir(a0)
+		move.l	fr_file,File(a0)
+		move.l	#fr_load,Title(a0)
+		move.w	#3,DirNameColor(a0)
+		move.w	#1,FileNameColor(a0)
+		move.w	#3,DevsNameColor(a0)
+		move.w	#2,GadBoxColor(a0)
+		move.w	#2,BoxBordColor(a0)
+		move.l	reqbase(pc),a6
+		jsr	FileRequester(a6)
+		move.l	fr_memptr(pc),a0
+		jsr	FreeReqMem(a6)
+_clr_0		lea	set_gad3(pc),a0
+		move.l	d7,a1
+		suba.l	a2,a2
+		moveq	#1,d0
+		move.l	intbase(pc),a6
+		jsr	RefreshGList(a6)
+		bra	brn_repeat
+brn_ssave	move.l	fr_memptr(pc),a0
+		move.l	set_info4(pc),a1
+		move.l	a1,PathName(a0)
+		bsr	_split1
+		sf	dir_flag
+		move.l	fr_dir1,Dir(a0)
+		move.l	fr_file1,File(a0)
+		move.l	#fr_save,Title(a0)
+		move.w	#3,DirNameColor(a0)
+		move.w	#1,FileNameColor(a0)
+		move.w	#3,DevsNameColor(a0)
+		move.w	#2,GadBoxColor(a0)
+		move.w	#2,BoxBordColor(a0)
+		move.l	reqbase(pc),a6
+		jsr	FileRequester(a6)
+		move.l	fr_memptr(pc),a0
+		jsr	FreeReqMem(a6)
+_clr_1		lea	set_gad4(pc),a0
+		move.l	d7,a1
+		suba.l	a2,a2
+		moveq	#1,d0
+		move.l	intbase(pc),a6
+		jsr	RefreshGList(a6)
+		bra	brn_repeat
+
+brn_sopt	move.l	option_mem(pc),a0
+		move.l	#"COPT",(a0)+
+		lea	set_gad5(pc),a1
+		move.w	12(a1),d0
+		clr.b	d1
+		and.w	#SELECTED,d0
+		sne	d1
+not_selected	move.w	d1,(a0)+
+		move.l	set_info3,a1
+		move.l	set_info4,a2
+		bsr	count_len
+		move.l	set_info3,a1
+		move.l	set_info4,a2
+		move.w	d1,(a0)+
+		move.w	d2,(a0)+
+		move.w	d2,d3
+		add.l	d1,d3
+		subq.l	#1,d1
+		subq.l	#1,d2
+b_loop0		move.b	(a1)+,(a0)+
+		dbf	d1,b_loop0
+c_loop0		move.b	(a2)+,(a0)+
+		dbf	d2,c_loop0
+		move.l	dosbase(pc),a6
+		move.l	#opt_name,d1
+		move.l	#1006,d2
+		jsr	Open(a6)
+		tst.l	d0
+		beq	no_file
+		move.l	d0,d1
+		move.l	d0,d4
+		move.l	option_mem(pc),d2
+		add.l	#HeadLen,d3
+		jsr	Write(a6)
+		move.l	d4,d1
+		jsr	Close(a6)
+		bra	brn_repeat
+brn_ok		bra	brn_ret
+no_file		bra	brn_repeat
+
+brn_str0	move.l	set_info3(pc),a1
+		bsr	_split
+		move.l	set_info3(pc),a1
+		lea	_clr_0(pc),a3
+		move.l	fr_dir(pc),a0
+		move.l	fr_file(pc),a4
+comune		tst.b	dir_flag
+		bne.s	remake_path
+		sf	dir_flag
+		jmp	(a3)
+remake_path	move.l	a1,a2
+		move.l	#255,d0
+rp_loop		clr.b	(a1)+
+		dbf	d0,rp_loop
+		move.l	a2,a1
+rp_loop1	tst.b	(a0)
+		beq	dir_end
+		move.b	(a0)+,(a1)+
+		bra.s	rp_loop1
+dir_end		tst.b	(a4)
+		beq	file_end
+		move.b	(a4)+,(a1)+
+		bra.s	dir_end
+file_end	sf	dir_flag
+		jmp	(a3)
+brn_str1	move.l	set_info4(pc),a1
+		bsr	_split1
+		move.l	set_info4(pc),a1
+		lea	_clr_1(pc),a3
+		move.l	fr_dir1(pc),a0
+		move.l	fr_file1(pc),a4
+		bra	comune
+brn_scopy	move.l	set_info3,a0
+		move.l	set_info4,a1
+		move.l	#255,d0
+_scloop		move.b	(a0)+,(a1)+
+		dbf	d0,_scloop
+		move.l	intbase(pc),a6
+		move.l	d7,a1
+		lea	set_gad4(pc),a0
+		suba.l	a2,a2
+		moveq	#1,d0
+		jsr	RefreshGList(a6)
+		bra	brn_repeat
+
+count_len	moveq	#0,d1
+cicla1		tst.b	(a1)+
+		beq.s	len1_str
+		add.w	#1,d1
+		bra.s	cicla1
+len1_str	moveq	#0,d2
+cicla2		tst.b	(a2)+
+		beq.s	len2_str
+		add.w	#1,d2
+		bra.s	cicla2
+len2_str	rts
+
+_aysure		move.l	intbase(pc),a6
+		lea	win_ay(pc),a0
+		move.l	scrbase,nw_Screen(a0)
+		move.w	#CUSTOMSCREEN,nw_Type(a0)
+		jsr	OpenWindow(a6)
+		tst.l	d0
+		beq	ay_yes
+		move.l	d0,a5
+		move.l	86(a5),a0
+		movea.l	4.w,a6
+		jsr	WaitPort(a6)
+		move.l	86(a5),a0
+		jsr	GetMsg(a6)
+		move.l	d0,a4
+		move.l	im_IAddress(a4),a4
+		move.l	d0,a1
+		jsr	ReplyMsg(a6)
+		move.l	gg_UserData(a4),a0
+		jmp	(a0)
+
+ay_yes		move.l	a5,a0
+		move.l	intbase(pc),a6
+		jsr	CloseWindow(a6)
+		rts
+ay_no		move.l	#retor,(sp)
+		bra.s	ay_yes
+
+*********** Controlla i vettori di exec
+
+check		move.l	4,a6
+		move.l	#120,a5
+		move.l	46(a6),d2
+		move.l	42(a6),d3
+		move.l	50(a6),d4
+		move.l	554(a6),d5
+		move.l	550(a6),d6
+		move.l	546(a6),d7
+		bsr	maskset
+		move.l	d2,d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	a5,d0
+		move.l	#15,d1
+		bsr	generp
+		move.l	d3,d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	a5,d0
+		move.l	#25,d1
+		bsr	generp
+		move.l	d4,d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	a5,d0
+		move.l	#35,d1
+		bsr	generp
+		move.l	d5,d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	a5,d0
+		move.l	#45,d1
+		bsr	generp
+		move.l	d6,d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	a5,d0
+		move.l	#55,d1
+		bsr	generp
+		move.l	d7,d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	a5,d0
+		move.l	#65,d1
+		bsr	generp
+
+*********** Controlla le funzioni di EXEC
+
+		movea.l	4,a5
+		move.l	OldOpenLibrary+2(a5),d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	#315,d0
+		move.l	#15,d1
+		bsr	generp
+		move.l	DoIO+2(a5),d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	#315,d0
+		move.l	#25,d1
+		bsr	generp
+		move.l	OpenDevice+2(a5),d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	#315,d0
+		move.l	#35,d1
+		bsr	generp
+		move.l	SumKickData+2(a5),d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	#315,d0
+		move.l	#45,d1
+		bsr	generp
+		move.l	AddTask+2(a5),d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	#315,d0
+		move.l	#55,d1
+		bsr	generp
+		move.l	RemTask+2(a5),d0
+		lea	buffint(pc),a0
+		bsr	hexconv
+		move.l	#315,d0
+		move.l	#65,d1
+		bsr	generp
+		bra	retor
+
+*********** Routine (non usata e: sbagliata?) per le funz. DOS
+
+_getdosfunc	move.w	2(a4),d0
+		and.l	#$ff,d0
+		beq.s	wordispl
+		tst.b	d0
+		bmi.s	before_b
+		adda.l	#2,a4
+after_w		adda.l	d0,a4			; a4=*function
+		rts
+before_b	neg.b	d0
+		adda.l	#2,a4
+before_w0	suba.l	d0,a4			; a4=*function
+		rts
+wordispl	adda.l	#2,a4
+		move.w	2(a4),d0
+		bmi.s	before_w
+		bra.s	after_w
+before_w	neg.w	d0
+		bra.s	before_w0
+		
+*********** Scrive sullo schermo (_ptr) (generp) (print_2)
+
+generp		lea	genintt(pc),a1
+_ptr		move.l	a6,-(sp)
+		move.l	rastport(pc),a0
+_xptr		movea.l	intbase(pc),a6
+		jsr	PrintIText(a6)
+		movea.l	(sp)+,a6
+		rts
+
+print_2		move.l	50(a0),a0
+		move.l	a6,-(sp)
+		lea	genintt(pc),a1
+		bra.s	_xptr
+
+*********** Pulisce il buffer di conversione
+
+zero10		lea	buffint(pc),a4
+		moveq	#0,d0
+		move.l	#9,d1
+rep0_m		move.b	d0,(a4)+
+		dbf	d1,rep0_m
+		rts
+
+*********** Disegna la maschera dei vettori
+
+maskset		move.l	intbase(pc),a6
+		move.l	rastport(pc),a0
+		lea	mask1(pc),a1
+		move.l	#15,d0
+		move.l	#15,d1
+		jmp	PrintIText(a6)
+
+*********** Converte da un numero binario a una stringa esadecimale
+
+hexconv		lea	hex_tab(pc),a1
+		moveq	#7,d2
+c_loop		move.l	d0,d1
+		and.l	#$0000000f,d1
+		move.b	(a1,d1),(a0,d2)
+		sub.w	#1,d2
+		cmp.w	#$ffff,d2
+		beq.s	ende
+		lsr.l	#4,d0
+		bra.s	c_loop
+ende		rts
+
+*********** Pulisce i vettori
+
+zero		bsr	getalvec
+		clr.l	46(a6)
+		clr.l	42(a6)
+		clr.l	50(a6)
+		clr.l	554(a6)
+		clr.l	550(a6)
+		clr.l	546(a6)
+		bra	check
+
+*********** Get value
+
+getalvec	movea.l	4,a6
+		move.l	46(a6),cool
+		move.l	42(a6),cold
+		move.l	50(a6),warm
+		move.l	554(a6),kcs
+		move.l	550(a6),ktp
+		move.l	546(a6),kmp
+		rts
+
+*********** Put value
+
+restor		movea.l	4,a5
+		move.l	cool(pc),46(a5)
+		move.l	cold(pc),42(a5)
+		move.l	warm(pc),50(a5)
+		move.l	kcs(pc),554(a5)
+		move.l	ktp(pc),550(a5)
+		move.l	kmp(pc),546(a5)
+		bra	check
+
+*********** Controlla drives (df0:,df1:)
+
+chkdriv		moveq	#0,d0			; Check drive 0
+		move.l	d0,d7
+		bsr	genchk
+		tst.b	d0
+		beq	diskok
+		cmp.b	#2,d0
+		beq	nddisk
+		cmp.b	#3,d0
+		beq	nbabledsk
+		cmp.b	#-1,d0
+		beq	nodskpre
+		move.l	intbase(pc),a6
+		move.l	rastport(pc),a0
+		lea	drivet(pc),a1
+		lea	driv(pc),a2
+		move.b	#'0',10(a2)
+		moveq	#15,d0
+		moveq	#15,d1
+		jsr	PrintIText(a6)
+
+checkot		moveq	#1,d7
+		move.l	d7,d0			; Check drive 1
+		bsr	genchk
+		tst.b	d0
+		beq	diskok2
+		cmp.b	#2,d0
+		beq	nddisk
+		cmp.b	#3,d0
+		beq	nbabledsk
+		cmp.b	#-1,d0
+		beq	nodskpre
+		move.l	rastport(pc),a0
+		lea	drivet(pc),a1
+		lea	driv(pc),a2
+		move.b	#'1',10(a2)
+		move.l	intbase(pc),a6
+		moveq	#15,d0
+		moveq	#25,d1
+		jsr	PrintIText(a6)
+		bra	retor
+
+nddisk		move.l	rastport(pc),a0
+		move.l	intbase(pc),a6
+		moveq	#15,d0
+		move.l	d0,d1
+		tst.b	d7
+		bne	dno1
+dno0		lea	ndosm(pc),a1
+		lea	ndd(pc),a2
+		move.b	#'0',10(a2)
+		jsr	PrintIText(a6)
+		bra	checkot
+dno1		add.l	#10,d1
+		lea	ndosm(pc),a1
+		lea	ndd(pc),a2
+		move.b	#'1',10(a2)
+		jsr	PrintIText(a6)
+		bra	retor
+		
+nodskpre	move.l	rastport(pc),a0
+		move.l	intbase(pc),a6
+		moveq	#15,d0
+		move.l	d0,d1
+		tst.b	d7
+		bne.s	nodf1
+nodf0		lea	nodiskin(pc),a1
+		lea	ndinsert(pc),a2
+		move.b	#'0',30(a2)
+		jsr	PrintIText(a6)
+		bra	checkot
+nodf1		add.l	#10,d1
+		lea	nodiskin(pc),a1
+		lea	ndinsert(pc),a2
+		move.b	#'1',30(a2)
+		jsr	PrintIText(a6)
+		bra	retor
+		
+nbabledsk	move.l	rastport(pc),a0
+		move.l	intbase(pc),a6
+		moveq	#15,d0
+		move.l	d0,d1
+		tst.b	d7
+		bne	nbo1
+nbo0		lea	nboot(pc),a1
+		lea	nbd(pc),a2
+		move.b	#'0',10(a2)
+		jsr	PrintIText(a6)
+		bra	checkot
+nbo1		add.l	#10,d1
+		lea	nboot(pc),a1
+		lea	nbd(pc),a2
+		move.b	#'1',10(a2)
+		jsr	PrintIText(a6)
+		bra	retor
+		
+diskok		lea	nullte(pc),a1
+		move.l	rastport(pc),a0
+		move.l	intbase(pc),a6
+		moveq	#15,d0
+		moveq	#75,d1
+		jsr	PrintIText(a6)
+		bra	checkot
+diskok2		lea	nullte(pc),a1
+		move.l	rastport(pc),a0
+		move.l	intbase(pc),a6
+		moveq	#15,d0
+		moveq	#85,d1
+		jsr	PrintIText(a6)
+		bra	retor
+
+_clr_drive	movem.l	a0/d1,-(sp)
+		lea	ports(pc),a0
+		moveq	#35,d1
+_clr0		clr.b	(a0)+
+		dbf	d1,_clr0
+		moveq	#47,d1
+_clr1		clr.b	(a0)+
+		dbf	d1,_clr1
+		movem.l	(sp)+,a0/d1
+		rts
+
+
+*********** Legge il bootblock
+		
+genchk		movem.l	a6/d7,-(sp)
+		move.l	4,a6
+		move.l	d0,-(sp)
+		suba.l	a1,a1
+		jsr	FindTask(a6)
+		lea	ports(pc),a1
+		move.l	d0,$10(a1)
+		jsr	AddPort(a6)
+		lea	iostd(pc),a1
+		lea	name(pc),a0
+		move.l	(sp)+,d0
+		moveq	#0,d1
+		jsr	OpenDevice(a6)
+		lea	iostd(pc),a1
+		lea	ports(pc),a3
+		move.l	a3,$e(a1)
+		move.l	buff(pc),a3
+		move.l	a3,$28(a1)
+		moveq	#2,d0
+		move.w	d0,$1c(a1)
+		move.l	#512,$24(a1)
+		clr.l	$2c(a1)
+		jsr	DoIO(a6)
+		cmp.b	#$1d,d0
+		beq	nodsk
+		lea	iostd(pc),a1
+		move.w	#9,$1c(a1)
+		clr.l	$24(a1)
+		jsr	DoIO(a6)		; DoIo
+		lea	iostd(pc),a1
+		jsr	CloseDevice(a6)
+		lea	ports(pc),a1
+		jsr	RemPort(a6)		; RemPort(-360)
+		
+		move.l	buff(pc),a1
+		move.l	a1,a4
+		lea	dat(pc),a0
+		moveq	#52,d0
+compare		cmp.b	(a0)+,(a1)+
+		bne	error
+		subq	#1,d0
+		beq	dealloc
+		bra.s	compare		
+dealloc		movem.l	(sp)+,d7/a6
+		bsr	_clr_drive
+		rts
+
+error		cmp.l	#$444f5300,(a4)
+		bne.s	nodosdsk
+		move.l	#-1,d1
+retestdsk	add.l	#1,d1
+		cmp.b	#32,d1
+		beq.s	nobootable
+		tst.b	4(a4,d1)
+		beq.s	retestdsk
+bootable	moveq	#1,d0
+		bra.s	dealloc
+nodosdsk	moveq	#2,d0
+		bra.s	dealloc
+nobootable	moveq	#3,d0
+		bra.s	dealloc
+nodsk		moveq	#-1,d0
+		bra.s	dealloc
+
+*********** Reset by Commodore
+
+xxx		movea.l	4,a6
+		lea	reset(pc),a5
+		jsr	Supervisor(a6)
+		
+		cnop	0,4
+
+reset		lea	2,a0
+		reset
+		jmp	(a0)
+
+xx2		move.l	#rcode,$000000b4
+		trap	#13
+rcode		jmp	$00fc0000
+
+
+filler		move.l	a0,a1
+		add.l	#$400,a1
+		moveq	#0,d0
+lbC0000BE	move.l	d0,(a0)+
+		cmp.l	a0,a1
+		bge.s	lbC0000BE
+		rts
+
+killall		move.l	4,a6
+		moveq	#0,d3
+		move.l	d3,$2e(a6)
+		move.l	d3,$2a(a6)
+		move.l	d3,$32(a6)
+		lea	$22(a6),a0
+		clr.w	d0
+		moveq	#$17,d1
+cicli17		add.w	(a0)+,d0
+		dbf	d1,cicli17
+		not.w	d0
+		move.l	d0,(a0)
+		moveq	#0,d0
+		move.l	d0,$22a(a6)
+		move.l	d0,$226(a6)
+		move.l	d0,$222(a6)
+		rts
+
+********** Ammazza-virus
+ 
+REVKiller	movem.l	d0-d6/a0-a6,-(sp)	; Revenge
+		lea	virusc(pc),a1
+		bset	#0,(a1)
+		move.l	4,a6
+		cmp.l	#$7E060,$2E(a6)		; REV installs itself always
+		bne.s	lbC000126		; in $7e060
+		btst	#31,(a1)
+		beq	donot1
+		move.l	$C0,d0			; it modifies $c0
+		cmp.l	#$C794EF9,d0		; put there $c794ef9
+		bne.s	lbC000126
+		move.l	$7E068,-$1C6(a6)	; it modifies DoIo
+		move.l	$7E06E,$94(A6)		; and other
+		lea	$7E000,a0		; base of REV
+		bsr	filler
+		lea	$C0,a0			; put zero from $c0
+		moveq	#0,d0			; to $c0+$10
+		moveq	#$10,d6
+lbC000102	move.l	d0,(a0)+
+		dbf	d6,lbC000102
+		bsr	killall			; clear vector
+donot1		moveq	#1,d7
+lbC000126	movem.l	(sp)+,d0-d6/a0-a6
+		rts	
+ 
+XENOKiller	movem.l	d0-d6/a0-a6,-(sp)	; Xeno
+		lea	virusc(pc),a1
+		bset	#1,(a1)
+		move.l	dosbase(pc),a0		; It modifies Open of DOS
+		sub.w	#$001E,a0
+		move.l	(a0),a0
+		move.l	a0,d0
+		btst	#0,d0
+		bne.s	lbC00017A
+		cmp.l	#$B47C03EE,(a0)		; is it or isn't it?
+		bne.s	lbC00017A
+		cmp.l	#$67000224,4(a0)
+		bne.s	lbC00017A
+		btst	#31,(a1)
+		beq	donot2
+		move.w	#$6000,4(a0)
+		move.w	#$603E,$0240(a0)	; restore old value
+		move.w	#$601E,$029C(a0)	;    "     "    "
+donot2		moveq	#1,d7
+lbC00017A	movem.l	(sp)+,d0-d6/a0-a6
+		rts
+
+IRQKiller	movem.l	d0-d6/a0-a6,-(sp)	; Irq
+		lea	virusc(pc),a1
+		bset	#2,(a1)
+		move.l	4,a5			; It modifies OpenDevice and
+		move.l	-$196(a5),d6		; DoIo (not checked)
+		swap	d6			; see if it's modified
+		cmp.b	#$FC,d6
+		beq.s	lbC0001C6
+		btst	#31,(a1)
+		beq	donot3
+		move.l	-$196(a5),a4
+		addq.w	#8,a4
+		move.l	#'NqNq',(a4)		; *
+		move.l	4,a2			; *
+		sub.l	#$196,a2
+		move.l	(a2),a4
+		add.l	#$12,a4
+		move.l	(a4),(a2)
+donot3		moveq	#1,d7
+lbC0001C6	movem.l	(sp)+,d0-d6/a0-a6
+		rts
+
+GADKiller	movem.l	d0-d6/a0-a6,-(sp)	; Gadaffi
+		lea	virusc(pc),a1
+		bset	#3,(a1)
+		move.l	4,a6
+		cmp.l	#0,46(a6)		; check vector
+		beq.s	lbC000FFF
+		cmp.l	#$47414441,$7FB40	; always $7fb40
+		bne.s	lbC000FFF
+		move.l	-$1C6(a6),d5
+		swap	d5			; see DoIo
+		cmp.w	#$FE,d5			; is it modified?
+		beq.s	lbC000FFF
+		btst	#31,(a1)
+		beq	donot4
+		move.l	46(a6),d7
+		bsr	killall			; kill vector
+		move.l	4,a6
+		move.l	#$FC06DC,-$1C6(a6)	; restore(for which system
+		bsr	killall			; version? I don't know)
+		move.l	d7,a0
+		sub.l	#$DC,a0
+		bsr	filler			; kill virus
+donot4		moveq	#1,d7
+lbC000FFF	movem.l	(sp)+,d0-d6/a0-a6
+		rts
+
+tracker		move.l	4,a6			; Tracker(see later)
+		lea	350(a6),a0		; For viruses which modify
+		jsr	FindName(a6)		; trackdisk.device
+		move.l	d0,a0
+		sub.l	#28,a0
+		rts
+
+rev_boot	movem.l	d0-d6/a0-a6,-(sp)	; Revenge boot
+		lea	virusc(pc),a1
+		bset	#4,(a1)
+		bsr	tracker			; call tracker
+		move.l	a0,rev1
+		move.l	(a0),d4
+		swap	d4
+		cmp.b	#$fe,d4			; is it normal? (1.2)
+		beq	rev_end
+		cmp.b	#$ff,d4			;  "  "    "    (1.3)
+		beq	rev_end
+		clr.l	d0
+		move.w	$94(a6),d0
+		and.l	#$f0,d0
+		cmp.w	#$f0,d0			; you see what it does
+		beq	rev_end
+		btst	#31,(a1)
+		beq	donot5
+		move.l	(a0),a1
+		add.l	#$228,a1
+		move.l	(a1),rev_trk
+		add.l	#4,a1
+		move.l	(a1),rev_rast
+		add.l	#4,a1
+		move.l	(a1),rev_all
+		sub.l	#$3c4,a1
+		move.l	a1,rev_mem
+		move.l	rev1(pc),a0
+		move.l	rev_trk(pc),(a0)
+		move.l	rev_rast(pc),$94(a6)
+		bsr	killall
+		move.l	rev_mem(pc),a0
+		bsr	filler
+		move.l	rev_all(pc),a0
+		bsr	filler
+		move.l	rev_all(pc),a1
+		move.l	#$400,d0
+		jsr	FreeMem(a6)		; Free Memory which was
+donot5		moveq	#1,d7			; allocated by Revenge_b
+rev_end		movem.l	(sp)+,d0-d6/a0-a6
+		rts
+
+lam_ex		movem.l	d0-d6/a0-a6,-(sp)	; Lamer Exterminator
+		lea	virusc(pc),a1
+		bset	#5,(a1)
+		bsr	tracker
+		move.l	a0,exev			; This is very hard virus
+		move.l	(a0),d4
+		swap	d4			; it hides his bootblock as
+		cmp.b	#$fe,d4
+		beq	exe4			; a normal one.
+		cmp.b	#$ff,d4
+		beq	exe4
+		move.l	4,a6
+		move.l	a6,a5
+		sub.w	#$262,a5
+		move.l	a5,exev1
+		move.l	(a5),d4
+		swap	d4
+		cmp.b	#$fe,d4
+		beq	exe4
+		btst	#31,(a1)
+		beq	donot6
+		move.l	exev1,a5
+		move.l	(a5),a0
+		sub.l	#$14e,a0
+		move.l	a0,a1
+		add.l	#$400,a1
+		clr.l	d0
+		clr.l	d1
+exe7		move.w	#$4c41,d0
+		move.w	(a0)+,d1
+		cmp.w	d1,d0
+		beq.s	exe2
+		cmpa.l	a0,a1
+		bge.s	exe7
+		moveq	#0,d7
+		movem.l	(sp)+,d0-d6/a0-a6
+		rts
+exe2		move.w	#$4d45,d0
+		move.w	(a0),d1
+		cmp.w	d1,d0
+		bne	exe7
+		add.l	#28,a0
+		move.l	(a0)+,a1
+		move.l	(a0)+,a2
+		bsr	killall
+		move.l	exev1(pc),a0
+		move.l	a1,(a0)
+		move.l	exev(pc),a0
+		move.l	a2,(a0)
+		move.l	exev1(pc),a5
+		move.l	(a5),a0
+		sub.l	#$14e,a0
+		bsr	filler			; Lamer? No, thanks
+donot6		moveq	#1,d7
+exe4		movem.l	(sp)+,d0-d6/a0-a6
+		rts
+
+disk_doctor	movem.l	d0-d6/a0-a6,-(sp)	; Disk Doctor
+		lea	virusc(pc),a1
+		bset	#6,(a1)
+		move.l	4,a6
+		move.l	46(a6),d0		; Exec Vector
+		cmp.l	#0,d0
+		beq	dd0
+		move.l	42(a6),d0		; Exec Vector
+		cmp.l	#0,d0
+		beq	dd0
+		btst	#31,(a1)
+		beq	donot7
+		move.l	42(a6),diskdoc
+		move.l	diskdoc(pc),a0
+		add.l	#$c4,a0
+		move.l	a0,a1
+		addq.l	#4,a1
+		move.w	#$4e75,(a1)
+		jsr	(a0)
+		move.l	a2,diskdoc1
+		addq.l	#6,a2
+		move.l	a2,a3
+		addq.l	#4,a2
+		move.w	#$4e75,(a2)
+		jsr	(a3)
+		move.l	a0,diskdoc2
+		bsr	killall
+		move.l	4,a6
+		move.l	#$fc06dc,-$1c6(A6)
+		move.l	#$fc12fc,148(a6)
+		move.l	diskdoc(pc),a0
+		move.l	a0,a1
+		add.l	#$1a0,a1
+		moveq	#0,d0
+dd2		move.l	d0,(a0)+
+		cmpa.l	a0,a1
+		bge.s	dd2
+		move.l	diskdoc1(pc),a2
+		move.w	#$4e75,(a2)
+		move.l	diskdoc2(pc),a2
+		move.w	#$4e75,(a2)
+donot7		moveq	#1,d7
+dd0		movem.l	(sp)+,d0-d6/a0-a6
+		rts
+
+bsg		movem.l	d0-d6/a0-a6,-(sp)	; BSG9
+		lea	virusc(pc),a1
+		bset	#7,(a1)
+		move.l	4,a6
+		move.l	546(a6),d0
+		add.l	550(a6),d0
+		add.l	554(a6),d0
+		cmp.l	#0,d0
+		beq.s	bsgende
+		btst	#31,(a1)
+		beq	donot8
+		move.l	550(a6),a0
+	 	move.l	a0,a1
+		add.l	#$1000,a1	
+		move.l	#$00005454,d0
+		moveq	#0,d1
+bsg0		move.w	(a0)+,d1
+		cmp.w	d1,d0
+		beq.s	bsg1
+		cmpa.l	a0,a1
+		bge.s	bsg0
+		movem.l	(sp)+,d0-d6/a0-a6
+		rts
+bsg1		move.w	#$5631,d0
+		move.w	(a0),d1
+		cmp.w	d1,d0
+		bne.s	bsg0
+		moveq	#0,d0
+		move.l	a0,a1
+		move.l	550(a6),a0
+bsg2		move.l	d0,(a0)+
+		cmpa.l	a0,a1
+		bne.s	bsg2
+		bsr	killall
+donot8		moveq	#1,d7
+bsgende		movem.l	(sp)+,d0-d6/a0-a6
+		rts
+
+get_opt		move.l	dosbase(pc),a6
+		move.l	#opt_name,d1
+		move.l	#1005,d2
+		jsr	Open(a6)
+		tst.l	d0
+		beq	noopt
+		move.l	d0,d1
+		move.l	d0,d4
+		move.l	option_mem,d2
+		move.l	#HeadLen,d3
+		jsr	Read(a6)
+		move.l	option_mem,a1
+		cmp.l	#"COPT",(a1)+
+		bne	cl_file
+		move.w	(a1)+,d0
+		move.b	d0,bfauto_flag
+		bne.s	activate_gad
+		lea	set_gad5(pc),a0
+		and.w	#GADGHCOMP,12(a0)
+load_rest	move.w	(a1)+,d3
+		move.w	(a1)+,d7
+		move.l	d3,d5
+		add.l	d7,d3
+		move.l	d4,d1
+		move.l	a1,d2
+		move.l	d2,d6
+		jsr	Read(a6)
+		bsr	cl_file
+		move.l	d6,a1
+get_cont	move.l	d5,d0
+		subq.l	#1,d5
+		subq.l	#1,d7
+		move.l	set_info3,a2
+		move.l	set_info4,a3
+get_copy	move.b	(a1)+,(a2)+
+		dbf	d5,get_copy
+get_copy2	move.b	(a1)+,(a3)+
+		dbf	d7,get_copy2
+noopt		rts
+activate_gad	lea	set_gad5(pc),a0
+		or.w	#SELECTED,12(a0)
+		bra.s	load_rest
+
+cl_file		move.l	d4,d1
+		jmp	Close(a6)
+
+*********** DATI
+			
+intname		dc.b	'intuition.library',0
+		even
+dosname		dc.b	'dos.library',0
+		even
+gfxname		dc.b	'graphics.library',0
+		even
+reqname		dc.b	'req.library',0
+		even
+opt_name	dc.b	'sys:s/Checker.opt',0
+		even
+hex_tab		dc.b	'0123456789ABCDEF'
+		even
+reqbase		dc.l	0
+rastport	dc.l	0
+userport	dc.l	0
+initstack	dc.l	0
+gfxbase		dc.l	0
+intbase		dc.l	0
+dosbase		dc.l	0
+winbase		dc.l	0
+scrbase		dc.l	0
+class		dc.l	0
+buffer		dc.l	0
+cool		dc.l	0
+rev_mem		dc.l	0
+rev_all		dc.l	0
+rev_rast	dc.l	0
+exev		dc.l	0
+exev1		dc.l	0
+diskdoc		dc.l	0
+diskdoc2	dc.l	0
+diskdoc1	dc.l	0
+cold		dc.l	0
+warm		dc.l	0
+kcs		dc.l	0
+rev_trk		dc.l	0
+ktp		dc.l	0
+kmp		dc.l	0
+rev1		dc.l	0
+code		dc.w	0
+gadgds		dc.l	0
+imgwfe		dc.l	0
+buffint		ds.b	8
+		dc.w	0
+virusc		dc.l	0
+avail_space	dc.l	0
+chip_mem	dc.l	0
+fast_mem	dc.l	0
+fr_memptr	dc.l	0
+fr_dir		dc.l	0
+fr_file		dc.l	0
+fr_dir1		dc.l	0
+fr_file1	dc.l	0
+dir_flag	dc.b	0
+bfauto_flag	dc.b	0
+option_mem	dc.l	0
+		even
+
+vett		dc.l	check,zero,restor,xxx
+		dc.l	chkdriv,_cdf0,_cdf1,xx2
+
+brn_vet0	dc.l	brn_sload,brn_ssave
+		dc.l	brn_sopt,brn_ok,brn_scopy
+		dc.l	brn_str0,brn_str1
+
+s_border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	mestable,driv_border
+		even
+		
+driv_border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	dritable,virus_border
+		even
+
+virus_border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	virtable,boot_border
+		even
+		
+boot_border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	bottable,xx_border
+		even
+
+xx_border	dc.w	0,0
+		dc.b	2,0,0,5
+		dc.l	xxtable,barborder
+		even
+
+barborder	dc.w	0,0
+		dc.b	2,0,0,6
+		dc.l	bartable,0
+		even
+
+bartable	dc.w	10,8
+		dc.w	0,8
+		dc.w	0,9
+		dc.w	640,9
+		dc.w	640,8
+		dc.w	250,8
+
+bottable	dc.w	10,137
+		dc.w	10,250
+		dc.w	630,250
+		dc.w	630,137
+		dc.w	10,137
+
+mestable	dc.w	10,95
+		dc.w	10,116
+		dc.w	630,116
+		dc.w	630,95
+		dc.w	10,95
+		
+dritable	dc.w	10,74
+		dc.w	388,74
+		dc.w	388,93
+		dc.w	10,93
+		dc.w	10,74
+		
+virtable	dc.w	391,12
+		dc.w	500,12
+		dc.w	500,93
+		dc.w	391,93
+		dc.w	391,12
+
+xxtable		dc.w	503,12
+		dc.w	630,12
+		dc.w	630,93
+		dc.w	503,93
+		dc.w	503,12
+
+name		dc.b	'trackdisk.device',0
+		even
+ports		ds.b	36
+		even
+iostd		dc.b	0,0
+		dc.l	0
+		ds.b	14
+		dc.l	0,0
+		dc.w	0
+		dc.b	0,0
+		dc.l	0,0,0,0
+		even
+
+buff		dc.l	0
+dat		dc.l	$444f5300,$c0200f19,$370,$43fa0018
+		dc.l	$4eaeffa0,$4a80670a,$20402068,$167000
+		dc.l	$4e7570ff,$60fa646f,$732e6c69,$62726172
+		dc.l	$79000000
+		even
+
+fr_load		dc.b	'Set Load',0
+		even
+fr_save		dc.b	'Set Save',0
+		even
+
+genintt		INTUITEXT 1,0,1,0,0,0,0,buffint,0
+mask1		INTUITEXT 3,0,0,0,0,0,0,mate1,mask2
+mask2		INTUITEXT 3,0,0,0,0,10,0,mate2,mask3
+mask3		INTUITEXT 3,0,0,0,0,20,0,mate3,mask4
+mask4		INTUITEXT 3,0,0,0,0,30,0,mate4,mask5
+mask5		INTUITEXT 3,0,0,0,0,40,0,mate5,mask6
+mask6		INTUITEXT 3,0,0,0,0,50,0,mate6,mask7
+mask7		INTUITEXT 3,0,0,0,180,0,0,mate7,mask8
+mask8		INTUITEXT 3,0,0,0,180,10,0,mate8,mask9
+mask9		INTUITEXT 3,0,0,0,180,20,0,mate9,mask10
+mask10		INTUITEXT 3,0,0,0,180,30,0,mate10,mask11
+mask11		INTUITEXT 3,0,0,0,180,40,0,mate11,mask12
+mask12		INTUITEXT 3,0,0,0,180,50,0,mate12,0
+av_mask		INTUITEXT 3,0,0,0,5,18,0,av1_text,av2_mask
+av2_mask	INTUITEXT 3,0,0,0,5,40,0,av2_text,0
+
+rev_msg		INTUITEXT 3,0,0,0,0,0,0,rev_i,0
+xeno_msg	INTUITEXT 3,0,0,0,0,0,0,xeno_i,0
+irq_msg		INTUITEXT 3,0,0,0,0,0,0,irq_i,0
+gad_msg		INTUITEXT 3,0,0,0,0,0,0,gad_i,0
+lam_msg		INTUITEXT 3,0,0,0,0,0,0,lam_i,0
+revb_msg	INTUITEXT 3,0,0,0,0,0,0,revb_i,0
+dd_msg		INTUITEXT 3,0,0,0,0,0,0,dd_i,0
+bsg_msg		INTUITEXT 3,0,0,0,0,0,0,bsg_i,0
+nomess		INTUITEXT 3,0,0,0,0,0,0,no_i,0
+
+rev_i		dc.b	'Revenge     ',0
+		even
+xeno_i		dc.b	'Xeno        ',0
+		even
+irq_i		dc.b	'IRQ         ',0
+		even
+gad_i		dc.b	'Gadaffi     ',0
+		even
+lam_i		dc.b	'Lamer       ',0
+		even
+revb_i		dc.b	'RevengeBoot ',0
+		even
+dd_i		dc.b	'DiskDoctor  ',0
+		even
+bsg_i		dc.b	'BSG         ',0
+		even
+no_i		dc.b	'            ',0
+		even
+mate1		dc.b	'Cool:         ',0
+		even
+mate2		dc.b	'Cold:         ',0
+		even
+mate3		dc.b	'Warm:         ',0
+		even
+mate4		dc.b	'KickCheckSum: ',0
+		even
+mate5		dc.b	'KickTagPtr:   ',0
+		even
+mate6		dc.b	'KickMemPtr:   ',0
+		even
+mate7		dc.b	'OldOpenLibrary:  ',0
+		even
+mate8		dc.b	'DoIO:            ',0
+		even
+mate9		dc.b	'OpenDevice:      ',0
+		even
+mate10		dc.b	'SumKickData:            ',0
+		even
+mate11		dc.b	'AddTask:           ',0
+		even
+mate12		dc.b	'RemTask:           ',0
+		even
+av1_text	dc.b	'ChipMem:  ',0
+		even
+av2_text	dc.b	'FastMem:  ',0
+		even
+
+mi_text		INTUITEXT 3,0,1,0,0,4,0,mi0,mi_t1
+mi_t1		INTUITEXT 1,0,1,0,0,20,0,mi1,mi_t2
+mi_t2		INTUITEXT 1,0,1,0,15,36,0,mi2,mi_t3
+mi_t3		INTUITEXT 1,0,1,0,15,46,0,mi3,mi_t4
+mi_t4		INTUITEXT 1,0,1,0,15,54,0,mi4,mi_t5
+mi_t5		INTUITEXT 1,0,1,0,15,62,0,mi5,mi_t6
+mi_t6		INTUITEXT 1,0,1,0,15,72,0,mi6,mi_t7
+mi_t7		INTUITEXT 1,0,1,0,15,82,0,mi7,mi_t8
+mi_t8		INTUITEXT 1,0,1,0,15,92,0,mi8,mi_t9
+mi_t9		INTUITEXT 1,0,1,0,15,102,0,mi9,mi_t10
+mi_t10		INTUITEXT 1,0,1,0,15,110,0,mi10,0
+
+mi0		dc.b	'Programmed by Mauro Panigada, 1991-1993',0
+		even
+mi1		dc.b	'I have to say some things about this antivirus program. Read this: ',0
+		even
+mi2		dc.b	'- It is written entirely in assembler, so it is shorter and faster.',0
+		even
+mi3		dc.b	"- Virus routines are copied from Berserker and they aren't the best.",0
+		even
+mi4		dc.b	"  Use menu Search&Destroy only when you are sure there's a virus.",0
+		even
+mi5		dc.b	"  If there's an antivirus program in memory, it often is a false alarm.",0
+		even
+mi6		dc.b	'- Reset routine (see the "R" gadget) is copied from Commodore!',0
+		even
+mi7		dc.b	'- Read bootblock routines and check bootblock routines are mine.',0
+		even
+mi8		dc.b	'- Gadget, border and intuitext macros are copied from Fenster.',0
+		even
+mi9		dc.b	'- I use a conversion routine which is like some kinds of conversion',0
+		even
+mi10		dc.b	'  routines that are used by Tracker (music program).',0
+		even
+		
+drivet		INTUITEXT 1,0,1,0,0,60,0,driv,0
+ndosm		INTUITEXT 1,0,1,0,0,60,0,ndd,0
+nboot		INTUITEXT 1,0,1,0,0,60,0,nbd,0
+nodiskin	INTUITEXT 1,0,1,0,0,60,0,ndinsert,0
+
+driv		dc.b	"Disk in DF0: isn't a normal disk...Install it!",0
+		even
+ndd		dc.b	"Disk in DF0:  isn't  a  standard   dos  disk!!",0
+		even
+nbd		dc.b	"Disk in DF0: isn't a bootable disk.Do nothing.",0
+		even
+ndinsert	dc.b	"                 No disk in DF0: !!           ",0
+		even
+
+nullte		INTUITEXT 0,0,1,0,0,0,0,vuoto,0
+
+vuoto		dc.b	'                                              ',0
+		cnop	0,4
+
+WINFLAGS	EQU	BORDERLESS!ACTIVATE
+
+window		AUTOWIN1 0,0,640,256,1,2,$100!$40,WINFLAGS,gadx1
+		AUTOWIN2 0,title,0,0,0,0,0,0,1
+title		dc.b	'Checker V1.0  by Mauro Panigada',0
+		cnop	0,4
+
+bset_win	AUTOWIN1 3,12,384,60,3,2,$40,0,set_gad1
+		AUTOWIN2 0,bs_text,0,0,0,0,0,0,1
+bs_text		dc.b	'Set BrainFile Options',0
+		even
+
+set_gad1	AUTOGADGET 10,20,65,10,3,1,<"Set Load">,1,set_gad2
+		even
+set_gad2	AUTOGADGET 10,40,65,10,3,1,<"Set Save">,2,set_gad3
+		even
+set_gad3	dc.l	set_gad4
+		dc.w	80,20,140,10,GADGHCOMP,RELVERIFY,STRGADGET
+		dc.l	set_box3,0,0,0,set_info3
+		dc.w	6,0,0
+		even
+set_info3	dc.l	0,0
+		dc.w	0,256
+		ds.b	si_SIZEOF
+		even
+set_box3	BOX	-2,-2,140,10,3,0
+		even
+set_gad4	dc.l	set_gad5
+		dc.w	80,40,140,10,GADGHCOMP,RELVERIFY,STRGADGET
+		dc.l	set_box4,0,0,0,set_info4
+		dc.w	7,0,0
+		even
+set_info4	dc.l	0,0
+		dc.w	0,256
+		ds.b	si_SIZEOF
+		even
+set_box4	BOX	-2,-2,140,10,3,0
+		even
+set_gad5	AUTOGADGET2 225,20,150,10,2,1,<"Autoload BrainFile">,0,set_gad6
+		even
+set_gad6	AUTOGADGET 239,40,80,10,3,1,<"Save Opt">,3,set_gad7
+		even
+set_gad7	AUTOGADGET 324,40,51,10,3,1,<"OK">,4,set_gad8
+		even
+set_gad8	AUTOGADGET 225,40,10,10,3,1,<"=">,5,0
+		even
+
+
+ay_gad0		dc.l	ay_gad1
+		dc.w	15,40,50,10,0,1,1
+		dc.l	ay_box0,0,ay_text00,0,0
+		dc.w	0
+		dc.l	ay_yes
+ay_box0		BOX	-1,-1,50,10,2,0
+		even
+ay_text00	INTUITEXT 1,0,1,0,12,1,0,ay_tyes,ay_text01
+ay_tyes		dc.b	'Yes',0
+		even
+ay_text01	INTUITEXT 1,0,1,0,25,-18,0,ay_tare,0
+ay_tare		dc.b	'Are you sure?',0
+		even
+ay_gad1		dc.l	0
+		dc.w	120,40,50,10,0,1,1
+		dc.l	ay_box0,0,ay_text1,0,0
+		dc.w	0
+		dc.l	ay_no
+ay_text1	INTUITEXT 1,0,1,0,15,1,0,ay_tno,0
+ay_tno		dc.b	'No',0
+		even
+
+gadx1		AUTOGADGET 30,122,165,10,3,1,<"Check">,1,gadx2
+		even
+gadx2		AUTOGADGET 230,122,165,10,3,1,<"All Zero">,2,gadx3
+		even
+gadx3		AUTOGADGET 420,122,165,10,3,1,<"Restore">,3,gadx5
+		even
+gadx5		AUTOGADGET 595,122,10,10,3,1,<"R">,4,gadx6
+		even
+gadx6		AUTOGADGET 506,15,122,10,3,1,<"Check Drives">,5,gadx7
+		even
+gadx7		AUTOGADGET 506,28,122,10,3,1,<"DF0">,6,gadx8
+		even
+gadx8		AUTOGADGET 506,41,122,10,3,1,<"DF1">,7,gadx9
+		even
+gadx9		AUTOGADGET 585,122,10,10,3,1,<"H">,8,0
+		even
+
+winabout	AUTOWIN1 3,12,384,60,3,2,8,0,0
+		AUTOWIN2 0,tiabou,0,0,0,0,0,0,1
+tiabou		dc.b	'About Author',0
+		even
+
+win_minfo	AUTOWIN1 3,11,634,135,3,2,$8,0,0
+		AUTOWIN2 0,t_minfo,0,0,0,0,0,0,1
+t_minfo		dc.b	'Read attentively this and file doc!',0
+		even
+
+win_avail	AUTOWIN1 3,12,185,60,3,2,8,0,0
+		AUTOWIN2 0,t_avail,0,0,0,0,0,0,1
+t_avail		dc.b	'Avail Memory',0
+		even
+
+win_ay		AUTOWIN1 3,12,185,60,3,2,$40,0,ay_gad0
+		AUTOWIN2 0,ay_text,0,0,0,0,0,0,1
+ay_text		dc.b	'Request',0
+		even
+		
+menu		AUTOMENU menu3,10,0,80,10,1,tit,item2
+tit		dc.b	'Project  ',0
+		cnop	0,4
+
+item2		AUTOITEM item3,0,0,80,8,itex2,0
+itex2		INTUITEXT 1,0,1,0,0,0,0,tex2,0
+tex2		dc.b	'Refresh   ',0
+		cnop	0,4
+
+item3		AUTOITEM item5,0,8,80,8,itex3,0
+itex3		INTUITEXT 1,0,1,0,0,0,0,tex3,0
+tex3		dc.b	'Avail     ',0
+		cnop	0,4
+
+item5		AUTOITEM 0,0,17,80,8,itex5,subit
+itex5		INTUITEXT 1,0,1,0,0,0,0,tex5,0
+tex5		dc.b	'Quit      ',0
+		cnop	0,4
+subit		AUTOITEM2 0,0,0,80,8,sitex,0
+sitex		INTUITEXT 1,0,1,0,0,0,0,stex,0
+stex		dc.b	'Sure?     ',0
+		cnop	0,4
+
+menu3		AUTOMENU menu4,90,0,80,8,1,tit3,item20
+tit3		dc.b	'Virus      ',0
+		cnop	0,4
+
+item20		AUTOITEM item21,0,0,88,8,itex20,sub20
+itex20		INTUITEXT 1,0,1,0,0,0,0,tex20,0
+tex20		dc.b	'» Search   ',0
+		cnop	0,4
+sub20		AUTOITEM sitem20b,55,0,88,8,sitex20,0
+sitex20		INTUITEXT 1,0,1,0,0,0,0,stex20,0
+stex20		dc.b	' Only      ',0
+		cnop	0,4
+sitem20b	AUTOITEM 0,55,8,88,8,sitex20b,0
+sitex20b	INTUITEXT 1,0,1,0,0,0,0,stex20b,0
+stex20b		dc.b	' &Destroy  ',0
+		cnop	0,4
+item21		AUTOITEM item22,0,8,88,8,itex21,sub21
+itex21		INTUITEXT 1,0,1,0,0,0,0,tex21,0
+tex21		dc.b	'» BrainFile',0
+		cnop	0,4
+sub21		AUTOITEM sub21b,55,0,88,8,sitex21,0
+sitex21		INTUITEXT 1,0,1,0,0,0,0,stex21,0
+stex21		dc.b	' Load      ',0
+		cnop	0,4
+sub21b		AUTOITEM sub21c,55,8,88,8,sitex21b,0
+sitex21b	INTUITEXT 1,0,1,0,0,0,0,stex21b,0
+stex21b		dc.b	' Edit      ',0
+		cnop	0,4
+sub21c		AUTOITEM sub21d,55,16,88,8,sitex21c,0
+sitex21c	INTUITEXT 1,0,1,0,0,0,0,stex21c,0
+stex21c		dc.b	' Save      ',0
+		cnop	0,4
+sub21d		AUTOITEM 0,55,24,88,8,sitex21d,0
+sitex21d	INTUITEXT 1,0,1,0,0,0,0,stex21d,0
+stex21d		dc.b	' Set Opt.  ',0
+		cnop	0,4
+item22		AUTOITEM 0,0,16,88,8,sitex22,0
+sitex22		INTUITEXT 1,0,1,0,0,0,0,tex22,0
+tex22		dc.b	'MemVirus   ',0
+		cnop	0,4
+
+menu4		AUTOMENU menu5,170,0,100,8,1,tit4,item37
+tit4		dc.b	'Special       ',0
+		cnop	0,4
+
+item37		AUTOITEM item39b,0,0,112,8,itex37,0
+itex37		INTUITEXT 1,0,1,0,0,0,0,tex37,itex37b
+itex37b		INTUITEXT 3,0,0,0,1,1,0,tex37,0
+tex37		dc.b	'    About     ',0
+		cnop	0,4
+
+item39b		dc.l	item40
+		dc.w	0,8,112,8,ITEMTEXT!ITEMENABLED
+		dc.l	0,itex39b,0
+		dc.b	0,' '
+		dc.l	0
+		dc.w	0
+itex39b		INTUITEXT 1,0,1,0,0,0,0,tex39b,0
+tex39b		dc.b	' ------------ ',0
+		cnop	0,4
+
+item40		AUTOITEM item41,0,16,112,8,itex40,0
+itex40		INTUITEXT 1,0,1,0,0,0,0,tex40,0
+tex40		dc.b	'Bootblock     ',0
+		cnop	0,4
+
+item41		AUTOITEM item42,0,24,112,8,itex41,0
+itex41		INTUITEXT 1,0,1,0,0,0,0,tex41,0
+tex41		dc.b	'Installer     ',0
+		cnop	0,4
+
+item42		AUTOITEM 0,0,32,112,8,itex42,0
+itex42		INTUITEXT 1,0,1,0,0,0,0,tex42,0
+tex42		dc.b	'Formatter     ',0
+		even
+
+menu5		AUTOMENU 0,272,0,112,8,1,tit5,item50
+tit5		dc.b	'Screen         ',0
+		even
+
+item50		AUTOITEM item51,0,0,120,8,itex50,0
+itex50		INTUITEXT 1,0,1,0,0,0,0,tex50,0
+tex50		dc.b	'Screen to Back ',0
+		even
+
+item51		AUTOITEM item52,0,8,120,8,itex51,0
+itex51		INTUITEXT 1,0,1,0,0,0,0,tex51,0
+tex51		dc.b	'Screen to Front',0
+		even
+
+item52		AUTOITEM item53,0,16,120,8,itex52,0
+itex52		INTUITEXT 1,0,1,0,0,0,0,tex52,0
+tex52		dc.b	'Half Screen    ',0
+		even
+
+item53		AUTOITEM 0,0,24,120,8,itex53,0
+itex53		INTUITEXT 1,0,1,0,0,0,0,tex53,0
+tex53		dc.b	'Total Screen   ',0
+		even
+
+_newscr		dc.w	0,0,640,256,2
+		dc.b	1,2
+		dc.w	V_HIRES,CUSTOMSCREEN
+		dc.l	0,0,0,0
+		even
+
+Version			EQU	0
+Title			EQU	2	; > ptr title
+Dir			EQU	6	; > ptr buffer dir
+File			EQU	10	; > ptr file
+PathName		EQU	14	; > ptr buffer path + file
+fr_Window		EQU	18	; > ptr window
+MaxExtSel		EQU	22
+NumLines		EQU	24
+NumCol			EQU	26
+DevCol			EQU	28
+Flags			EQU	30	; flags
+DirNameColor		EQU	34	; dir color
+FileNameColor		EQU	36	; file color
+DevsNameColor		EQU	38	; devs color
+FontNameColor		EQU	40	; font color
+FontSizeColor		EQU	42
+DetailColor		EQU	44
+BlockColor		EQU	46
+GadTextColor		EQU	48
+TextMessColor		EQU	50
+StrNameColor		EQU	52
+StrGadColor		EQU	54
+BoxBordColor		EQU	56
+GadBoxColor		EQU	58	; gadbox color
+FRU_Stuff		EQU	60
+structDirDateStamp	EQU	96
+WinLeftEdge		EQU	108
+WinTopEdge		EQU	110
+FontYSize		EQU	112
+FontStyle		EQU	114
+ExtendedSelect		EQU	116
+HideArray		EQU	120
+ShowArray		EQU	152	; array show [] 32 bytes
+FileBuffPos		EQU	184
+FileDispPos		EQU	186
+DirBuffPos		EQU	188
+DirDispPos		EQU	190
+HideBuffPos		EQU	192
+HideDispPos		EQU	194
+ShowBuffPos		EQU	196
+ShowDispPos		EQU	198
+Memory			EQU	200
+Memory2			EQU	204
+fr_Lock			EQU	208
+PrivateDirBuff		EQU	212
+FileInfoBlock		EQU	344
+NumEntries		EQU	348
+NumHiddenEntries	EQU	350
+FilesStartNum		EQU	352
+DeviceStartNum		EQU	354
+fr_SIZEOF		EQU	356
+
+		END

@@ -1,0 +1,16 @@
+
+$VER: ReadDevice.doc 37.1 (c) 1999 by Mauro Panigada
+
+ReadDevice 37.1
+===============
+
+(c) 1999 by Mauro Panigada
+
+ReadDevice.a replaces ReadDevice.c by ...
+It shows information, the same you can see in a mountlist of a device.
+Remember that you have to write the device name without ":" at the end.
+I do not know if all the information are right, verify yourself if you
+think it could be useful.
+
+
+

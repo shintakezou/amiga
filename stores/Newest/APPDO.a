@@ -1,0 +1,983 @@
+;
+; APPDO v1.0  AssemblerPowerPackerDataOnly -
+; written by Mauro Panigada
+;
+; Original C source code by Thies Wellpott, freeware
+;
+; $VER: APPDO.a v1.0 (1997.06.19) by Mauro Panigada
+;
+; Opened: 1997.06.19
+;
+; History:	1997.06.19	created
+;		1997.06.23?	first code, without envar feature
+;		1997.06.26	touched
+;               1997.06.26	first time assembled. (forcing wrong
+;				values for the unknown constant)
+;               1997.06.26	first assembled code length: 3980 !!
+;				it will work soon i hope!
+;				against 6880 (imploded) or 10692 (real)!
+;               1997.06.26	to check: SUFFIX (surely)
+;		1997.06.27	from PPDO the ppfuncs templates, but
+;				ppCrunchBuffer tilts.
+;		1997.06.27	envar idea destroyed (not so useful)
+;
+; What is: a shorter version of PPDO by Thies Wellpott. A bridge
+;    between the users and the powerpacker.library functions, to use
+;    it simply by CLI.
+;
+; Why this: original code is too long, according to me...
+;
+; Documentation: see PPDO and PPDO.c and PPDO.doc, easy to be found
+;    in Aminet (I believe also in FredFish).
+;
+; Note: the template is a bit different, but the result is the same.
+;
+; Added feature: the default value can be taken from an envar.
+;
+; Requirements: OS 2.x (#37)
+;
+
+
+LASTDATE	MACRO
+		dc.b	"(1997.06.19)"
+		ENDM
+
+LASTVERSION	MACRO
+		dc.b	"v1.0"
+		ENDM
+
+
+		incdir	"inc:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		;include	"libraries/powerpacker.i"
+		include	"libraries/powerpacker_lib.i"
+
+	; ???? powerpacker developer needed!
+
+
+call		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+
+	STRUCTURE Internal,0
+		LONG	_execbase
+		LONG	_dosbase
+		LONG	_ppbase
+		LONG	_argshook
+
+		LABEL	_array
+		LONG	_files
+		LONG	_fast
+		LONG	_mediocre
+		LONG	_good
+		LONG	_verygood
+		LONG	_best
+		LONG	_small
+		LONG	_medium
+		LONG	_large
+		LONG	_color0
+		LONG	_color1
+		LONG	_pointer
+		LONG	_scroll
+		LONG	_none
+		LONG	_crunch
+		LONG	_recrunch
+		LONG	_decrunch
+		LONG	_suffix
+		LONG	_destdir
+		LONG	_minsize
+		LONG	_pri
+
+		LONG	_ispeed		;fast mediocre good verygood best
+		LONG	_ibuffer	;small medium large
+		LONG	_imode		;color0,1 pointer scroll none
+		LONG	_iminsize
+		LONG	_ipri
+		LONG	_iaction	;crunch recrunch decrunch
+
+		LONG	_fl
+		BYTE	_crunched
+		BYTE	puddge
+
+		LONG	_filelen
+		LONG	_filebuf
+
+		STRUCT	_name,128
+		STRUCT	_savename,128
+
+		LONG	_crunlen
+		LONG	_cruninfo
+
+		LABEL	INTERNAL_LENGTH
+
+
+
+	SECTION	APPDOCode,CODE
+
+		lea	storage,a5
+		bra.s	start
+
+		dc.b	"$VER: "
+		dc.b	"APPDO "
+		LASTVERSION
+		dc.b	" "
+		LASTDATE
+		dc.b	" by Mauro Panigada",13,10,0
+		even
+
+CRUNCH		EQU	0
+RECRUNCH	EQU	1
+DECRUNCH	EQU	2
+
+
+start		move.l	4.w,a6
+		move.l	a6,(a5)
+		lea	dosname(pc),a1
+		moveq	#37,d0
+		call	OpenLibrary
+		move.l	d0,_dosbase(a5)
+		bne.s	dosopened
+
+		lea	dosname(pc),a1
+		moveq	#0,d0
+		call	OpenLibrary
+		move.l	d0,a6
+		tst.l	d0
+		beq.s	exit0
+		call	Output
+		move.l	d0,d1
+		lea	message(pc),a0
+		move.l	a0,d2
+		move.l	#MES_LEN,d3
+		call	Write
+		move.l	a6,a1
+		move.l	(a5),a6
+		call	CloseLibrary
+exit0		moveq	#20,d0
+		rts
+
+message		dc.b	"You need OS2.1 (V37+).",10
+MES_LEN		EQU	*-message
+		even
+
+dosopened	lea	ppname(pc),a1
+		moveq	#35,d0
+		call	OpenLibrary
+		move.l	d0,_ppbase(a5)
+		bne.s	ppopened
+
+		lea	message2(pc),a0
+		move.l	a0,d1
+		move.l	_dosbase(a5),a6
+		call	PutStr
+
+closedos	move.l	_dosbase(a5),a1
+		move.l	(a5),a6
+		call	CloseLibrary
+		rts
+
+ppopened	move.l	_dosbase(a5),a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		lea	_array(a5),a0
+		move.l	a0,d2
+		moveq	#0,d3
+		call	ReadArgs
+		move.l	d0,_argshook(a5)
+		bne.s	argok
+
+		lea	helper(pc),a0
+		move.l	a0,d1
+		call	PutStr
+
+closelibs	bsr.s	closedos
+closepp		move.l	(a5),a6
+		move.l	_ppbase(a5),a1
+		call	CloseLibrary
+		rts
+
+		IFND	LIBRARIES_POWERPACKER_I
+
+CRUN_BEST		EQU	4
+CRUN_FAST		EQU	1
+CRUN_MEDIOCRE		EQU	2
+CRUN_GOOD		EQU	3
+CRUN_VERYGOOD		EQU	4
+SPEEDUP_BUFFLARGE	EQU	1
+SPEEDUP_BUFFSMALL	EQU	0
+SPEEDUP_BUFFMEDIUM	EQU	3
+DECR_POINTER		EQU	0
+DECR_COL0		EQU	1
+DECR_COL1		EQU	0
+DECR_SCROLL		EQU	3
+DECR_NONE		EQU	4
+PP_CRUNCHABORTED	EQU	"MAUR"
+PP_BUFFEROVERFLOW	EQU	"OPAN"
+PP_OPENERR		EQU	0
+PP_READERR		EQU	1
+PP_NOMEMORY		EQU	2
+PP_PASSERR		EQU	3
+PP_EMPTYFILE		EQU	4
+PP_UNKNOWPP		EQU	5
+
+		ENDC
+
+
+SPEED		EQU	CRUN_BEST	; here the pp include are need!
+BUFFER		EQU	SPEEDUP_BUFFLARGE
+DMODE		EQU	DECR_POINTER
+IACTION		EQU	CRUNCH
+IMINSIZE	EQU	0
+IPRI		EQU	-1
+
+argok		tst.l	_fast(a5)
+		bne.s	setfast
+		tst.l	_mediocre(a5)
+		bne.s	setmediocre
+		tst.l	_good(a5)
+		bne.s	setgood
+		tst.l	_verygood(a5)
+		bne.s	setverygood
+setbestdf	move.l	#SPEED,d0
+briefw		move.l	d0,_ispeed(a5)
+		bra.s	next
+setfast		move.l	#CRUN_FAST,d0
+		bra.s	briefw
+setmediocre	move.l	#CRUN_MEDIOCRE,d0
+		bra.s	briefw
+setgood		move.l	#CRUN_GOOD,d0
+		bra.s	briefw
+setverygood	move.l	#CRUN_VERYGOOD,_ispeed(a5)
+
+next		move.l	#BUFFER,d0	; this code seems spaghetti!
+		tst.l	_small(a5)
+		bne.s	setsmall
+		tst.l	_medium(a5)
+		bne.s	setmedium
+setlargedf	move.l	d0,_ibuffer(a5)
+		bra.s	next0
+setsmall	move.l	#SPEEDUP_BUFFSMALL,d0
+		bra.s	setlargedf
+setmedium	move.l	#SPEEDUP_BUFFMEDIUM,_ibuffer(a5)
+next0
+		tst.l	_color0(a5)	; this is better!!
+		bne.s	setcolor0
+		tst.l	_color1(a5)
+		bne.s	setcolor1
+		tst.l	_scroll(a5)
+		bne.s	setscroll
+		tst.l	_none(a5)
+		bne.s	setnone
+setpointer	move.l	#DMODE,_imode(a5)
+		bra.s	next1
+setcolor0	move.l	#DECR_COL0,_imode(a5)
+		bra.s	next1
+setcolor1	move.l	#DECR_COL1,_imode(a5)
+		bra.s	next1
+setscroll	move.l	#DECR_SCROLL,_imode(a5)
+		bra.s	next1
+setnone		move.l	#DECR_NONE,_imode(a5)
+next1
+		tst.l	_recrunch(a5)
+		bne.s	setrecrunch
+		tst.l	_decrunch(a5)
+		bne.s	setdecrunch
+setcrunchdf	move.l	#CRUNCH,_iaction(a5)
+		bra.s	next2
+setrecrunch	move.l	#RECRUNCH,_iaction(a5)
+		bra.s	next2
+setdecrunch	move.l	#DECRUNCH,_iaction(a5)
+next2
+		tst.l	_minsize(a5)
+		bne.s	setminsize
+		clr.l	_iminsize(a5)
+		bra.s	next3
+setminsize	move.l	_minsize(a5),a0
+		move.l	(a0),_iminsize(a5)
+next3
+		tst.l	_pri(a5)
+		bne.s	setpri
+		move.l	#-1,_ipri(a5)
+		bra.s	next4
+setpri		move.l	_pri(a5),a0
+		move.l	(a0),_ipri(a5)
+next4
+
+		lea	idosbase(pc),a0
+		move.l	_dosbase(a5),(a0)
+
+		move.l	(a5),a6
+		suba.l	a0,a0
+		call	FindTask
+		move.l	d0,a1
+		move.l	_ipri(a5),d0
+		bpl.s	cvok
+		neg.l	d0
+		neg.b	d0
+cvok		call	SetTaskPri
+
+
+; DOIT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+		move.l	_ppbase(a5),a6		; i have not include, so
+		bsr	ppAllocCrunchInfo	; how i can pass right args?
+		move.l	d0,_cruninfo(a5)
+		move.l	_dosbase(a5),a6
+
+		bsr	print_head
+
+		move.l	_files(a5),a4
+loopgo		tst.l	(a4)
+		beq	loopend
+
+		move.l	_dosbase(a5),a6
+		move.l	#SIGBREAKF_CTRL_C,d1
+		call	CheckSignal
+		and.l	#SIGBREAKF_CTRL_C,d0
+		bne	userbreak
+
+		lea	formatl(pc),a0
+		move.l	a0,d1
+		move.l	(a4),-(sp)
+		move.l	sp,d2
+		call	VPrintf
+		addq.l	#4,sp
+
+		move.l	(a4),d1
+		move.l	#MODE_OLDFILE,d2
+		call	Open
+		move.l	d0,d7
+		bne	allok
+
+errorfile	lea	cop.m(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		addq.l	#4,a4
+		bra.s	loopgo
+
+allok		move.l	d7,d1
+		moveq	#0,d2
+		moveq	#OFFSET_END,d3
+		call	Seek
+		move.l	d7,d1
+		moveq	#0,d2
+		moveq	#OFFSET_BEGINNING,d3
+		call	Seek
+		move.l	d0,_fl(a5)		; filelength
+
+		move.l	d0,-(sp)
+		lea	lenform(pc),a0
+		move.l	a0,d1
+		move.l	sp,d2
+		call	VPrintf
+		addq.l	#4,sp
+
+		clr.l	-(sp)
+		move.l	sp,d2
+		move.l	d7,d1
+		moveq	#4,d3
+		call	Read
+		move.l	(sp)+,d0
+		cmp.l	#"PP20",d0
+		seq	_crunched(a5)
+
+		move.l	d7,d1
+		call	Close
+
+		tst.b	_crunched(a5)
+		beq.s	nocondit
+		cmp.l	#CRUNCH,_iaction(a5)
+		bne.s	nocondit
+
+		lea	alreadycr(pc),a0
+prt0		move.l	a0,d1
+		call	PutStr
+		bra	loopgou
+
+nocondit	tst.b	_crunched(a5)
+		bne.s	nocon0
+		cmp.l	#DECRUNCH,_iaction(a5)
+		bne.s	nocon0
+
+		lea	notcrun(pc),a0
+		bra.s	prt0
+
+nocon0		tst.b	_crunched(a5)
+		bne.s	nocon1
+		move.l	_fl(a5),d0
+		move.l	_iminsize(a5),d1
+		cmp.l	d0,d1		; i forget always how the cc is set...d0-d1 or d1-d0?
+		blo	nocon1		; filelen<minsize: d0<d1 if false then SKIP, else continue
+
+		lea	tooshort(pc),a0
+		bra.s	prt0
+
+nocon1		bsr	ppLoadData
+
+		move.l	_dosbase(a5),a6
+		tst.l	d0
+		bne	errorppld
+
+		tst.b	_crunched(a5)
+		beq.s	notcrm
+
+crm		lea	decrm(pc),a0
+		move.l	a0,d1
+		move.l	_filelen(a5),-(sp)
+		move.l	sp,d2
+		call	VPrintf
+		addq.l	#4,sp
+		bra.s	nessi
+
+notcrm		lea	okm(pc),a0
+		move.l	a0,d1
+		call	PutStr
+
+nessi		move.l	(a4),a0
+		lea	_name(a5),a1
+loopnessi	move.b	(a0)+,(a1)+
+		tst.b	-1(a0)
+		bne.s	loopnessi
+
+		cmp.l	#DECRUNCH,_iaction(a5)
+		beq	mdec
+
+		bsr	ppCrunchBuffer
+		move.l	_dosbase(a5),a6
+		move.l	d0,_crunlen(a5)
+		cmp.l	#PP_CRUNCHABORTED,d0
+		bne.s	noabortc
+
+		lea	abortc.m(pc),a0
+primaif		move.l	a0,d1
+		call	PutStr
+		clr.l	_crunlen(a5)
+		bra	dopoif
+
+noabortc	cmp.l	#PP_BUFFEROVERFLOW,d0
+		bne.s	nooverf
+
+		lea	bufover.m(pc),a0
+		bra.s	primaif
+
+nooverf		move.l	_filelen(a5),d0
+		move.l	_crunlen(a5),d1
+		move.l	_filelen(a5),d2
+		suba.l	a0,a0
+		bsr	print_crun
+
+		lea	accapo(pc),a0
+		move.l	a0,d1
+		call	PutStr
+
+		tst.l	_suffix(a5)
+		beq	dopoif		; <<<<<<<<<<<<<<<<<<<
+
+		bsr	cppp
+
+		tst.l	d0
+		beq	dopoif
+		move.b	#".",(a0)+
+		move.b	#"p",(a0)+
+		move.b	#"p",(a0)+
+		bra	dopoif		;????????? <<<<<<<<<<
+
+mdec		move.l	_filelen(a5),_crunlen(a5)
+		tst.l	_suffix(a5)
+		beq.s	dopoif
+
+		bsr	cppp
+		tst.l	d0
+		bne.s	dopoif
+		clr.b	-3(a0)
+
+dopoif		tst.l	_crunlen(a5)
+		beq	outclif
+		tst.l	_destdir(a5)
+		beq	outddif
+		move.l	_destdir(a5),a0
+		lea	_savename(a5),a1
+		move.l	a1,a2
+diloop		move.b	(a0)+,(a1)+		; what about using dos funx?
+		tst.b	-1(a0)
+		bne.s	diloop
+		move.l	(a4),d1
+		call	FilePart	; this will make this piece of
+		move.l	d0,d2		; code (%appdo) os2.0+ dipendent
+		move.l	a2,d1
+		moveq	#0,d3
+		bset	#7,d3	; strange way to put #128!
+		call	AddPart
+		bra.s	skipddif
+
+outddif		lea	_name(a5),a0
+		lea	_savename(a5),a1
+oddi		move.b	(a0)+,(a1)+
+		tst.b	-1(a0)
+		bne.s	oddi
+skipddif
+		lea	saving.m(pc),a0
+		move.l	a0,d1
+		lea	_savename(a5),a0
+		move.l	a0,-(sp)
+		move.l	sp,d2
+		call	VPrintf
+		addq.l	#4,sp
+
+fhd		EQUR	d7
+succ		EQUR	d6
+
+		lea	_savename(a5),a0
+		move.l	a0,d1
+		move.l	#MODE_NEWFILE,d2
+		call	Open
+		move.l	d0,fhd
+		beq	aif
+		cmp.l	#DECRUNCH,_iaction(a5)
+		beq	suctotr
+		bsr	ppWriteDataHeader
+		move.l	_dosbase(a5),a6
+		move.l	d0,succ
+		bra.s	afno
+suctotr		moveq	#-1,succ
+afno
+		tst.l	succ
+		beq.s	skipw
+
+		move.l	fhd,d1
+		move.l	_filebuf(a5),d2
+		move.l	_crunlen(a5),d3
+		call	Write
+		cmp.l	_crunlen(a5),d0
+		beq.s	oksucc
+		moveq	#0,d0
+oksucc		move.l	d0,succ
+skipw		tst.l	succ
+		beq.s	werror
+		lea	wbyte(pc),a0
+		move.l	a0,d1
+		move.l	_crunlen(a5),-(sp)
+		move.l	sp,d2
+		call	VPrintf
+		addq.l	#4,sp
+		bra.s	closef
+werror		lea	werr.m(pc),a0
+		move.l	a0,d1
+		call	PutStr
+
+closef		move.l	fhd,d1
+		call	Close
+		bra	onext
+
+aif		lea	rerr.m(pc),a0
+		move.l	a0,d1
+		call	PutStr
+onext
+outclif
+		move.l	(a5),a6
+		move.l	_filebuf(a5),a1
+		move.l	_filelen(a5),d0
+		call	FreeMem
+		move.l	_dosbase(a5),a6
+		bra	nopplerr
+
+errorppld	cmp.l	#PP_OPENERR,d0
+		bne.s	e1
+		lea	rerr.m(pc),a0
+goww		move.l	a0,d1
+		call	PutStr
+		bra	oswi
+e1		cmp.l	#PP_READERR,d0
+		bne.s	e2
+		lea	e1.m(pc),a0
+		bra.s	goww
+e2		cmp.l	#PP_NOMEMORY,d0
+		bne.s	e3
+		lea	e2.m(pc),a0
+		bra.s	goww
+e3		cmp.l	#PP_PASSERR,a0
+		bne.s	e4
+		lea	e3.m(pc),a0
+		bra.s	goww
+e4		cmp.l	#PP_EMPTYFILE,a0
+		bne.s	e5
+		lea	e4.m(pc),a0
+		bra.s	goww
+e5		cmp.l	#PP_UNKNOWPP,d0
+		bne.s	goont
+		lea	e5.m(pc),a0
+		bra.s	goww
+
+userbreak	move.l	_dosbase(a5),a6
+		lea	ub.m(pc),a0
+		move.l	a0,d1
+		call	PutStr
+oswi
+goont
+loopgou
+nopplerr
+		addq.l	#4,a4
+		bra	loopgo
+loopend
+		bsr	ppFreeCrunchInfo
+
+closealli
+		move.l	(a5),a6
+		move.l	_ppbase(a5),a1
+		call	CloseLibrary
+
+		move.l	_dosbase(a5),a6
+		move.l	_argshook(a5),d1
+		call	FreeArgs
+
+		move.l	a6,a1
+		call	CloseLibrary
+
+		moveq	#0,d0
+		rts
+
+
+*»»»»»»»»»»»»»»»»»»»»»» BRIDGE FUNCTIONS ««««««««««««««««««««««
+* I will put these inline code when i will sure about the
+* arguments... ot them will remain here
+*
+;
+; ppFreeCrunchInfo
+;
+ppFreeCrunchInfo
+		move.l	_cruninfo(a5),a0
+		move.l	_ppbase(a5),a6
+		call	ppFreeCrunchInfo
+		rts
+
+;
+; ppWriteDataHeader ????
+;
+ppWriteDataHeader
+		move.l	_ppbase(a5),a6
+		move.l	fhd,d0
+		move.l	_ispeed(a5),d1
+		moveq	#0,d2
+		moveq	#0,d3
+		call	ppWriteDataHeader
+		rts
+
+;
+; ppCrunchBuffer
+;
+ppCrunchBuffer	move.l	_cruninfo(a5),a0
+		move.l	a0,d0
+		beq.s	skorp
+		move.l	_filebuf(a5),a1
+		move.l	_filelen(a5),d0
+		move.l	_ppbase(a5),a6
+		call	ppCrunchBuffer
+skorp		rts
+
+;
+; ppLoadData ??
+;
+ppLoadData	move.l	(a4),a0
+		move.l	_imode(a5),d0
+		moveq	#0,d1
+		lea	_filebuf(a5),a1
+		lea	_filelen(a5),a2
+		suba.l	a3,a3
+		move.l	_ppbase(a5),a6
+		call	ppLoadData
+		rts
+
+;
+;ppAllocCrunchInfo ????
+;
+ppAllocCrunchInfo
+		move.l	_ispeed(a5),d0
+		move.l	_ibuffer(a5),d1
+		lea	print_crun(pc),a0
+		suba.l	a1,a1
+		move.l	_ppbase(a5),a6
+		call	ppAllocCrunchInfo
+		rts
+
+
+;
+; print_crun
+;
+; d0=lensofar; d1=crunlen; d2=totlen; a0=userdata
+;
+
+idosbase	dc.l	0
+
+print_crun	move.l	a6,-(sp)
+
+		tst.l	d0
+		beq	nolenso
+
+		move.l	d0,-(sp)	; lensofar on stack
+		lsl.l	#3,d0		;*8
+		add.l	(sp),d0
+		add.l	(sp),d0		;*10
+		move.l	d0,-(sp)
+		lsl.l	#3,d0
+		add.l	(sp),d0
+		add.l	(sp)+,d0	; (lensofar stored always!)
+		addq.l	#1,d2
+		divs	d2,d0
+		lsr.w	#1,d0
+		and.l	#$ffff,d0	; first argu value
+		move.l	d1,-(sp)
+		lsl.l	#3,d1		; crunlen
+		add.l	(sp),d1
+		add.l	(sp),d1
+		move.l	d1,(sp)
+		lsl.l	#3,d1
+		add.l	(sp),d1
+		add.l	(sp)+,d1
+		move.l	(sp)+,d2	; get lensofar
+		addq.l	#1,d2
+		divs	d2,d1
+		lsl.w	#1,d1
+		and.l	#$ffff,d1
+		moveq	#100,d2
+		sub.l	d1,d2
+		move.l	d2,-(sp)
+		move.l	d0,-(sp)
+		move.l	sp,d2
+		lea	prtstr(pc),a0
+		move.l	a0,d1
+		move.l	idosbase(pc),a6
+		call	VPrintf
+		addq.l	#8,sp
+
+		move.l	#SIGBREAKF_CTRL_C,d1
+		call	CheckSignal
+		and.l	#SIGBREAKF_CTRL_C,d0
+		bne.s	stopped
+
+nolenso
+		moveq	#-1,d0
+		move.l	(sp)+,a6
+pcfine		rts
+stopped		moveq	#0,d0
+		move.l	(sp)+,a6
+		rts
+
+;
+; cppp - check for the .pp suffix
+; d0 = 0 if the suffix is found
+; d0 = -1 if the suffix is not found
+; a0 = byte 0 (terminator after the string)
+;
+cppp		moveq	#0,d0
+		lea	_name(a5),a0
+lnl		tst.b	(a0)+
+		bne.s	lnl
+		cmp.b	#"p",-1(a0)
+		beq.s	checkco
+		cmp.b	#"P",-1(a0)
+		bne.s	cappendpp
+checkco		cmp.b	#"p",-2(a0)
+		beq.s	checkco2
+		cmp.b	#"P",-2(a0)
+		bne.s	cappendpp
+checkco2	cmp.b	#".",-3(a0)
+		beq.s	skipappend
+
+cappendpp	moveq	#-1,d0
+skipappend	rts
+
+
+;
+; print_head
+;
+; note: it is not very intelligent reread here what flags are setted..
+;  i could do it when checked what mx-flags are done.
+;
+print_head	move.l	_dosbase(a5),a6
+		lea	ppdo.m(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		cmp.l	#CRUNCH,_iaction(a5)
+		beq	crunchp
+		cmp.l	#RECRUNCH,_iaction(a5)
+		beq	recrunchp
+decrunch	lea	decrunch.m(pc),a0
+		bra.s	phm
+crunchp		lea	crunch.m(pc),a0
+		bra.s	phm
+recrunchp	lea	recrunch.m(pc),a0
+phm		move.l	a0,d1
+		call	PutStr
+		cmp.l	#CRUN_FAST,_ispeed(a5)
+		beq.s	fastp
+		cmp.l	#CRUN_MEDIOCRE,_ispeed(a5)
+		beq.s	mediocrep
+		cmp.l	#CRUN_GOOD,_ispeed(a5)
+		beq.s	goodp
+		cmp.l	#CRUN_VERYGOOD,_ispeed(a5)
+		beq.s	verygoodp
+		lea	best.m(pc),a0
+		bra.s	phm2
+fastp		lea	fast.m(pc),a0
+		bra.s	phm2
+mediocrep	lea	mediocre.m(pc),a0
+		bra.s	phm2
+goodp		lea	good.m(pc),a0
+		bra.s	phm2
+verygoodp	lea	verygood.m(pc),a0
+phm2		move.l	a0,d1
+		call	PutStr
+		cmp.l	#SPEEDUP_BUFFSMALL,_ibuffer(a5)
+		beq.s	smallp
+		cmp.l	#SPEEDUP_BUFFMEDIUM,_ibuffer(a5)
+		beq.s	mediump
+largep		lea	large.m(pc),a0
+		bra.s	phm3
+smallp		lea	small.m(pc),a0
+		bra.s	phm3
+mediump		lea	medium.m(pc),a0
+phm3		move.l	a0,d1
+		call	PutStr
+		lea	buffi.m(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		tst.l	_suffix(a5)
+		beq	nosuffix
+		lea	append.m(pc),a0
+		cmp.l	#DECRUNCH,_iaction(a5)
+		bne.s	okdet
+		lea	remove.m(pc),a0
+okdet		move.l	a0,d1
+		call	PutStr
+nosuffix	lea	accapo(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		rts
+
+
+;»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»» data »»»»»»»
+
+ub.m		dc.b	$9b,"32m",$9b,"41m","*** USERBREAK",$9b,"0m",10,0
+		even
+prtstr		dc.b	$9b,"32m","%ld%% ",$9b,"0m","crunched (",$9b,"32m","%ld%%",$9b,"0m"," gain)   ",13,0
+		even
+e1.m		dc.b	$9b,"43m","read error!",$9b,"0m",10,0
+		even
+e2.m		dc.b	$9b,"43m","out of memory!",$9b,"0m",10,0
+		even
+e3.m		dc.b	$9b,"43m","sorry, wrong password!",$9b,"0m",10,0
+		even
+e4.m		dc.b	$9b,"43m","file is empty!",$9b,"0m",10,0
+		even
+e5.m		dc.b	$9b,"43m","unknown packer type!",$9b,"0m",10,0
+		even
+rerr.m		dc.b	$9b,"43m","Can't open file!",$9b,"0m",10,0
+		even
+werr.m		dc.b	$9b,"43m","write error!",$9b,"0m",10,0
+		even
+wbyte		dc.b	$9b,"42m","%ld",$9b,"0m"," bytes (+ header)",10,0
+		even
+saving.m	dc.b	"Saving to ",$9b,"32m","%s",$9b,"0m ... ",0
+		even
+abortc.m	dc.b	$9b,"32m",$9b,"41m","Crunching aborted!",$9b,"0m",10,0
+		even
+bufover.m	dc.b	$9b,"43m","Buffer overflow, crunching aborted!",$9b,"0m",10,0
+		even
+okm		dc.b	"OK",10,0
+decrm		dc.b	"decrunched ",$9b,"32m%ld bytes",$9b,"0m",10,0
+		even
+tooshort	dc.b	"file too short, skipping",10,0
+		even
+notcrun		dc.b	"not crunched, skipping",10,0
+		even
+alreadycr	dc.b	"already crunched, skipping",10,0
+		even
+lenform		dc.b	"%ld bytes, ",0
+		even
+cop.m		dc.b	$9b,"43m","can't open file!",$9b,"0m",10,0
+		even
+formatl		dc.b	"Loading ",$9b,"32m","%s",$9b,"0m ... ",0
+		even
+accapo		dc.b	10,0
+append.m	dc.b	", append suffix",0
+		even
+remove.m	dc.b	", remove suffix",0
+		even
+buffi.m		dc.b	" buffer",0
+		even
+ppdo.m		dc.b	$9b,"1m","APPDO: ",$9b,"0m",0
+		even
+crunch.m	dc.b	"Crunch",0
+		even
+decrunch.m	dc.b	"Decrunch",0
+		even
+recrunch.m	dc.b	"Recrunch",0
+		even
+fast.m		dc.b	" fast, ",0
+		even
+mediocre.m	dc.b	" mediocre, ",0
+		even
+good.m		dc.b	" good, ",0
+		even
+verygood.m	dc.b	" very good, ",0
+		even
+best.m		dc.b	" best, ",0
+		even
+large.m		dc.b	"large",0
+		even
+small.m		dc.b	"small",0
+		even
+medium.m	dc.b	"medium",0
+		even
+
+dosname		dc.b	"dos.library",0
+		even
+ppname		dc.b	"powerpacker.library",0
+		even
+message2	dc.b	"No powerpacker.library (V35+)",10,0
+		even
+template	dc.b	"FILE/A/M,FAST/S,MEDIOCRE/S,GOOD/S,VERYGOOD/S,"
+		dc.b	"BEST/S,SMALL/S,MEDIUM/S,LARGE/S,"
+		dc.b	"COLOR0/S,COLOR1/S,POINTER/S,SCROLL/S,NONE/S,"
+		dc.b	"CRUNCH/S,RECRUNCH/S,DECRUNCH/S,SUFFIX/S,"
+		dc.b	"DESTDIR/K,MINSIZE/N/K,PRI/N/K",0
+		even
+helper		dc.b	$1b,"c",10,$9b,"1m",$9b,"33m","APPDO "
+		LASTVERSION
+		dc.b	$9b,"0m"," "
+		LASTDATE
+		dc.b	" rewritten in ",$9b,"41m",$9b,"32m","asm",$9b,"0m"," by ",$9b,"32m","Mauro Panigada",$9b,"0m",10
+		dc.b	9,9,"basing on the PPDO by ",$9b,"32mThies Wellpott",$9b,"0m",10
+		dc.b	9,9,"and the powerpacker.library by ",$9b,"32mNico François",$9b,"0m",10,10
+		dc.b	"Usage: APPDO [FAST|MEDIOCRE|GOOD|VERYGOOD|BEST] [SMALL|MEDIUM|LARGE]",10
+		dc.b	"             [COLOR0|COLOR1|POINTER|SCROLL|NONE] [CRUNCH|RECRUNCH|DECRUNCH]",10
+		dc.b	"             [SUFFIX] [DESTDIR dir] [MINSIZE size] [PRI pri] FILE/M",10
+		dc.b	"default: BEST LARGE POINTER CRUNCH MINSIZE 0 PRI -1",10,10
+		dc.b	"FAST .. BEST",9,9,"crunch speed/efficiency",10
+		dc.b	"SMALL .. LARGE",9,9,"size of speedup buffer",10
+		dc.b	"COLOR0 .. NONE",9,9,"flash type",10
+		dc.b	"CRUNCH",9,9,9,"only crunch uncrunched files",10
+		dc.b	"RECRUNCH",9,9,"crunch uncrunched, recrunch crunched files",10
+		dc.b	"DECRUNCH",9,9,"only decrunch crunched files",10
+		dc.b	9,"(repeat the last three lines quickly ten times :^)",10
+		dc.b	"SUFFIX",9,9,9,'add/sub ".pp" suffix to/from uncrunched/crunched files',10
+		dc.b	"DESTDIR dir",9,9,'save files to dir, "" for current dir',10
+		dc.b	"MINSIZE size",9,9,"file must at least have size bytes to be crunched",10
+		dc.b	"PRI pri",9,9,9,"set task priority to pri",10
+		dc.b	"FILE",9,9,9,"one or more filenames",10,10,0
+		even
+
+
+
+	SECTION	APPDOStorage,BSS
+
+storage
+		ds.b	INTERNAL_LENGTH
+
+
+		END

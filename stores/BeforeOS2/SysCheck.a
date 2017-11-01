@@ -1,0 +1,193 @@
+; **********************************************************************
+; *                                                                    *
+; * Ecco un programma che controlla se vengono alterati alcuni vettori *
+; * di sistema. Grazie a Enigma!                                       *
+; *                                                                    *
+; * A program which check if system's vectors are alterate. Thanks to  *
+; * Enigma!                                                            *
+; *                                                                    *
+; **********************************************************************
+
+		movea.l	4,a6
+		clr.l	d0
+		lea	INTName(pc),a1
+		jsr	-552(a6)
+		move.l	d0,INTBase
+		beq	exit0
+		clr.l	d0
+		lea	GFXName(pc),a1
+		jsr	-552(a6)
+		move.l	d0,GFXBase
+		beq	exit1
+		bra	PrgSegST
+
+exit3		movea.l	INTBase,a6
+		move.l	MyWin,a0
+		jsr	-72(a6)
+exit2		movea.l	4,a6
+		move.l	GFXBase,a1
+		jsr	-414(a6)
+exit1		move.l	INTBase,a1
+		jsr	-414(a6)
+exit0		rts
+
+INTName		dc.b	'intuition.library',0
+		cnop	0,4
+GFXName		dc.b	'graphics.library',0
+		cnop	0,4
+INTBase		dc.l	0
+GFXBase		dc.l	0
+MyWin		dc.l	0
+Window		dc.w	10,10,300,160
+		dc.b	3,2
+		dc.l	$200
+		dc.l	2!8
+		dc.l	0,0,titolo,0,0
+		dc.w	0,0,0,0,1
+titolo		dc.b	'SysController by Mauro Panigada',0
+		cnop	0,4
+
+PrgSegST	movea.l	INTBase,a6
+		lea	Window(pc),a0
+		jsr	-204(a6)
+		move.l	d0,MyWin
+		beq	exit2
+		move.l	d0,a3
+		move.l	a3,a0
+		move.l	50(a0),a0
+		move.l	a0,RastPort
+		move.l	86(a3),a3
+		move.l	a3,UserPort
+		move.l	MyWin,a0
+		lea	titolo(pc),a1
+		lea	stitol(pc),a2
+		jsr	-276(a6)
+		bra	SysCheck
+		rts
+
+RastPort	dc.l	0
+UserPort	dc.l	0
+stitol		dc.b	'SysController V1.0  ©1991  by Mauro Panigada',0
+		cnop	0,4
+
+SysCheck	movea.l	4,a6
+		move.l	UserPort,a0
+		jsr	-372(a6)
+		tst.l	d0
+		bne	CloseAll
+		tst.l	554(a6)
+		bne	KCS
+.2		tst.l	550(a6)
+		bne	KTP
+.3		tst.l	546(a6)
+		bne	KMP
+.4		tst.l	46(a6)
+		bne	CoolC
+.5		tst.l	42(a6)
+		bne	ColdC
+.6		tst.l	50(a6)
+		bne	WarmC
+.7		bra	SysCheck
+		
+
+CloseAll	move.l	d0,a1
+		jsr	-378(a6)
+		bra	exit3
+
+KCS		movea.l	GFXBase,a6
+		move.l	RastPort,a1
+		moveq.l	#20,d0
+		moveq.l	#20,d1
+		jsr	-240(a6)
+		move.l	RastPort,a1
+		lea	KCS.msg(pc),a0
+		moveq.l	#KCS.len,d0
+		jsr	-60(a6)
+		movea.l	4,a6
+		bra	.2
+
+KCS.msg		dc.b	'KickCheckSum is alterate.'
+KCS.len		EQU	*-KCS.msg
+		cnop	0,4
+
+KTP		movea.l	GFXBase,a6
+		move.l	RastPort,a1
+		moveq.l	#20,d0
+		moveq.l	#40,d1
+		jsr	-240(a6)
+		move.l	RastPort,a1
+		lea	KTP.msg(pc),a0
+		moveq.l	#KTP.len,d0
+		jsr	-60(a6)
+		movea.l	4,a6
+		bra	.3
+
+KTP.msg		dc.b	'KickTagPtr is alterate.'
+KTP.len		EQU	*-KTP.msg
+		cnop	0,4
+
+KMP		movea.l	GFXBase,a6
+		move.l	RastPort,a1
+		moveq.l	#20,d0
+		moveq.l	#60,d1
+		jsr	-240(a6)
+		move.l	RastPort,a1
+		lea	KMP.msg(pc),a0
+		moveq.l	#KMP.len,d0
+		jsr	-60(a6)
+		movea.l	4,a6
+		bra	.4
+
+KMP.msg		dc.b	'KickTagPtr is alterate.'
+KMP.len		EQU	*-KMP.msg
+		cnop	0,4
+
+CoolC		movea.l	GFXBase,a6
+		move.l	RastPort,a1
+		moveq.l	#20,d0
+		moveq.l	#80,d1
+		jsr	-240(a6)
+		move.l	RastPort,a1
+		lea	CoolC.msg(pc),a0
+		moveq.l	#CoolC.len,d0
+		jsr	-60(a6)
+		movea.l	4,a6
+		bra	.5
+
+CoolC.msg	dc.b	'CoolCapture is alterate.'
+CoolC.len	EQU	*-CoolC.msg
+		cnop	0,4
+
+ColdC		movea.l	GFXBase,a6
+		move.l	RastPort,a1
+		moveq.l	#20,d0
+		moveq.l	#100,d1
+		jsr	-240(a6)
+		move.l	RastPort,a1
+		lea	ColdC.msg(pc),a0
+		moveq.l	#ColdC.len,d0
+		jsr	-60(a6)
+		movea.l	4,a6
+		bra	.6
+
+ColdC.msg	dc.b	'ColdCapture is alterate.'
+ColdC.len	EQU	*-ColdC.msg
+		cnop	0,4
+
+WarmC		movea.l	GFXBase,a6
+		move.l	RastPort,a1
+		moveq.l	#20,d0
+		moveq.l	#120,d1
+		jsr	-240(a6)
+		move.l	RastPort,a1
+		lea	WarmC.msg(pc),a0
+		moveq.l	#WarmC.len,d0
+		jsr	-60(a6)
+		movea.l	4,a6
+		bra	.7
+
+WarmC.msg	dc.b	'WarmCapture is alterate.'
+WarmC.len	EQU	*-WarmC.msg
+		cnop	0,4
+
+		END

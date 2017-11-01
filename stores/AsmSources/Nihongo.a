@@ -1,0 +1,974 @@
+;
+; Nihongo
+; written by Mauro Panigada
+;
+; $VER: Nihongo.a by Mauro Panigada
+;
+; Started: 1997-03-13
+; Finished: 1997-XX-XX
+;
+; Purpose: a remake of a game (JapanVoc), which imploded is
+;          too long (135464 bytes) related with what it does.
+;
+; This program has no the main purpose of replacing original one,
+; but only to do something shorter und schneller which in multitasking
+; workbench screen works (640x256x2, because poor me I've only OCS, and
+; topaz.font)
+; (tanto it's only for me and this system...)
+;
+; (this I can say: KORE O TOTTE KUDASAI!)
+;
+; Note. Without using TempFont/nihongo.font strange symbols will
+;       appear for long vowels (a, o, u, e, i with a line). I convert
+;       it into a conventional way for long-vowels writing:
+;       (taken from how normally with hiragana they make long them)
+;       aa, ou, uu, ei, ii. 
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+
+		include	"intuition/intuition.i"
+		include	"intuition/intuition_lib.i"
+
+		include	"dos/dos_lib.i"
+		include	"dos/dos.i"
+
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i
+
+
+_LVOPPLoadData		EQU	-30
+
+
+
+	STRUCTURE Riservata,0
+		LONG	_execbase		; libraries' bases
+		LONG	_intuitionbase
+		LONG	_dosbase
+		LONG	_gadtoolsbase
+		LONG	_powerpackerbase
+
+		LONG	_publicscreen	; public screen
+		LONG	_visualinfo	; visual info (for gadtools)
+		WORD	_barheight	; height of the bar (font dependent)
+
+		LONG	_glist		; gadtools gadget list
+		LONG	_window
+		LONG	_rastport	; window rast port
+		LONG	_userport	; window user port
+
+		LONG	_sfont		; topaz.font
+
+		LONG	_filelength	; wordsfile length
+
+		LONG	_wordshook	; ptr to first words struct
+		LONG	_nextword	; ptr to next (prev)
+		WORD	_truenumber	; the right answer
+
+		WORD	_right		; how many right
+		WORD	_wrong		; how many wrong
+
+		LONG	_class		; from intuimessage
+		WORD	_code
+		LONG	_address
+
+		LONG	_seed
+
+		LONG	_espleta
+
+		STRUCT	_firstword,32	; choiced words. One of this
+		STRUCT	_secondword,32	; MUST be the right one (!)
+		STRUCT	_thirdword,32
+		STRUCT	_fourthword,32
+
+		LONG	_gaddy1		; answer gadgets
+		LONG	_gaddy2
+		LONG	_gaddy3
+		LONG	_gaddy4
+
+		LONG	_ni_eng		; flag: true=ni/eng; false=eng/ni
+		LONG	_memory		; allocated memory (for wordsfile)
+
+		LABEL	Store_SIZE
+
+
+call		MACRO			; I don't like "call" can be
+		jsr	_LVO\1(a6)	; confused with a mnemonic istr,
+		ENDM			; but it's faster (no shift...)
+
+
+stov		MACRO
+		move.\0	\1,_\2(a5)
+		ENDM
+
+pos		MACRO
+		lea	_\1(a5),\2
+		ENDM
+
+putv		MACRO
+		move.\0	_\1(a5),\2
+		ENDM
+
+clv		MACRO
+		clr.\0	_\1(a5)
+		ENDM
+
+
+
+openlib		MACRO
+		lea	\1name(pc),a1
+		moveq	#\2,d0
+		call	OpenLibrary
+		stov.l	d0,\1base
+		beq	exit
+		ENDM
+
+closelib	MACRO
+		putv.l	\1base,a1
+		call	CloseLibrary
+		ENDM
+
+base		MACRO
+		putv.l	\1base,a6
+		ENDM
+
+execbase	MACRO
+		move.l	(a5),a6
+		ENDM
+
+tstv		MACRO
+		tst.\0	_\1(a5)
+		ENDM
+
+gea		MACRO
+		IFEQ	NARG-2
+		lea	\1(pc),a0
+		move.l	a0,\2
+		ELSE
+		lea	\1(pc),a0
+		ENDC
+		ENDM
+
+
+NEWGAD		MACRO
+		dc.w	\1,\2,\3,\4
+		dc.l	\5,0
+		dc.w	0
+		dc.l	\6,0,\7
+		ENDM
+
+DEFGAD		MACRO
+		IFEQ	NARG-1
+		dc.l	-1
+		ELSE
+		dc.l	\1,\2,\3,0
+		ENDC
+		ENDM
+
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+SEEDVALUE	EQU	$431bdaf3
+
+
+
+DEBUG		EQU	1
+
+
+
+		SECTION	Principale,CODE
+
+		bra	start
+
+		dc.b	"$VER: "
+		dc.b	"NihongoQuest by Mauro Panigada "
+		dc.b	"never released",0
+		even
+start
+		lea	store,a5
+		move.l	4.w,a6
+		move.l	a6,(a5)
+
+		openlib	dos,37
+		openlib	intuition,37
+		openlib	gadtools,37
+		openlib	powerpacker,0
+
+		base	intuition
+		suba.l	a0,a0
+		call	LockPubScreen
+		stov.l	d0,publicscreen
+		beq	exit
+
+		move.l	d0,a0
+		suba.l	a1,a1
+		base	gadtools
+		call	GetVisualInfoA
+		stov.l	d0,visualinfo
+		beq	exit
+
+		bsr	dogadget
+
+
+		base	intuition
+		suba.l	a0,a0
+		lea	windowtag(pc),a1
+		gea	wingadgets
+		putv.l	glist,(a0)
+		gea	winpubscreen
+		putv.l	publicscreen,(a0)
+		call	OpenWindowTagList
+		stov.l	d0,window
+		beq	exit
+
+		move.l	d0,a1
+		stov.l	wd_UserPort(a1),userport
+		stov.l	wd_RPort(a1),rastport
+
+		move.l	a1,a3
+		putv.l	glist,a0
+		suba.l	a2,a2
+		moveq	#-1,d0
+		call	RefreshGList
+		base	gadtools
+		move.l	a3,a0
+		suba.l	a1,a1
+		call	GT_RefreshWindow
+
+		base	intuition
+		putv.l	window,a0
+		lea	easyreq(pc),a1
+		suba.l	a2,a2
+		suba.l	a3,a3
+		call	EasyRequestArgs
+
+		tst.b	d0
+		beq	exit
+		cmp.b	#1,d0
+		beq.s	ni_eng
+
+		stov.l	#TRUE,ni_eng
+		bra.s	skip0
+
+ni_eng		clv.l	ni_eng		; =FALSE -> eng_nihongo
+skip0
+
+			;base	dos
+			;gea	vocaname,d1
+			;move.l	#MODE_OLDFILE,d2
+			;call	Open
+
+handler		EQUR	d7
+
+			;move.l	d0,handler
+			;beq	exit
+
+			;move.l	d0,d1
+			;moveq	#0,d3
+			;move.l	#OFFSET_BEGINNING,d2
+			;call	Seek
+			;move.l	handler,d1
+			;moveq	#0,d3
+			;moveq	#OFFSET_END,d2
+			;call	Seek
+			;move.l	handler,d1
+			;moveq	#0,d3
+			;moveq	#OFFSET_BEGINNING,d2
+			;call	Seek
+			;stov.l	d0,filelength
+
+			;execbase
+			;moveq	#MEMF_ANY,d1
+			;call	AllocMem
+			;stov.l	d0,memory
+			;beq	exit
+
+			;move.l	d0,d2
+			;putv.l	filelength,d3
+			;move.l	handler,d1
+			;base	dos
+			;call	Read
+
+			;move.l	handler,d1
+			;call	Close
+
+		base	dos
+		gea	seedname,d1
+		move.l	#MODE_OLDFILE,d2
+		call	Open
+		tst.l	d0
+		beq.s	main_noseed
+
+		move.l	d0,d1
+		move.l	d1,d4
+		pos	seed,a0
+		move.l	a0,d2
+		moveq	#4,d3
+		call	Read
+
+		move.l	d4,d1
+		call	Close
+		bra.s	main_seedset
+
+main_noseed	stov.l	#SEEDVALUE,seed
+
+main_seedset	base	powerpacker
+		pos	memory,a1
+		pos	filelength,a2
+		moveq	#2,d0
+		moveq	#MEMF_ANY,d1
+		gea	vocaname
+		call	PPLoadData
+		tst.l	d0
+		bmi	exit
+
+		bsr	create100	; gets 100 words/+50 (confusion!)
+		stov.l	d0,wordshook
+		IFNE	DEBUG-1
+		beq	exit
+		ENDC
+
+		execbase
+		putv.l	memory,a1
+		putv.l	filelength,d0
+		call	FreeMem
+
+		base	gadtools
+		gea	g4_tag
+		clr.l	4(a0)		; GA_Disabled to FALSE
+		moveq	#5-1,d7
+		lea	glist(pc),a4
+lippo		lea	g4_tag(pc),a3
+		move.l	12(a4),a0
+		putv.l	window,a1
+		suba.l	a2,a2
+		call	GT_SetGadgetAttrsA
+		lea	16(a4),a4
+		dbf	d7,lippo
+
+		pos	gaddy1,a1	; memorize answergadget
+		moveq	#4-1,d7
+		lea	glist(pc),a4
+loppo		move.l	12(a4),a0
+		move.l	a0,(a1)+
+		lea	16(a4),a4
+		dbf	d7,loppo
+
+
+
+	STRUCTURE	words,0
+		LABEL	words_next
+		LONG	words_prev
+		LONG	words_english
+		LONG	words_nihongo
+		WORD	words_flag
+		LABEL	words_SIZE
+
+
+		lea	getw_4eng(pc),a4
+		tstv.l	ni_eng
+		bmi.s	giusto
+		lea	getw_4go(pc),a4
+giusto
+
+geppu		stov.l	a4,espleta
+		putv.l	wordshook,a3
+		stov.l	a3,nextword
+
+geppu_o_shiro
+		bsr	display
+		putv.l	nextword,a3
+
+		putv.l	espleta,a4
+		jsr	(a4)	; get english/nihongo word
+; in these subroutines it puts the true word (traslation) in the
+; buffers above (xxxwords), and then three false words taken from
+; the several words, without hard criteria...
+;
+
+
+
+ILINE		EQU	11
+
+		IFEQ	DEBUG-1
+		bsr	fillin
+		ENDC
+
+			;pos	firstword,a4
+			;putv.l	gaddy1,a1
+
+
+		bsr	yotsugad
+
+
+			;pos	secondword,a4
+			;putv.l	gaddy2,a1
+			;bsr	yotsugad
+			;putv.l	gaddy3,a1
+			;pos	thirdword,a4
+			;bsr	yotsugad
+			;putv.l	gaddy4,a1
+			;pos	fourthword,a4
+			;bsr	yotsugad
+
+
+luppa0		execbase
+		putv.l	userport,a0
+		call	WaitPort
+		putv.l	userport,a0
+		base	gadtools
+		call	GT_GetIMsg
+		tst.l	d0
+		beq.s	luppa0
+		move.l	d0,a1
+		stov.l	im_Class(a1),class
+		stov.w	im_Code(a1),code
+		stov.l	im_IAddress(a1),address
+		call	GT_ReplyIMsg
+
+*»» process messages
+
+		putv.l	class,d0
+		cmp.l	#IDCMP_CLOSEWINDOW,d0
+		beq	exit
+		cmp.l	#IDCMP_REFRESHWINDOW,d0
+		beq	refreshing
+		cmp.l	#IDCMP_GADGETUP,d0
+		bne	luppa0
+
+siti		putv.l	address,a0
+		move.w	gg_GadgetID(a0),d0
+		cmp.w	#4,d0
+		beq.s	helpro
+		subq.w	#1,d0
+		putv.w	truenumber,d1
+		cmp.w	d0,d1
+		bne.s	addwrong
+
+addright	addq.w	#1,_right(a5)
+addung		putv.l	nextword,a3
+		stov.l	words_prev(a3),nextword
+		bra	geppu_o_shiro
+
+addwrong	addq.w	#1,_wrong(a5)
+		bra.s	addung
+
+helpro		bsr	helper
+		bra.s	addwrong
+
+refreshing	base	gadtools
+		putv.l	window,a0
+		call	GT_BeginRefresh
+		putv.l	window,a0
+		moveq	#-1,d0
+		call	GT_EndRefresh
+		bra	geppu_o_shiro
+
+
+
+
+exit
+
+		base	dos
+		gea	seedname,d1
+		move.l	#MODE_NEWFILE,d2
+		call	Open
+		tst.l	d0
+		beq.s	ex_45
+		move.l	d0,d1
+		move.l	d0,d4
+		moveq	#4,d3
+		pos	seed,a0
+		move.l	a0,d2
+		call	Write
+		move.l	d4,d1
+		call	Close
+
+ex_45
+		bsr	destroy100
+
+		putv.l	window,d0
+		beq.s	ex_2
+		base	intuition
+		move.l	d0,a0
+		call	CloseWindow
+ex_2
+
+		putv.l	glist,d0
+		beq.s	ex_14
+		base	gadtools
+		move.l	d0,a0
+		call	FreeGadgets
+ex_14
+
+
+		putv.l	visualinfo,d0
+		beq.s	ex_0
+		move.l	d0,a0
+		base	gadtools
+		call	FreeVisualInfo
+ex_0
+		putv.l	publicscreen,d0
+		beq.s	ex_1
+		move.l	d0,a1
+		base	intuition
+		suba.l	a0,a0
+		call	UnlockPubScreen
+ex_1
+
+		execbase
+		closelib dos
+		closelib intuition
+		closelib gadtools
+		closelib powerpacker
+		rts
+
+
+
+;··································································
+;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+RANDOM		MACRO
+		nop
+		;generate a pseudorandom number in a range (d0)
+		; the seed will be seed file, if it doesn't exist,
+		; there is a fixed startvalue.
+		ENDM
+
+ALLOCWNODE	MACRO
+		move.l	#MEMF_ANY,d1
+		move.l	#words_SIZE,d0
+		call	AllocMem
+		ENDM
+
+FIRSTPOS	EQU	8-1		; 8-35 (7-34)
+SECONDPOS	EQU	37-1		; 37-lf (36-lf)
+
+create100
+		bsr	countwords
+		move.l	d1,d4		; d4=limits for random
+
+		bsr	generatefaster
+
+		moveq	#150-1,d7		; words number
+		putv.l	memory,a4
+
+		pos	wordshook,a3
+
+c100_loop
+		ALLOCWNODE
+		tst.l	d0
+		beq	c100_error
+		move.l	d0,(a3)		; a3=prev struct
+		move.l	d0,a3
+
+c100_skip	RANDOM	d4
+				;d0 is the number
+		lsl.l	#4,d0	; do is the offset
+		putv.l	faster,a0
+		move.l	(a0,d0),a0	; a0=*word
+		cmp.b	#"*",(a0)
+		beq.s	c100_skip
+		move.b	#"*",(a0)
+		add.l	#FIRSTPOS,a0
+		move.l	a0,words_english(a3)
+		add.l	#SECONDPOS-FIRSTPOS,a0
+		move.l	a0,words_nihongo(a3)
+
+		dbf	d7,c100_loop
+
+
+		rts
+
+c100_error	lea	4(sp),sp
+		bra	exit
+
+
+countwords	putv.l	memory,a0
+		putv.l	filelength,d0
+		adda.l	d0,a0
+		sub.l	#2,a0		;ptr to the lf, file ender
+cw_loop		cmp.b	#10,-(a0)
+		bne.s	cw_loop
+		moveq	#0,d0
+		add.l	#1,a0		; cerca un po' macchinosamente
+		moveq	#0,d1		; (alla Turing) e stupidamente
+cw_loop2	move.b	(a0)+,d0	; l'inizio dell'ultima riga
+		cmp.b	#" ",d0
+		beq.s	cw_ende
+		sub.b	#"0",d0
+		add.l	d0,d1
+		move.l	d1,d2
+		lsl.l	#3,d1
+		add.l	d2,d2
+		add.l	d2,d1	; *10
+		bra.s	cw_loop2
+cw_ende		;divu	#10,d1	; dovrebbe uscire moltiplicato per 10^(n+1)
+		rts
+		
+
+
+;::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+destroy100	rts
+
+
+;··································································
+;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+getw_4eng	rts
+
+;··································································
+;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+getw_4go	rts
+
+
+;*********************************************************************
+;..............................................................
+display		rts
+
+;:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+;.............................................................
+helper		rts
+
+
+;LLLLLLLLLLLLL
+;LLL LLLLL LLL
+;LLL  LLL  LLL
+;LLL L L L LLL
+;LLL LLLLL LLL
+;LLLLLLLLLLLLL
+
+dogadget
+		putv.l	publicscreen,a0
+		moveq	#0,d6
+		move.b	sc_BarHeight(a0),d6
+		ext.w	d6
+		stov.w	d6,barheight
+		base	gadtools
+		lea	_glist(a5),a0
+		call	CreateContext
+		lea	glist(pc),a4
+		gea	sfont
+		stov.l	a0,sfont
+		moveq	#0,d7
+cgad_loop	tst.l	d0
+		beq	exit
+		move.l	d0,a0
+		move.l	(a4),d0
+		bmi.s	cgad_end
+		move.l	4(a4),a1
+		putv.l	visualinfo,gng_VisualInfo(a1)
+		putv.l	sfont,gng_TextAttr(a1)
+		add.w	d6,gng_TopEdge(a1)
+		move.w	d7,gng_GadgetID(a1)
+		addq.w	#1,d7
+		move.l	8(a4),a2
+		call	CreateGadgetA
+		move.l	d0,12(a4)
+		lea	16(a4),a4
+		bra.s	cgad_loop
+cgad_end
+		rts
+
+
+;·······························································
+;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+YVER		EQU	1
+; 0 the first one, that does not work
+; 1 the third one, sperimental and it makes system busy
+; 2 unfinished stupid idea
+
+yotsugad
+
+; --- 2 ----------------------------- UNFINISHED VERSION -----
+		IFEQ	YVER-2
+		move.l	a1,-(sp)	; added gadget
+		lea	glist(pc),a0
+		move.l	d0,d1
+		lsl.w	#2,d0
+		lsl.w	#1,d1
+		add.w	d0,d1	; d1=d0*12
+		move.l	(a0,d1.w),a0
+		move.l	a0,-(sp)	; base gadget with its info
+		ENDC
+
+; --- 1 ------------------------------ WORK -----+----- SELECTED! -----+
+		IFEQ	YVER-1			;| Problem: it is      |
+		move.l	a1,-(sp)		;| bad written, and    |
+		bsr	discardgad		;| grafically you will |
+		gea	GAD1TEXT		;| see a 'flicker'.    |
+		pos	firstword,a1		;| Does it exist better|
+		move.l	a1,(a0)			;| solution?           |
+		gea	GAD2TEXT		;+---------------------+
+		pos	secondword,a1
+		move.l	a1,(a0)
+		gea	GAD3TEXT
+		pos	thirdword,a1
+		move.l	a1,(a0)
+		gea	GAD4TEXT
+		pos	fourthword,a1
+		move.l	a1,(a0)
+		bsr	dogadget
+		tst.l	d0
+		beq	exits
+		base	intuition
+		putv.l	window,a0
+		putv.l	glist,a1
+		moveq	#-1,d0	; position: last
+		moveq	#-1,d1
+		suba.l	a2,a2
+		call	AddGList
+		putv.l	glist,a0
+		putv.l	window,a1
+		suba.l	a2,a2
+		moveq	#-1,d0
+		call	RefreshGList
+		base	gadtools
+		putv.l	window,a0
+		suba.l	a1,a1
+		call	GT_RefreshWindow
+		addq.l	#4,sp
+		ENDC
+
+; --- 0 --------------------------------- THIS DOES NOT WORK -----
+		IFEQ	YVER
+		base	intuition
+		move.l	a1,-(sp)
+		putv.l	window,a0
+		call	RemoveGadget
+		move.l	d0,d7
+		move.l	(sp),a1
+		move.l	a4,gg_GadgetText(a1)
+		putv.l	window,a0
+		move.l	d7,d0
+		call	AddGadget
+		move.l	(sp)+,a0
+		putv.l	window,a1
+		suba.l	a2,a2
+		moveq	#1,d0
+		call	RefreshGList
+		base	gadtools
+		putv.l	window,a0
+		suba.l	a1,a1
+		call	GT_RefreshWindow
+		ENDC
+
+		rts
+
+exits		addq.l	#4,sp
+		bra	exit
+
+
+		IFEQ	YVER-1
+
+discardgad
+		putv.w	barheight,d0
+		gea	gadget0
+		sub.w	d0,gng_TopEdge(a0)
+		gea	gadget1
+		sub.w	d0,gng_TopEdge(a0)
+		gea	gadget2
+		sub.w	d0,gng_TopEdge(a0)
+		gea	gadget3
+		sub.w	d0,gng_TopEdge(a0)
+		gea	gadget4
+		sub.w	d0,gng_TopEdge(a0)
+		gea	gadget5
+		sub.w	d0,gng_TopEdge(a0)
+		gea	gadget6
+		sub.w	d0,gng_TopEdge(a0)
+
+; this adjust is a need: better it can be if I do not do the ADD in the
+; dogadget routine, but before in the main, so that it is a done action
+; which will not be done twice... (did you understand?!)
+
+		base	intuition
+		putv.l	window,a0
+		putv.l	glist,a1
+		moveq	#-1,d0
+		call	RemoveGList
+
+		putv.l	glist,a0
+		base	gadtools
+		call	FreeGadgets
+		clv.l	glist
+		rts
+
+		ENDC
+
+;******************************************** DEBUG TOOLS ************
+
+		IFEQ	DEBUG-1
+
+fillin		lea	terk0(pc),a1
+		pos	firstword,a0
+		bsr	copyl
+		lea	terk1(pc),a1
+		pos	secondword,a0
+		bsr	copyl
+		lea	terk2(pc),a1
+		pos	thirdword,a0
+		bsr	copyl
+		lea	terk3(pc),a1
+		pos	fourthword,a0
+		bsr	copyl
+		rts
+
+copyl		tst.b	(a1)
+		beq.s	copylend
+		move.b	(a1)+,(a0)+
+		bra.s	copyl
+copylend	clr.b	(a0)
+		rts
+
+terk0		dc.b	"dikku o taberu",0
+		even
+terk1		dc.b	"onna",0
+		even
+terk2		dc.b	"onna no mono",0
+		even
+terk3		dc.b	"kamikirimushi",0
+		even
+
+		ENDC
+
+
+
+*»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»
+*»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»»
+
+dosname		dc.b	"dos.library",0
+		even
+gadtoolsname	dc.b	"gadtools.library",0
+		even
+intuitionname	dc.b	"intuition.library",0
+		even
+powerpackername	dc.b	"powerpacker.library",0
+		even
+
+sfont		dc.l	topazname
+		dc.w	8
+		dc.b	FS_NORMAL,FPF_ROMFONT
+topazname	dc.b	"topaz.font",0
+		even
+
+
+WinIDCMP	EQU	BUTTONIDCMP|IDCMP_CLOSEWINDOW
+
+dimX		EQU	352
+dimY		EQU	83
+
+
+windowtag	dc.l	WA_Left,(640-dimX)/2
+		dc.l	WA_Top,(256-dimY)/2
+		dc.l	WA_Width,dimX
+		dc.l	WA_Height,dimY
+		dc.l	WA_IDCMP,WinIDCMP
+		dc.l	WA_Gadgets
+wingadgets	dc.l	0
+		dc.l	WA_PubScreen
+winpubscreen	dc.l	0
+		dc.l	WA_Title,wintitle
+		dc.l	WA_SizeGadget,FALSE
+		dc.l	WA_Activate,TRUE
+		dc.l	WA_ScreenTitle,scrtitle
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	WA_DragBar,TRUE
+		dc.l	WA_DepthGadget,TRUE
+		dc.l	WA_CloseGadget,TRUE
+		dc.l	TAG_END
+
+
+wintitle	dc.b	"NihongoQuest by MP/MP",0
+scrtitle	dc.b	"NihongoQuest (c) 1997 by Mauro Panigada",0
+		even
+
+
+easyreq		dc.l	EasyStruct_SIZEOF
+		dc.l	0
+		dc.l	reqtitle,reqtext,reqgads
+
+reqtitle	dc.b	"NihongoQuester!",0
+reqtext		dc.b	"Select your choice:",0
+reqgads		dc.b	"Nihongo-English|English-Nihongo|Nothing",0
+		even
+
+
+glist		DEFGAD	BUTTON_KIND,gadget0,g0_tag	;0 risposta 0
+		DEFGAD	BUTTON_KIND,gadget1,g1_tag	;1    ..
+		DEFGAD	BUTTON_KIND,gadget2,g2_tag	;     ..
+		DEFGAD	BUTTON_KIND,gadget3,g3_tag	; risposta 3
+		DEFGAD	BUTTON_KIND,gadget4,g4_tag	; help
+		DEFGAD	TEXT_KIND,gadget5,g5_tag	; parola indovinanda
+		DEFGAD	TEXT_KIND,gadget6,g6_tag	; %right %wrong
+		DEFGAD	END
+
+
+g0_tag
+g1_tag
+g2_tag
+g3_tag
+g4_tag		dc.l	GA_Disabled,TRUE
+		dc.l	TAG_END
+
+g5_tag		dc.l	GTTX_Text,firsttext
+		dc.l	GTTX_Border,TRUE
+		dc.l	GTTX_Justification,GTJ_LEFT
+		dc.l	TAG_END
+
+g6_tag		dc.l	GTTX_Text,secondtext
+		dc.l	GTTX_Border,TRUE
+		dc.l	GTTX_Justification,GTJ_CENTER
+		dc.l	TAG_END
+
+
+
+xdim		EQU	340
+ydim		EQU	11
+
+xpos		EQU	6
+ypos		EQU	14
+
+RGAD		MACRO
+		NEWGAD	xpos+\1,ypos+\2,xdim+\3,ydim+\4,\5,\6,\7
+		ENDM
+
+GAD1TEXT	EQU	*+8
+gadget0		NEWGAD	xpos,ypos,xdim,ydim,0,PLACETEXT_IN,0
+GAD2TEXT	EQU	*+8
+gadget1		RGAD	0,11,0,0,0,PLACETEXT_IN,0
+GAD3TEXT	EQU	*+8
+gadget2		RGAD	0,22,0,0,0,PLACETEXT_IN,0
+GAD4TEXT	EQU	*+8
+gadget3		RGAD	0,33,0,0,0,PLACETEXT_IN,0
+gadget4		RGAD	(xdim-40),44,(-xdim+40),0,g4_text,PLACETEXT_IN,0
+gadget5		RGAD	0,-11,0,0,0,0,0
+gadget6		RGAD	0,44,-40,0,0,0,0
+
+firsttext
+g0_text		dc.b	" ",0
+g4_text		dc.b	"Help",0
+		even
+secondtext	dc.b	"Right: "
+righttx		dc.b	"  0"
+		dc.b	"   Wrong: "
+wrongtx		dc.b	"  0"
+		dc.b	"   H: "
+helptx		dc.b	"0",0
+		even
+
+vocaname	dc.b	"progdir:words",0
+		even
+
+
+
+		SECTION	Storaggio,BSS
+
+store		ds.b	Store_SIZE
+
+		END

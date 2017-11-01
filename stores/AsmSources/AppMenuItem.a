@@ -1,0 +1,94 @@
+;
+; AppMenuItem v1.0
+; written by Mauro Panigada
+;
+; $VER: AppMenuItem.a v1.0 (1996-07-23) by Mauro Panigada
+;
+; STARTED: 1996-07-23
+; FINISHED: 1996-07-24
+;
+; PURPOSE: Just another example translated from AmigaE to Asm. Simplified.
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"workbench/workbench_lib.i"
+
+
+		bra.s	start
+
+		dc.b	"$VER: AppMenuItem v1.0 (1996-07-23) "
+		dc.b	"by Mauro Panigada",0
+		even
+
+start		lea	wbname(pc),a1
+		moveq	#37,d0
+		move.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq	sayonara
+		move.l	d0,a5
+
+		jsr	_LVOCreateMsgPort(a6)
+		move.l	d0,d6
+		beq	closelib
+
+		move.l	a5,a6
+		moveq	#0,d0
+		move.l	d0,d1
+		lea	name(pc),a0
+		move.l	d6,a1
+		suba.l	a2,a2
+		jsr	_LVOAddAppMenuItemA(a6)
+		move.l	d0,d7
+		beq	destroyport
+
+		move.l	4.w,a6
+nomsg		move.l	d6,a0
+		jsr	_LVOWaitPort(a6)
+
+; Here do beep.
+
+		move.l	d6,a0
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	nomsg
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+
+; skip unuseful messages.
+
+loopmsg		move.l	d6,a0
+		jsr	_LVOGetMsg(a6)
+		tst.l	d0
+		beq.s	okmsg
+		move.l	d0,a1
+		jsr	_LVOReplyMsg(a6)
+		bra.s	loopmsg
+
+okmsg		move.l	d7,a0
+		move.l	a5,a6
+		jsr	_LVORemoveAppMenuItem(a6)
+
+destroyport	move.l	d6,a0
+		move.l	4.w,a6
+		jsr	_LVODeleteMsgPort(a6)
+
+closelib	move.l	a5,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+
+sayonara	rts
+
+
+wbname		dc.b	"workbench.library",0
+		even
+
+name		dc.b	"Kill me!",0
+		even
+
+
+
+		END

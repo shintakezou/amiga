@@ -1,0 +1,14 @@
+
+$VER: pwd.doc v1.0 (c) 1999 by Mauro Panigada
+
+pwd v1.0
+========
+
+(c) 1999 by Mauro Panigada
+
+pwd stands for Print Work Directory, known tool for Unix system users.
+Simply write to std output the work directory... I believe you are using
+a complex CLI prompt that show you current dir always.... Nice.
+
+
+

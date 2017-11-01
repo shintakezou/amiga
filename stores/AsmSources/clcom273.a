@@ -1,0 +1,407 @@
+;
+; clcom v2.73     -- OR: xcom v2.73 (v1.0)
+; written by Mauro Panigada
+;
+; $VER: clcom.a v2.73 (c) 1997 by Mauro Panigada
+;
+; Opened: 1997-04-14
+; Closed: 1997-04-14
+;
+; History: 1997-04-10   v1.0 finished.
+;          1997-04-11   fixed behavior when QUIET flag specified, now
+;                       always print the error.
+;          1997-04-11   v2.0, multiple patternmatching only for <TO/A/M>
+;          1997-04-14   v2.73, see additional notes
+;
+; Note: it is pure. It needs OS3.0
+;
+; Purpose: it clone a comment from a file to anothers. Useful when
+;   you want to give the same comment to many files (or 1).
+;
+; ** v1.0 **
+;
+; Template: FROM/A,TO/A/M,C=COMMENT/K,QUIET/S
+;
+; FROM/A: the file which the comment will be cloned from.
+; TO/A/M: the file(s) which the comment will be setted to.
+; C=COMMENT/K: the comment itself. If this keyword is written, the
+;              <FROM> file and the <TO> file(s) will become the same
+;              thing, and to all these that comment will be setted.
+; QUIET/S: do it silently
+;
+; Strange things: if you set QUIET flag, you will see, in spite of it,
+;   message errors if errors happened. See history.
+;
+; What can be made better: the error messages can be more. Now only
+;   few 'error-points' are really treated and the user can know them.
+;   In other case you ask: why does it exit? (but always return value
+;   in d0 setted)
+;
+; * To do: patternmatching in the multiple args (and in <from> file
+;          only if the comment keywords is selected). See history,
+;          v2.0 do it. - arranging code, it can be a bit shorter.
+;
+; ** v2.0 **
+;
+; Added patternmatching.
+;
+; ** v2.73 **
+;
+; New template: FILE/A/M,C=COMMENT/K,QUIET/S
+;
+; FILE/A/M: now this is an array of filename. If COMMENT is specified,
+;    that comment will be setted to all the typed files (or file), otherwise
+;    it clones the comment from the first file to the others, if only
+;    a file is specified, it shows its comment (as getcom).
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"dos/dosasl.i"
+
+
+stov		MACRO
+		move.\0	\1,_\2(a5)
+		ENDM
+
+putv		MACRO
+		move.\0	_\1(a5),\2
+		ENDM
+
+clrv		MACRO
+		clr.\0	_\1(a5)
+		ENDM
+
+tstv		MACRO
+		tst.\0	_\1(a5)
+		ENDM
+
+
+openlib		MACRO
+		lea	\1name(pc),a1
+		moveq	#\2,d0
+		call	OpenLibrary
+		stov.l	d0,\1base
+		beq	exit
+		ENDM
+
+closelib	MACRO
+		putv.l	\1base,a1
+		call	CloseLibrary
+		ENDM
+
+
+call		MACRO
+		IFEQ	NARG-1
+		jsr	_LVO\1(a6)
+		ELSE
+		putv.l	\2base,a6
+		jsr	_LVO\1(a6)
+		ENDC
+		ENDM
+
+base		MACRO
+		move.l	_\1base(a5),a6
+		ENDM
+
+
+
+
+	STRUCTURE reserved,0
+		LONG	_execbase
+		LONG	_dosbase
+
+		LABEL	_array
+		LABEL	_fileT
+		LONG	_toT		; now it is fileT
+		LONG	_commentT
+		LONG	_quiteT
+
+		LONG	_anchorpath
+
+		LONG	_comment
+
+		BYTE	_entryF
+		BYTE	_puddy
+
+		WORD	_puddy2
+
+		LABEL	reserved_size
+
+
+	SECTION	xcom,CODE
+
+			;moveq	#0,d7
+			;move.l	4.w,a6
+			;moveq	#reserved_size,d0
+			;move.l	#MEMF_ANY|MEMF_CLEAR,d1
+			;call	AllocMem
+			;move.l	d0,a5
+			;tst.l	d0
+			;beq.s	fexit
+			;move.l	a6,(a5)
+
+		move.l	sp,a4
+		moveq	#(reserved_size/4)-1,d0
+lclr		clr.l	-(sp)
+		dbf	d0,lclr
+		move.l	sp,a5
+		move.l	a4,-(sp)
+		move.l	4.w,a6
+		move.l	a6,(a5)
+
+		bsr	start
+
+		move.l	(sp),sp
+
+			;move.l	a5,a1
+			;moveq	#reserved_size,d0
+			;call	FreeMem,exec
+
+		move.l	d7,d0
+		rts
+
+fexit		;moveq	#RETURN_FAIL,d0
+		;rts
+
+		dc.b	"$VER: "
+		dc.b	"xcom 2.73 (1997.04.14) by Mauro Panigada",10,13
+		dc.b	0
+		even
+
+start
+		moveq	#0,d6
+		moveq	#0,d5
+		moveq	#0,d4
+
+		openlib	dos,39
+
+		move.l	d0,a6
+		lea	template(pc),a0
+		move.l	a0,d1
+		move.l	a5,d2
+		addq.l	#_array,d2
+		moveq	#0,d3
+		call	ReadArgs
+		move.l	d0,d6		; d6 =arg (rd arg)
+		bne.s	givenarg
+
+error0		call	IoErr
+		move.l	d0,d1		; really IoErr fill also d1, but
+		lea	tasky(pc),a0	; is not documented
+		move.l	a0,d2
+		call	PrintFault
+		moveq	#RETURN_ERROR,d7
+		bra	exit
+
+givenarg	move.l	#ap_SIZEOF+256,d0
+		move.l	#MEMF_ANY|MEMF_CLEAR,d1
+		move.l	(a5),a6
+		call	AllocVec
+		stov.l	d0,anchorpath
+		bne.s	okdo
+
+errorm		lea	tasky(pc),a0
+		move.l	a0,d1
+		call	PutStr,dos
+		lea	memerror(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		moveq	#RETURN_FAIL,d7
+		bra	exit
+		
+okdo		base	dos
+		putv.l	fileT,a3
+		tstv.l	commentT
+		beq.s	normal		; not a comment
+
+		putv.l	commentT,d2
+		stov.l	d2,comment
+
+			;putv.l	fromT,d1
+			;call	SetComment
+			;tst.l	d0
+			;bne.s	scok		; *****
+			;call	IoErr		; *****
+			;move.l	d0,d1		; *****
+			;putv.l	fromT,d2	; *****
+			;call	PrintFault	; *****
+			;moveq	#RETURN_WARN,d7	; *****
+scok			;tstv.l	quiteT		; *****
+			;bne.s	doit		; *****
+			;putv.l	fromT,d1
+			;call	PutStr
+			;lea	oktxt(pc),a0
+			;move.l	a0,d1
+			;call	PutStr
+
+		bra.s	doit
+
+normal
+		move.l	(a3)+,d1
+		moveq	#SHARED_LOCK,d2
+		call	Lock
+		move.l	d0,d5		; d5=<from>lock
+		beq.s	error0
+
+oklock		moveq	#DOS_FIB,d1
+		moveq	#0,d2
+		call	AllocDosObject
+		move.l	d0,d4		; d4=dos_fib
+		beq	exit
+
+		move.l	d4,d2
+		move.l	d5,d1
+		call	Examine
+		tst.l	d0
+		beq	error0
+
+		move.l	d4,d0
+		add.l	#fib_Comment,d0
+		stov.l	d0,comment
+
+		tst.l	(a3)
+		bne.s	doit
+
+		move.l	d0,d1
+		call	PutStr
+		lea	accapo(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		bra	exit
+
+
+doit		putv.l	comment,d3
+loop		move.l	#SIGBREAKF_CTRL_C,d1
+		call	CheckSignal
+		and.l	#SIGBREAKF_CTRL_C,d0
+		bne	brkerror
+		move.l	(a3)+,d1
+		beq	ended
+		move.l	d1,-(sp)
+		putv.l	anchorpath,a0
+		move.l	#SIGBREAKF_CTRL_C,ap_BreakBits(a0)
+		move.w	#256,ap_Strlen(a0)
+		clr.l	ap_FoundBreak(a0)
+		lea	ap_Buf(a0),a1
+		clr.b	(a1)
+		move.l	a0,d2
+		move.l	(sp)+,d1
+		clrv.b	entryF		; _entryF (flag) to 0
+		call	MatchFirst
+		tst.l	d0
+		beq.s	noerror9
+trueerr		cmp.b	#ERROR_NO_MORE_ENTRIES,d0
+		beq.s	faend
+		cmp.w	#ERROR_BREAK,d0
+		beq	brkerror
+		move.l	d0,d1
+		lea	tasky(pc),a0
+		move.l	a0,d2
+		call	PrintFault
+faend		move.l	d0,-(sp)
+		putv.l	anchorpath,d1
+		call	MatchEnd
+		move.l	(sp)+,d1
+		tstv.b	entryF
+		bne.s	loop
+		lea	tasky(pc),a0
+		move.l	a0,d2
+		call	PrintFault
+		bra.s	loop
+noerror9	stov.b	#1,entryF
+mloop		putv.l	anchorpath,a0
+		lea	ap_Buf(a0),a1
+		move.l	a1,d1
+		move.l	d3,d2
+		call	SetComment
+		tst.l	d0
+		beq.s	error2
+shortok
+		tstv.l	quiteT		; *****)
+		bne.s	skip_per	; *****)
+		putv.l	anchorpath,a1
+		lea	ap_Buf(a1),a0
+		move.l	a0,d1
+		call	PutStr
+					;move.l	-4(a3),d1	; *****)
+					;call	PutStr		; *****)
+		lea	oktxt(pc),a0	; *****)
+		move.l	a0,d1		; *****)
+		call	PutStr		; *****)
+skip_per	putv.l	anchorpath,d1
+		call	MatchNext
+		tst.l	d0
+		beq.s	mloop
+		bra.s	trueerr
+error2		moveq	#RETURN_WARN,d7
+		;tstv.l	quiteT		; *****
+		;bne.s	loop		; *****
+		call	IoErr		; *****
+		move.l	d0,d1		; idem, see above
+		move.l	-4(a3),d2	; *****
+		call	PrintFault	; *****
+		bra.s	skip_per
+
+brkerror	putv.l	anchorpath,d1
+		call	MatchEnd
+
+break		lea	breakt(pc),a0
+		move.l	a0,d1
+		call	PutStr
+		moveq	#0,d7
+		bra.s	exit
+
+ended		putv.l	anchorpath,d1
+		call	MatchEnd
+
+exit
+		putv.l	anchorpath,d0
+		beq.s	ex10
+		move.l	d0,a1
+		move.l	(a5),a6
+		call	FreeVec
+ex10
+
+		move.l	d4,d2
+		beq.s	ex2
+		moveq	#DOS_FIB,d1
+		call	FreeDosObject,dos
+ex2
+
+		move.l	d5,d1
+		beq.s	ex1
+		call	UnLock,dos
+ex1
+
+		move.l	d6,d1
+		beq.s	ex0
+		call	FreeArgs,dos
+ex0
+		move.l	(a5),a6
+		closelib dos
+		rts
+
+
+
+dosname		dc.b	"dos.library",0
+		even
+template	dc.b	"FILE/A/M,C=COMMENT/K,QUIET/S",0
+		even
+tasky		dc.b	"xcom",0
+		even
+breakt		dc.b	"*** USER BREAK"
+accapo		dc.b	10,0
+		even
+oktxt		dc.b	" ...done",10,0
+		even
+memerror	dc.b	": not enough memory",10,0
+		even
+
+
+		END

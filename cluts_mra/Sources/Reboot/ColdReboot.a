@@ -1,0 +1,74 @@
+;
+; $VER: ColdReboot.a V1.0 recoded in 100% assembly
+;
+; ColdReboot v1.0  100% assembly!
+; Written by Mauro Panigada
+;
+; Version without confirmation (see also Reboot.a)
+;
+; (FREEWARE) It needs OS2.0+
+;
+; STARTED: 02/04/1996
+;
+; Original by Max Francis, coded in C (5028 bytes!)
+; USAGE: ColdReboot
+;
+; Perform an immediate cold reboot.
+;
+; NOTE: This is simply a remake from "MF WBTools Reboot.c" by Max Francis,
+; written in C. It is my second remake from Max Francis' program. You can
+; also find DFree and DFree2, the first rough, the second better (and
+; better and better than Max's C version!). The Max version often are
+; copyrighted (or no?), but I note that NO PART OF CODE ARE USED OR STOLEN
+; IN MY OWN VERSION (FREEWARE); I only got C-idea and converted it
+; in a assembly-program.
+;
+; GOOD QUALITIES: My own version's shorter. Very shorter. A question for
+; Max Francis: do you know that a program which only call amiga-system
+; routine for a cold reset (or for getting information, as in DFree)
+; longer than 1000 bytes is obsolete? Kill your C and make assembly alive
+; for these simple programs... Just a suggestion!
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+
+
+		bra.s	start
+
+		dc.b	"$VER: ColdReboot v1.0 written by Mauro Panigada"
+		dc.b	0
+		even
+
+start		move.b	d0,d6
+		lea	dosname(pc),a1
+		moveq	#36,d0
+		movea.l	4.w,a6
+		jsr	_LVOOpenLibrary(a6)
+		tst.l	d0
+		beq.s	exit0
+		cmp.b	#1,d6
+		bne.s	help_scr
+		jmp	_LVOColdReboot(a6)
+help_scr	move.l	d0,a6
+		lea	help(pc),a0
+		move.l	a0,d1
+		jsr	_LVOPutStr(a6)
+		move.l	a6,a1
+		move.l	4.w,a6
+		jsr	_LVOCloseLibrary(a6)
+exit0		rts
+
+
+dosname		dc.b	"dos.library",0
+		even
+help		dc.b	"ColdReboot v1.0 by Mauro Panigada",10
+		dc.b	"Original C version written by Max Francis",10
+		dc.b	"Perform a cold reboot of the system",10
+		dc.b	"USAGE: ColdReboot",10
+		dc.b	"(equivalent of <CTRL><A><A>",10,10,0
+
+		END

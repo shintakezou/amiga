@@ -1,0 +1,129 @@
+@database FEval.guide
+@$VER: FEval.guide v1.0 (2003-07-19)
+@Author Mauro Panigada
+@(c) 2003 Mauro Panigada
+@wordwrap
+@index "MAIN"
+@NODE "MAIN" "FEval's guide"
+
+@{b}FEval 1.0@{ub}
+
+  This is a extended and modified version of "eval". The notation used is the RPN, easier to be parsed and powerful enough. This program shares the mathematical part of my own ERequestSlide 1.2 and have more features to be used as floating point calculator.
+
+@{"Requirements" link "Requi"}
+@{"Usage" link "usage"}
+@{"Bugs" link "bugge"}
+@{"Author" link "autore"}
+
+@ENDNODE
+
+@NODE "Requi" "Requirements"
+
+  An Amiga(TM) can be useful.
+
+  68020 and AmigaOS 3.0 (v39) are required.
+
+  FEval is tested on Amiga1200 with GVP A1291 (EC030+FPU), 4Mb + 2Mb (chip), AmigaOS v39.
+
+@ENDNODE
+
+@NODE "usage" "Usage"
+
+  The template is
+
+  @{fg text}EXPR/A/F@{fg text}           expression
+
+  Can it be easier? Now, take a look at the known keywords. If you need more, ask me...
+
+  KEYWORD            OP/EXPL.               EXAMPLE              RESULT
+
+  +                  add                    1 2 +                3
+
+  add                use if "+" is
+                     interpreted by CLI     1 2 add              3
+
+  *                  multiplicate           5.2 5 *              26
+
+  mul                use if "*" is
+                     interpreted by CLI     same as above
+
+  /                  divide                 10 2 /               5
+
+  -                  subtract               5 2 -                3
+
+  neg                negate                 6 neg                -6
+
+  %                  module                 5 5 %                0
+
+  ^                  power of               2 3 ^                8
+
+  sin                sin                    3.14159 sin          0
+
+  cos                cos                    3.14159 cos          -1
+
+  log                log, base 10           100 log              2
+
+  ln                 log, base e            26 ln                3.25809
+
+  exp                e^...                  1 exp                2.71828
+
+  sqrt               square root            100 sqrt             10
+
+  abs                absolute value         -100 abs             100
+
+  pop                pop a value from stack
+                     (looses it)
+
+  swap               exchange 2 values      10 20 swap           10
+                     on stack
+
+  sto                store last value
+                     on stack
+
+  rcl                recall the value
+                     before stored          10 sto 2 3 + rcl +   15
+
+  dup                duplicate a value      2 3 mul dup mul      36
+
+  floor              floor (nearest
+                     smaller integer)       2.2 floor            2
+
+  ceil               ceil (nearest
+                     bigger integer)        2.2 ceil             3
+
+
+
+  How does FEval work? It's very easy. The value you write is pushed upon stack. Stack have a limit: 2046 values can be stored. It is enough and too much for all uses. Anyway stack is like a circle, the 2047th value is stored on first position and so on.
+
+  When an diadic operand (ie an operand that needs two values) is found, two values are picked (and "popped" away) from stack, the operation is computed and result is pushed on stack and so on, until the line finishes. The value you read, the result, is de facto the last value on stack (the value that is on top of the stack). Quite the same for monadic operand (ie an operand that needs one value): it picks and pops only a value, compute and then pushes the result on stack. And so on.
+
+  There are also operations that manipulate stack: when you pop, you loose value on top of the stack, which could be a result of an operation performed before. You can swap two value and store. When you store a value,that value is not popped from stack, and of course it can be used everywhere you need. For now that's all.
+
+@ENDNODE
+
+@NODE "autore" "About the Author"
+
+@{b}Mauro Panigada@{ub}
+
+You can find me here:
+
+musashi_7@libero.it
+tkn77@tiscali.it
+panigada@roma2.infn.it
+
+for questions, bugs report, suggestions, thanks and so on.
+
+I hope one of these addresses will still work in the future...
+
+@ENDNODE
+
+@NODE "bugge" "Bugs"
+
+  Unknown. I am waiting from you all users...
+
+@ENDNODE
+
+
+
+
+

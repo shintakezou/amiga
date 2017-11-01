@@ -1,0 +1,122 @@
+;
+; JoyMouser v1.0
+; written by Mauro Panigada
+;
+; $VER: JoyMouser.a v1.0 by Mauro Panigada
+;
+; Another great conversion from an AmigaE source code to asm one.
+; (2ndMousePort.e  to   JoyMouser.a)
+;
+; Purpose: running this program you can finally (!) use your joyport
+;          as it be mouse one: ie you can put your mouse in joyport
+;          or have two mouse, swapping them by using JoyMouser
+;
+; Note: very rough version in writing and in style and they are omitted
+;       al messages!
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/io.i"
+		include	"dos/dos_lib.i"
+		include	"devices/input.i"
+
+
+		bra.s	start
+
+		dc.b	"$VER: JoyMouser v1.0 by Mauro Panigada",0
+		even
+
+start		
+
+dosbase		EQUR	d7
+
+		moveq	#1,d5
+
+		move.l	4.w,a6
+		lea	dosname(pc),a1
+		moveq	#37,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,dosbase
+		beq	death
+
+port		EQUR	d6
+
+		jsr	_LVOCreateMsgPort(a6)
+		move.l	d0,port
+		beq	exit
+
+request		EQUR	a5
+
+		move.l	d0,a0
+		move.l	#IOSTD_SIZE,d0
+		jsr	_LVOCreateIORequest(a6)
+		move.l	d0,request
+		move.l	request,d0
+		beq	exit
+
+		lea	inputname(pc),a0
+		move.l	d0,a1
+		moveq	#0,d0
+		move.l	d0,d1
+		jsr	_LVOOpenDevice(a6)
+		tst.l	d0
+		bne	exit
+
+args		EQUR	d4
+
+		move.l	#template,d1
+		move.l	#buffer,d2
+		moveq	#0,d3
+		move.l	dosbase,a6
+		jsr	_LVOReadArgs(a6)
+		move.l	d0,args
+		beq.s	default
+
+val		EQUR	d5
+
+		lea	buffer(pc),a0
+		move.l	(a0),d0
+		beq.s	default
+
+		clr.l	val		; set to 0: normal
+
+		move.l	args,d1
+		jsr	_LVOFreeArgs(a6)
+
+default		move.l	4.w,a6
+		move.w	#IND_SETMPORT,IO_COMMAND(request)
+		move.b	val,zuppa
+		move.l	#zuppa,IO_DATA(request)
+		move.l	#1,IO_LENGTH(request)
+		move.l	request,a1
+		jsr	_LVODoIO(a6)
+		move.l	request,a1
+		jsr	_LVOCloseDevice(a6)
+
+exit		move.l	request,d0
+		beq.s	nexta
+		move.l	request,a0
+		jsr	_LVODeleteIORequest(a6)
+nexta		tst.l	port
+		beq.s	nextb
+		move.l	port,a0
+		jsr	_LVODeleteMsgPort(a6)
+nextb		move.l	dosbase,a1
+		jsr	_LVOCloseLibrary(a6)
+death		rts
+
+
+template	dc.b	"NORMAL/S",0
+		even
+dosname		dc.b	"dos.library",0
+		even
+inputname	dc.b	"input.device",0
+		even
+zuppa		dc.w	0
+buffer		dc.l	0
+
+
+		END

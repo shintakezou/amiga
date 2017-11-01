@@ -1,0 +1,22 @@
+
+$VER: MUFilter.doc v1.0 (c) 1999 by Mauro Panigada
+
+MUFilter v1.0
+=============
+
+(c) 1999 by Mauro Panigada
+
+MUFilter is my first commodity program. It allows you (great effort!) to modify
+the status of the filter of your Amiga. When you run it the first time, it pops up
+and show you two boolean (checkbox) gadgets. The ghosted one should allow you
+to lock the status of the filter, so that other programs can not modify it.
+This does not work, now... Click on the other one, you will see light coming and
+going or going and coming. Not so useful, however it exists.
+When you close the window through close gadget, MUFilter is really still alive.
+Call Commodity Exchange to see it in its list. To kill it you only have one
+way: select it and click on KILL gadget of cx tool. Use ENABLE/DISABLE to enable
+or disable MUFilter (quite the same of acting on checkbox gadget...)
+
+
+
+

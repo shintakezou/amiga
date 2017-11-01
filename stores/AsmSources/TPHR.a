@@ -1,0 +1,279 @@
+;
+; TPHR v1.0
+; written by Mauro Panigada
+;
+; $VER: TPHR.a v1.0 by Mauro Panigada
+;
+; Started: 1996-12-20
+; Finished: XXXX-XX-XX
+;
+; FREEWARE - YOU NEED MUI (see below)
+;
+; TPHR means TelePHone Rubrica. It allows you making a little telephonic
+; book, and (this feature in future...) dial it TO your phone through
+; a modem or similar mean.
+;
+; * no auto detach.
+;
+; COPYRIGHT NOTE: THIS PROGRAM USES MUI, MUI IS COPYRIGHTED BY THE GREAT
+;  MASTER PROGRAMMER STEFAN STUNTZ
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos_lib.i"
+		include	"libraries/mui.i"
+		include	"libraries/mui_lib.i"
+
+
+
+	STRUCTURE	TPHRData,0
+		LONG	_ExecBase
+		LONG	_MUIMasterBase
+		LONG	_DOSBase
+
+		LABEL	TPHR_SIZE
+
+
+		SECTION	TPHRCODE,CODE
+
+; Here you can add code for starting from WB. Now only from CLI
+
+		bra.s	Start
+
+		dc.b	"$VER: "
+		dc.b	"TPHR v1.0 (1996-12-20) by Mauro Panigada",0
+		even
+
+Start		move.l	4.w,a6
+		move.l	#TPHR_SIZE,d0
+		move.l	#MEMF_PUBLIC|MEMF_CLEAR,d1
+		jsr	_LVOAllocMem(a6)
+		tst.l	d0
+		beq	Sayonara
+
+		move.l	d0,a5
+		move.l	a6,(a5)		; _ExecBase(a5) = 0(a5) = (a5)
+
+		lea	DOSName(pc),a1
+		moveq	#36,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_DOSBase(a5)
+		beq	Exit
+
+		lea	MUIMasterName(pc),a1
+		moveq	#0,d0
+		jsr	_LVOOpenLibrary(a6)
+		move.l	d0,_MUIMasterBase(a5)
+		beq	Exit
+
+; there is MUI, there is hope too.
+
+		move.l	_MUIMasterBase(a5),a6
+		lea	Gadgets(pc),a4
+		move.l	a4,a3
+MOLoop		tst.l	(a4)
+		beq.s	EndMakeObj
+		cmp.l	#2,(a4)+
+		bne.s	GroupC
+		move.l	(a4)+,a0
+		move.l	(a4)+,a1
+DoIt		jsr	_LVOMUI_NewObjectA(a6)
+		move.l	d0,(a4)+
+		bra.s	MOLoop
+GroupC		moveq	#0,d1
+		move.l	(a4)+,a0
+		move.l	(a4)+,a1
+DoLoop		cmp.l	#TAG_END,(a1,d1)
+		beq.s	DoIt
+		cmp.l	#MUIA_Group_Child,(a1,d1)
+		bne.s	SkipT
+AlsoTrue	move.l	4(a1,d1),d0
+		move.l	12(a3,d0),4(a1,d1)
+		add.l	#8,d1
+		bra.s	DoLoop
+SkipT		cmp.l	#MUIA_Window_RootObject,(a1,d1)
+		beq.s	AlsoTrue
+		cmp.l	#MUIA_Application_Window,(a1,d1)
+		beq.s	AlsoTrue
+		add.l	#8,a1
+		bra.s	DoLoop
+
+
+EndMakeObj
+
+
+Exit
+
+		move.l	a5,a1
+		move.l	#TPHR_SIZE,d0
+		move.l	(a5),a6
+		jsr	_LVOFreeMem(a6)
+Sayonara	rts
+
+
+MUIC_Text_f		SET	1
+MUIC_Group_f		SET	1
+MUIC_Application_f	SET	1
+MUIC_Window_f		SET	1
+
+Gadgets		dc.l	2,MUIC_Text,Gad1Tag,0	;0
+		dc.l	2,MUIC_Text,Gad2Tag,0	;1
+		dc.l	2,MUIC_Text,Gad3Tag,0	;2
+		dc.l	2,MUIC_Text,Gad4Tag,0	;3
+		dc.l	2,MUIC_Text,Gad5Tag,0	;4
+		dc.l	2,MUIC_Text,Gad6Tag,0	;5
+		dc.l	2,MUIC_Text,Gad7Tag,0	;6
+		dc.l	2,MUIC_Text,Gad8Tag,0	;7
+		dc.l	2,MUIC_Text,Gad9Tag,0	;8
+		dc.l	2,MUIC_Text,Gad0Tag,0	;9
+		dc.l	2,MUIC_Text,GadXTag,0	;10
+		dc.l	2,MUIC_Text,GadYTag,0	;11
+		dc.l	1,MUIC_Group,tg1,0		;12
+		dc.l	1,MUIC_Group,tg2,0		;13
+		dc.l	1,MUIC_Group,tg3,0		;14
+		dc.l	1,MUIC_Group,tg4,0		;15
+		dc.l	1,MUIC_Group,tgu,0		;16
+		dc.l	1,MUIC_Window,wtag,0		;17
+		dc.l	1,MUIC_Application,atag,0	;18
+		dc.l	0,0,0,0
+
+wtag		dc.l	MUIA_Window_Title,title
+		dc.l	MUIA_Window_RootObject,16*16
+		dc.l	TAG_END
+
+atag		dc.l	MUIA_Application_Window,17*16
+		dc.l	TAG_END
+
+tgu		dc.l	MUIA_Group_Child,12*16
+		dc.l	MUIA_Group_Child,13*16
+		dc.l	MUIA_Group_Child,14*16
+		dc.l	MUIA_Group_Child,15*16
+		dc.l	TAG_END
+
+tg1		dc.l	MUIA_Group_Horiz,TRUE
+		dc.l	MUIA_Group_Child,0
+		dc.l	MUIA_Group_Child,1*16
+		dc.l	MUIA_Group_Child,2*16
+		dc.l	TAG_END
+
+tg2		dc.l	MUIA_Group_Horiz,TRUE
+		dc.l	MUIA_Group_Child,3*16
+		dc.l	MUIA_Group_Child,4*16
+		dc.l	MUIA_Group_Child,5*16
+		dc.l	TAG_END
+
+tg3		dc.l	MUIA_Group_Horiz,TRUE
+		dc.l	MUIA_Group_Child,6*16
+		dc.l	MUIA_Group_Child,7*16
+		dc.l	MUIA_Group_Child,8*16
+		dc.l	TAG_END
+
+tg4		dc.l	MUIA_Group_Horiz,TRUE
+		dc.l	MUIA_Group_Child,10*16
+		dc.l	MUIA_Group_Child,9*16
+		dc.l	MUIA_Group_Child,11*16
+		dc.l	TAG_END
+
+
+
+Gad1Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g1
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad2Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g2
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad3Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g3
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad4Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g4
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad5Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g5
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad6Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g6
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad7Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g7
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad8Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g8
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad9Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g9
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+Gad0Tag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,g0
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+GadXTag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,gX
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+GadYTag		dc.l	MUIA_Background,MUII_ButtonBack
+		dc.l	MUIA_Frame,MUIV_Frame_Button
+		dc.l	MUIA_Text_Contents,gY
+		dc.l	MUIA_InputMode,MUIV_InputMode_RelVerify
+		dc.l	TAG_END
+
+g0		dc.b	"0",0
+g1		dc.b	"1",0
+g2		dc.b	"2",0
+g3		dc.b	"3",0
+g4		dc.b	"4",0
+g5		dc.b	"5",0
+g6		dc.b	"6",0
+g7		dc.b	"7",0
+g8		dc.b	"8",0
+g9		dc.b	"9",0
+gX		dc.b	"#",0
+gY		dc.b	"@",0
+title		dc.b	"Title",0
+
+
+
+MUIMasterName	dc.b	"muimaster.library",0
+		even
+DOSName		dc.b	"dos.library",0
+		even
+
+
+		include	"libraries/mui_asm.i"
+
+		END

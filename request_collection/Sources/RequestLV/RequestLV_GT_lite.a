@@ -1,0 +1,1283 @@
+;
+; $VER: RequestLV.a 0.8 (c) 2000 by Mauro Panigada
+;
+; RequestLV 0.8
+; written by Mauro PANIGADA
+;
+; GadTools version
+; Lite Version (made better, no resize)
+;
+; Template:
+; LIST/M/A,TITLE/K,SEL=SELECTED/N/K,PUBSCREEN/K,
+; FROMFILE/S,SORT/S,NOQUOTES/S,NOSTRIP/S
+;
+; LIST		a list of items in the form
+;		If FROMFILE switch is given, they are taken from a file; the
+;		separator is linefeed (10). The lists from files
+;               will be enqueued.
+; TITLE		title of the window
+; SELECTED	the item selected
+; FROMFILE	arg LIST is a name of a file
+; SORT		sort the list items
+; PUBSCREEN	a name of a public screen
+; NOSTRIP	strip unuseful spaces in string
+;
+;
+; RequesttLV will write to std output the item selected. You have to hit OK
+; gadget (or doubleclick on the item??); the return code will be 0. If
+; Cancel gadget is clicked, the return code is RETURN_WARN
+;
+; TO DO: * in line routines (shorter and faster), instead of silly subs
+;        * when open file fails, which file caused the error
+;
+
+		incdir	"include:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/memory.i"
+		include	"exec/exec_lib.i"
+		include	"exec/execbase.i"
+		include	"exec/lists.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/screens.i"
+		include	"intuition/intuition_lib.i"
+		include	"intuition/intuitionbase.i"
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i"
+		include	"utility/utility_lib.i"
+		*include	"mui/mui.i"
+		*include	"mui/mui_lib.i"
+
+
+Call		MACRO
+		jsr		(_LVO\1,a6)
+		ENDM
+
+ExecBase	MACRO
+		move.l		(4).w,a6
+		ENDM
+
+Base		MACRO
+		move.l		(\1Base,a5),a6
+		ENDM
+
+Call2		MACRO
+		move.l		(\1Base,a5),a6
+		jsr		(_LVO\2,a6)
+		ENDM
+
+Lar		MACRO
+		lea		(\1,\2),\3
+		move.l		\3,\4
+		ENDM
+
+InitTagList	MACRO
+		move.l		sp,\1
+		clr.l		-(sp)
+		ENDM
+
+Tag		MACRO
+		move.l		\2,-(sp)
+		move.l		#\1,-(sp)
+		ENDM
+
+GetTagList	MACRO
+		move.l		sp,\1
+		ENDM
+
+EndTagList	MACRO
+		move.l		\1,sp
+		ENDM
+
+MAXSTRINGLEN	EQU	130		; lunghezza massima della stringa
+
+PUDDLE_SIZE	EQU	(LN_SIZE+32)*64
+THRESH_SIZE	EQU	PUDDLE_SIZE-(LN_SIZE+4)
+
+STARTX_ADD	EQU	2	; delle aggiunte per distanziare un po' dallo
+STARTY_ADD	EQU	1	; spigolo minimo
+
+NUMOFLINE	EQU	10	; numero di linee del listview
+LINE_ADD	EQU	2	; aggiunta alle dim y del lv
+LV_WIDTH_ADD	EQU	2	; aggiunta alle dim x del lv
+LINE_SPACING	EQU	1	; spazio tra le linee
+XSPACE		EQU	2	; bordi dal testo o dist gadget
+YSPACE		EQU	1	; simile ma in y
+YSPACE2		EQU	2	; per height window solo
+GADYSPACE	EQU	2	; solo per gad
+DEFAULT_SIZE	EQU	16	; dim del gadget resize di default
+STRBORY		EQU	2	; altezza dei bordi del gadget stringa
+
+OK_ID		EQU	2
+CANCEL_ID	EQU	3
+LISTVIEW_ID	EQU	1
+
+
+
+	STRUCTURE storages,0
+		LONG	OldStack
+		LONG	ReturnCode
+		LONG	PoolHeader
+		LONG	ListHeader
+		LONG	DOSBase
+		LONG	GTBase
+		LONG	IntBase
+		LONG	UtilBase
+
+		LONG	TheFile
+
+		LABEL	Args
+		LONG	ListArg
+		LONG	TitleArg
+		LONG	SelectedArg
+		LONG	PubScreenArg
+		LONG	FromFileArg
+		LONG	SortArg
+		LONG	NoQuotesArg
+		LONG	NoStripArg
+
+		LONG	Argument
+
+		LONG	MyUserPort
+
+		LONG	MWindow
+		LONG	MScreen
+		LONG	OldScreen
+
+		LONG	Signal
+
+		LONG	ListElements
+
+		LONG	VI
+		LONG	GList
+
+		WORD	ScrBarHeight
+		WORD	WinBorTop
+		WORD	WinBorBottom
+		WORD	WinBorLeft
+		WORD	WinBorRight
+		WORD	FontYSize
+
+	;WORD	ResizeHeight
+
+		WORD	LV_Width	; dim reali del listview
+		WORD	LV_Height
+
+		WORD	MinOKWidth
+		WORD	MinCancelWidth
+	*WORD	WinMinWidth
+	*WORD	WinMinHeight
+		WORD	ButtonHeight
+		WORD	OKWidth
+		WORD	WinWidth
+		WORD	WinHeight
+
+		LONG	TheFont
+
+		LONG	Selezionato
+
+		LONG	LV_Gad
+		LONG	String_Gad
+		LONG	OK_Gad
+		LONG	Cancel_Gad
+
+		WORD	StartX		; coordinate x,y dello spigolo in alto a
+		WORD	StartY		; sinistra
+
+		LONG	DC_Seconds
+		LONG	DC_Micros
+
+		STRUCT	Proto_gad,gng_SIZEOF
+
+		LABEL	stores_SIZE
+
+
+		opt	p=68020
+
+	SECTION	codice,CODE
+
+		lea		(Stores),a5		; 68020+ only
+		move.l		sp,(OldStack,a5)
+		ExecBase
+		move.w		(AttnFlags,a6),d0
+		and.w		#AFF_68020,d0
+		bne.s		Start
+ReturnFail0	moveq		#RETURN_FAIL,d0
+		rts
+
+AppVer		dc.b	"$VER: RequestLV 1.0l (2000.07.31) Mauro PANIGADA",13,10,0
+		even
+
+Start		clr.l		(ReturnCode,a5)
+
+		lea		(DOSName,pc),a1		; apre DOS
+		moveq		#39,d0
+		Call		OpenLibrary
+		move.l		d0,(DOSBase,a5)
+		beq.s		ReturnFail0
+
+
+		lea		(IntName,pc),a1
+		moveq		#39,d0
+		Call		OpenLibrary
+		move.l		d0,(IntBase,a5)
+		bne.s		OpenGT
+
+		Lar		GTErrTxt,pc,a0,d1
+		move.l		#39,-(sp)
+		lea		(IntName,pc),a0
+		bra.s		GTErrEnt
+
+OpenGT		lea		(GTName,pc),a1		; apre GT  !!!
+		moveq		#39,d0
+		Call		OpenLibrary
+		move.l		d0,(GTBase,a5)
+		bne.s		OpenUtil
+
+		Lar		GTErrTxt,pc,a0,d1	; Niente GT
+		move.l		#39,-(sp)
+		lea		(GTName,pc),a0
+GTErrEnt	move.l		a0,-(sp)
+		move.l		sp,d2
+		Call2		DOS,VPrintf
+		move.l		#RETURN_FAIL,(ReturnCode,a5)
+		addq.l		#8,sp
+		bra		Exit0
+
+OpenUtil	lea		(UtilName,pc),a1
+		moveq		#37,d0
+		Call		OpenLibrary
+		move.l		d0,(UtilBase,a5)	; se non la apre non sorta
+
+
+AllOKNow	Lar		Template,pc,a0,d1		; prende argomenti
+		Lar		Args,a5,a0,d2
+		moveq		#0,d3
+		Call2		DOS,ReadArgs
+		move.l		d0,(Argument,a5)
+		bne.s		AllOKAfter
+
+		Call		IoErr			; errore argomenti
+		move.l		d0,d1
+		Lar		MyName,pc,a0,d2
+		Call		PrintFault
+		move.l		#RETURN_FAIL,(ReturnCode,a5)
+		bra		Exit0
+
+AllOKAfter
+	;------ Per prima cosa, ci aspettiamo di dover fare molte piccole
+	;	allocazioni di seguito, ergo usiamo i pool.
+
+		move.l		#MEMF_ANY!MEMF_CLEAR,d0
+		move.l		#PUDDLE_SIZE,d1
+		move.l		#THRESH_SIZE,d2
+		ExecBase
+		Call		CreatePool
+		move.l		d0,(PoolHeader,a5)
+		bne.s		PoolOK
+
+		lea		(NoPoolText,pc),a0
+		bsr		GenError
+		bra		Exit
+
+PoolOK
+	;------ Abbiamo GT e DOS, e gli argomenti.... analizziamoli per decidere
+	;	che fare.
+
+	;====== InitList
+	;bsr		InitList		; inizializza lista
+InitList
+		move.l		(PoolHeader,a5),a0
+		moveq		#LH_SIZE,d0
+		Call		AllocPooled
+		move.l		d0,(ListHeader,a5)
+		beq.s		IL_None
+		move.l		d0,a0
+		NEWLIST		a0
+IL_None
+	;====== fine InitList
+		bne.s		ListOK
+
+		lea		(NoMemText,pc),a0	; ERR no list
+		bsr		GenError
+		bra		Exit
+
+ListOK		move.l		(ListArg,a5),a3		; prepariamoci l'elenco
+
+		tst.l		(FromFileArg,a5)	; lista da costruire da
+		bne		AnalizeFiles		; file(s)
+
+	;------ Abbiamo un elenco di parole da inserire in una lista...
+
+ListLoop	move.l		(a3)+,d0
+		beq.s		ListDone
+		bsr		Strip
+		beq.s		ListLoop
+	;====== AddInList
+		bsr		AddInList
+	;====== fine AddInList
+
+	;tst.l		d0			; (*) ERRORI IGNORATI... AL PIU`
+	;beq		AddIn_Err		; SUCCEDE DI AVERE UNA LISTA VUOTA!
+		bra.s		ListLoop	; OPPURE INCOMPLETA....
+ListDone
+		tst.l		(SortArg,a5)
+		beq.s		DM_LD
+
+		move.l		(ListHeader,a5),a0
+		suba.l		a1,a1
+		moveq		#0,d0
+		bsr		SortList
+
+DM_LD		bsr		DoMain		; dealloca solo i parziali
+		move.l		d0,(ReturnCode,a5)
+		bra		Exit
+
+AnalizeFiles
+FilesLoop	move.l		(a3)+,d1
+		beq.s		ListDone	; abbiamo la lista completa.
+	;====== OpenThisFile
+	;bsr		OpenThisFile
+OpenThisFile
+		move.l		#MODE_OLDFILE,d2
+		Call2		DOS,Open
+		move.l		d0,(TheFile,a5)
+	;====== fine OpenThisFile
+		beq.s		FileError
+	;move.l		d0,d0
+	;====== GetListFromFile
+	;bsr		GetListFromFile
+GetListFromFile
+GLFF_ListLoop	ExecBase
+		move.l		(PoolHeader,a5),a0
+		move.l		#MAXSTRINGLEN+2,d0
+		Call		AllocPooled
+		move.l		d0,d4
+		beq		GLFF_None
+		Base		DOS
+GLFF_newline	move.l		d4,d2
+		move.l		#MAXSTRINGLEN,d3
+		move.l		(TheFile,a5),d1
+		Call		FGets
+		tst.l		d0		; errore o fine file, non fa nulla
+		beq		GLFF_None	; CFR (*)
+		bsr		Strip
+		beq.s		GLFF_newline
+	*move.l		d0,a0
+
+	*moveq		#MAXSTRINGLEN-1,d1
+*GLFF_StrLoop	cmp.b		#10,(a0)+	; fa terminare con 0 la stringa
+	*beq.s		GLFF_StrEnd
+	*tst.b		(-1,a0)
+	*beq.s		GLFF_StrEnd0
+	*dbf		d1,GLFF_StrLoop
+*GLFF_StrEnd	clr.b		(-1,a0)
+*GLFF_StrEnd0
+		bsr		AddInList	; (d0 conservato da prima) anche
+						; qui non controlliamo errori, cfr (*)
+		bra.s		GLFF_ListLoop
+GLFF_None
+	;====== fine GetListFromFile
+	;====== CloseThisFile
+	;bsr		CloseThisFile
+CloseThisFile
+		move.l		(TheFile,a5),d1
+		Call2		DOS,Close
+	;====== fine CloseThisFile
+		tst.l		d4		; cfr GetListFromFile
+		bne.s		FilesLoop
+
+		lea		(NoMemText,pc),a0
+		bra.s		FE_in
+
+FileError
+		lea		(FileErrText,pc),a0
+FE_in		bsr		GenError
+		bra		Exit
+
+;==============
+; Strip
+;==============
+; IN d0 = ptr string
+; out: d0 = ptr string, null if string null (flag Z)
+; Elimina trailing e leading spazi e tabs e righe vuote.
+; Se NoStripArg=1, lascia com'è,
+; terminando solo correttamente con 0 invece di eventuale LF.
+; Eliminando le righe indentate vengono strippati sempre i
+; caratteri spazio e tab in coda ed eliminate le righe vuote
+Strip		move.l		d0,a0
+                tst.l		(NoStripArg,a5)
+		bne.s		_nostrip
+_strip		move.b		(a0)+,d1
+		beq.s		_nulline	;stringa vuota o solo spazi
+		cmp.b		#' ',d1		;spazio ?
+		beq.s		_strip
+		cmp.b		#9,d1		;TAB ?
+		beq.s		_strip
+		move.l		a0,d0
+		subq.l		#1,d0		;ptr a inizio stringa senza spazi e tabs
+_nostrip	move.b		(a0)+,d1	;successivo char
+		bne.s		_nostrip	;cerca fine
+		subq.l		#1,a0		;retrocede sullo 0
+		move.b		(-1,a0),d1	;ultimo char, prima di 0
+		cmp.b		#10,d1
+		bne.s		_striptail
+		subq.l		#1,a0		;posiziona su LF
+
+		tst.l		(NoStripArg,a5)
+		beq.s		_striptail
+		clr.b		(a0)		;intanto termina 0
+		cmp.l		d0,a0
+		beq.s		_nulline	;siamo rimasti con nulla!
+		tst.l		d0		;esce con NZ
+		rts
+
+_striptail	cmp.l		d0,a0
+		beq.s		_nulline      ;siamo rimasti con nulla!
+		move.b		-(a0),d1
+		cmp.b		#' ',d1
+		beq.s		_striptail
+		cmp.b		#9,d1         ;TAB ?
+		beq.s		_striptail
+		clr.b		(1,a0)       ;finalmente decide che è finita
+_retline	tst.l		d0           ;esce con NZ
+		rts
+
+_nulline	clr.l		d0           ;esce con Z, stringa nulla
+		rts
+
+
+;=================
+; GetListFromFile
+;=================
+;GetListFromFile
+;GLFF_ListLoop	ExecBase
+;		move.l		(PoolHeader,a5),a0
+;		moveq		#MAXSTRINGLEN+2,d0
+;		Call		AllocPooled
+;		move.l		d0,d4
+;		beq		GLFF_None
+;		move.l		d0,d2
+;		move.l		#MAXSTRINGLEN,d3
+;		move.l		(TheFile,a5),d1
+;		Call2		DOS,FGets
+;		tst.l		d0		; errore o fine file, non fa nulla
+;		beq		GLFF_None	; CFR (*)
+;		move.l		d0,a0
+
+;		moveq		#MAXSTRINGLEN-1,d1
+;GLFF_StrLoop	cmp.b		#10,(a0)+	; fa terminare con 0 la stringa
+;		beq.s		GLFF_StrEnd
+;		tst.b		(-1,a0)
+;		beq.s		GLFF_StrEnd0
+;		dbf		d1,GLFF_StrLoop
+;GLFF_StrEnd	clr.b		(-1,a0)
+;GLFF_StrEnd0
+;		bsr		AddInList	; (d0 conservato da prima) anche
+;						; qui non controlliamo errori, cfr (*)
+;		bra		GLFF_ListLoop
+;
+;GLFF_None	rts
+
+;==============
+; OpenThisFile
+;==============
+; IN d1 = file name
+;OpenThisFile
+;		move.l		#MODE_OLDFILE,d2
+;		Call2		DOS,Open
+;		move.l		d0,(TheFile,a5)
+;		rts
+
+;===============
+; CloseThisFile
+;===============
+;CloseThisFile
+;		move.l		(TheFile,a5),d1
+;		Call2		DOS,Close
+;		rts
+
+;==========
+; InitList
+;==========
+;InitList
+;		move.l		(PoolHeader,a5),a0
+;		move.l		#LH_SIZE,d0
+;		Call		AllocPooled
+;		move.l		d0,(ListHeader,a5)
+;		beq.s		IL_None
+;		move.l		d0,a0
+;		NEWLIST		a0
+;IL_None		rts
+
+;==========
+; GenError
+;==========
+; IN a0 = error text
+GenError
+		move.l		a0,-(sp)
+		Lar		ErrText,pc,a0,d1
+		Lar		MyName0,pc,a0,-(sp)
+		move.l		sp,d2
+		Call2		DOS,VPrintf
+		addq.l		#8,sp
+		move.l		#RETURN_FAIL,(ReturnCode,a5)
+		rts
+
+
+
+;===========
+; AddInList
+;===========
+; IN d0 = ptr to a string
+AddInList
+		move.l		d0,-(sp)
+		move.l		(PoolHeader,a5),a0
+		moveq		#LN_SIZE,d0
+		ExecBase
+		Call		AllocPooled
+		tst.l		d0
+		beq.s		AIL_None
+		move.l		d0,a1
+		move.l		(ListHeader,a5),a0
+		move.l		(sp)+,(LN_NAME,a1)
+		ADDTAIL
+		addq.w		#1,(ListElements,a5)
+AIL_None	rts
+
+;===========
+; GetIntLen
+;===========
+; Calcola lunghezza di un testo in base al font TheFont
+; > d1
+GetIntLen	movem.l		a0-a1/a6/d0,-(sp)
+		lea		(InteroName,pc),a1
+GIL_Ent		lea		(-it_SIZEOF,sp),sp
+		move.l		sp,d0
+		move.l		d0,a0
+		move.l		(TheFont,a5),(it_ITextFont,a0)
+		move.l		a1,(it_IText,a0)
+		clr.l		(a0)
+		clr.l		(it_LeftEdge,a0)
+		clr.l		(it_NextText,a0)
+		Call2		Int,IntuiTextLength
+		move.l		d0,d1
+		lea		(it_SIZEOF,sp),sp
+		movem.l		(sp)+,a0-a1/a6/d0
+		rts
+
+CalcLen		movem.l		a0-a1/a6/d0,-(sp)
+		bra.s		GIL_Ent
+
+
+*
+* USATO NELLA VERSIONE MUI, al 2000.07.24 NON FUNZIONANTE
+*
+*;===========
+*; DoMethodA
+*;===========
+*; da amiga.lib
+*; a0 = object
+*; a1 = msg
+*DoMethodA	move.l		a2,-(sp)
+*		move.l		a0,a2
+*		move.l		a2,d0
+*		beq.s		dma_null
+*		move.l		(-4,a2),a0		;dispacther hook
+*		pea		(dma_return,pc)
+*		move.l		(h_Entry,a0),-(sp)
+*		rts
+*dma_null	moveq		#0,d0
+*dma_return	move.l		(sp)+,a2
+*		rts
+
+
+;========
+; DoMain
+;========
+;
+DoMain
+	;------	Locka lo schermo di lavoro
+		Base		Int
+		move.l		(PubScreenArg,a5),a0
+		Call		LockPubScreen
+		move.l		d0,(MScreen,a5)
+		bne.s		DM_dm0
+
+		moveq		#RETURN_FAIL,d0
+		rts
+
+	;------ Prende lo schermo in primo piano....
+DM_dm0		moveq		#0,d0
+		Call		LockIBase
+		move.l		(ib_FirstScreen,a6),(OldScreen,a5)
+		move.l		d0,a0
+		Call		UnlockIBase
+
+		move.l		(MScreen,a5),a0
+		Call		ScreenToFront
+
+	;------ un po' di informazioni per il layout .....
+		move.l		(MScreen,a5),a0
+		move.b		(sc_BarHeight,a0),(ScrBarHeight+1,a5)
+		move.b		(sc_WBorTop,a0),(WinBorTop+1,a5)
+		move.b		(sc_WBorBottom,a0),(WinBorBottom+1,a5)
+		move.b		(sc_WBorLeft,a0),(WinBorLeft+1,a5)
+		move.b		(sc_WBorRight,a0),(WinBorRight+1,a5)
+		move.l		(sc_Font,a0),a1
+		move.l		a1,(TheFont,a5)
+		move.w		(ta_YSize,a1),(FontYSize,a5)
+
+	;------ tutto comincia alle coord startx,starty che andiamo a calcolare
+		move.w		(ScrBarHeight,a5),(StartY,a5)
+		addq.w		#STARTY_ADD,(StartY,a5)
+		move.w		(WinBorLeft,a5),(StartX,a5)
+		addq.w		#STARTX_ADD,(StartX,a5)
+
+	;lea		(OKText,pc),a1
+	;bsr.s		CalcLen
+	;addq.w		#2*XSPACE,d1
+	;move.w		d1,(MinOKWidth,a5)
+	;move.w		d1,d2
+	;lea		(CancelText,pc),a1
+	;bsr		CalcLen
+	;addq.w		#2*XSPACE,d1
+	;move.w		d1,(MinCancelWidth,a5)
+	;add.w		d1,d2
+	;add.w		(WinBorLeft,a5),d2
+	;add.w		(WinBorRight,a5),d2
+	;addq.w		#2*XSPACE,d2
+	;move.w		d2,(WinMinWidth,a5)
+			; minima larghezza della finestra....
+
+		move.w		(FontYSize,a5),d0
+		addq.w		#2*GADYSPACE,d0
+		move.w		d0,(ButtonHeight,a5)
+
+
+	;------ Non ci rimane che creare i tre oggetti, aprire la window sullo
+	;	schermo opportuno, aspettare la risposta, e uscire....
+
+		Base		GT
+
+		move.l		(MScreen,a5),a0
+		suba.l		a1,a1
+		Call		GetVisualInfoA
+		move.l		d0,(VI,a5)
+		bne.s		DM_VIOK
+
+		bsr		DM_Exit		; aggiungere spiegazione dell'errore!
+		moveq		#RETURN_FAIL,d0
+		rts
+
+DM_VIOK
+		;bsr		GetSizeSize	;VERSIONE LITE (1.0l)
+		;tst.l		d0
+		;bpl.s		DM_skippa0
+		;move.w		#DEFAULT_SIZE,d0
+DM_skippa0	;move.w		d0,(ResizeHeight,a5)
+
+	*move.w		#200,(WinWidth,a5)
+	*move.w		#120,(WinHeight,a5)
+	*bsr		ReCalcSize
+	*bra		PROVAIN
+
+		lea		(GList,a5),a0
+		Call		CreateContext	; errori a cascata se fallisce...
+
+
+;------------------------------------------------------ STRINGA
+		move.l		d0,a0
+		lea		(Proto_gad,a5),a1
+		move.l		(TheFont,a5),(gng_TextAttr,a1)
+		move.w		#0,(gng_GadgetID,a1)
+		move.l		(VI,a5),(gng_VisualInfo,a1)
+		*move.w		(StartX,a5),(gng_LeftEdge,a1)
+		*move.w		(StartY,a5),(gng_TopEdge,a1)
+		bsr		GetIntLen
+		addq.w		#LV_WIDTH_ADD,d1
+		move.w		d1,(gng_Width,a1)
+		move.w		(FontYSize,a5),d1
+		addq.w		#GADYSPACE*2+STRBORY*2,d1
+		move.w		d1,(gng_Height,a1)
+		moveq		#STRING_KIND,d0
+		lea		(String_tag,pc),a2
+		Call		CreateGadgetA
+		move.l		d0,(String_Gad,a5)
+
+;----------------------------------------------------- creazione LISTVIEW
+		move.l		d0,a0
+		moveq		#LISTVIEW_KIND,d0
+		lea		(Proto_gad,a5),a1
+		move.l		(TheFont,a5),(gng_TextAttr,a1)		; il font
+		move.w		#LISTVIEW_ID,(gng_GadgetID,a1)		; identita`
+DM_NoFillText	move.l		(VI,a5),(gng_VisualInfo,a1)		; visualinfo
+		move.w		(StartX,a5),(gng_LeftEdge,a1)
+		move.w		(StartY,a5),(gng_TopEdge,a1)
+		move.w		(FontYSize,a5),d1
+		addq.w		#LINE_SPACING,d1
+
+		cmp.w		#NUMOFLINE,(ListElements,a5)
+		bls.s		_lineok
+		add.w		d1,d1	;raddoppia nr linee LV
+_lineok
+		mulu.w		#NUMOFLINE,d1
+		addq.w		#LINE_ADD,d1
+		move.w		d1,(gng_Height,a1)
+		move.w		(egg_Height,a0),d1
+		add.w		d1,(gng_Height,a1)
+		bsr		GetIntLen
+		addq.w		#LV_WIDTH_ADD,d1
+		move.w		d1,(gng_Width,a1)
+		lea		(Listview_tag,pc),a2
+		move.l		(ListHeader,a5),(4,a2)
+		tst.l		(SelectedArg,a5)
+		beq.s		DM_NoSelArg
+		clr.l		(lv_sel,a2)
+		move.l		([SelectedArg,a5]),(lv_sel,a2)
+DM_NoSelArg	move.l		(String_Gad,a5),(lv_show,a2)
+		Call		CreateGadgetA
+		move.l		d0,(LV_Gad,a5)
+
+		move.l		d0,a0		; ricava ingombro reale del
+						; gadget LV
+		move.l		(egg_BoundsWidth,a0),(LV_Width,a5)
+
+;------------------------------------------------ creazione bottone OK e CANCEL
+		;move.l		d0,a0
+		lea		(Proto_gad,a5),a1
+		move.w		#CANCEL_ID,(gng_GadgetID,a1)
+		move.l		(LV_Width,a5),d0	; prende height (lower b)
+		add.w		(StartY,a5),d0
+		addq.w		#YSPACE,d0
+		move.w		d0,(gng_TopEdge,a1)
+		swap		d0		; prende width (ora lower b)
+		lsr.w		#1,d0		; la metà
+	;cmp.w		(MinCancelWidth,a5),d0
+	;bcc.s		DM_nomin	; se d0 >= mincanclewidth, no problem
+	;move.w		(MinCancelWidth,a5),d0
+	; DOVREBBE ESSERE IMPOSSIBILE QUESTA EVENTUALITA` INQUANTO LA STRINGA
+	; mMmMmM...... usata per calc dim LV e STRING e` in caratteri molto piu`
+	; lunga della somma delle stringhe Cancel e OK, anche in pixel appare
+	; ovviamente vero ..
+DM_nomin	move.w		d0,(gng_Width,a1)
+		move.w		(ButtonHeight,a5),(gng_Height,a1)
+		move.w		(StartX,a5),d1
+		add.w		(LV_Width,a5),d1
+		sub.w		d0,d1
+		move.w		d1,(gng_LeftEdge,a1)
+		lea		(CancelText,pc),a2
+		move.l		a2,(gng_GadgetText,a1)
+		move.l		#PLACETEXT_IN,(gng_Flags,a1)
+		moveq		#BUTTON_KIND,d0
+		sub.l		a2,a2
+		Call		CreateGadgetA
+		move.l		d0,(Cancel_Gad,a5)
+
+		move.l		d0,a0
+		lea		(Proto_gad,a5),a1
+		move.w		#OK_ID,(gng_GadgetID,a1)
+		move.w		(LV_Width,a5),d0
+		sub.w		(gng_Width,a1),d0
+		subq.w		#XSPACE,d0
+		move.w		d0,(gng_Width,a1)
+		move.w		(StartX,a5),(gng_LeftEdge,a1)
+		lea		(OKText,pc),a2
+		move.l		a2,(gng_GadgetText,a1)
+		moveq		#BUTTON_KIND,d0
+		suba.l		a2,a2
+		Call		CreateGadgetA
+		move.l		d0,(OK_Gad,a5)
+
+		bne.s		DM_OKobj
+
+		;ERRORE CREAZIONE GADGETS
+		bsr		DM_Exit
+		moveq		#RETURN_FAIL,d0
+		rts
+
+PROVAIN
+;------------------------------------------------------------ apertura window
+DM_OKobj	move.w		(LV_Width,a5),d1	; calcola le dimensioni
+		add.w		(WinBorLeft,a5),d1
+		add.w		(WinBorRight,a5),d1
+		addq.w		#2*XSPACE,d1
+		move.w		d1,(WinWidth,a5)
+		move.w		(LV_Height,a5),d1
+		add.w		(StartY,a5),d1
+		addq.w		#3*YSPACE,d1
+		add.w		(ButtonHeight,a5),d1
+DM_skippa	;move.w		(ResizeHeight,a5),d0
+		;add.w		d0,d1
+		addq.w		#YSPACE2,d1
+		move.w		d1,(WinHeight,a5)
+
+		lea		(Window_Tag,pc),a1
+		move.w		(WinHeight,a5),(Win_Height+2,a1)
+		move.w		(WinWidth,a5),(Win_Width+2,a1)
+
+		move.w		([MScreen.l,a5],sc_Width.l),d0
+		sub.w		(WinWidth,a5),d0
+		lsr.w		#1,d0
+		move.w		d0,(Win_Left+2,a1)
+		move.w		([MScreen.l,a5],sc_Height.l),d0
+		sub.w		(WinHeight,a5),d0
+		lsr.w		#1,d0
+		move.w		d0,(Win_Top+2,a1)
+
+		tst.l		(TitleArg,a5)
+		beq.s		DM_notitle
+		move.l		(TitleArg,a5),(Win_Title,a1)
+
+DM_notitle	move.l		(GList,a5),(Win_Gadgets,a1)
+
+	*move.w		(WinMinWidth,a5),(Win_MinWidth+2,a1)
+	*move.w		(WinMinHeight,a5),(Win_MinHeight+2,a1)
+
+		move.l		(MScreen,a5),(Win_PubScr,a1)
+
+		suba.l		a0,a0
+		Call2		Int,OpenWindowTagList
+		move.l		d0,(MWindow,a5)
+		bne.s		DM_OKWin
+
+		; ERRORE DURANTE APERTURA FINESTRA
+		bsr		DM_Exit
+		moveq		#RETURN_FAIL,d0
+		rts
+
+DM_OKWin
+		move.l		(MWindow,a5),a0
+		suba.l		a1,a1
+		Call2		GT,GT_RefreshWindow
+
+	;------ Qui abbiamo la window, non ci rimane che attendere i msg e agire
+	;	di conseguenza
+
+		move.l		(MWindow,a5),a0
+		move.l		(wd_UserPort,a0),(MyUserPort,a5)
+
+DM_lap11	move.l		(MyUserPort,a5),d7
+DM_msgloop	move.l		d7,a0
+		ExecBase
+		Call		WaitPort
+		tst.l		d0
+		beq.s		DM_msgloop
+		move.l		d7,a0
+		Call2		GT,GT_GetIMsg
+		tst.l		d0
+		beq.s		DM_msgloop
+		move.l		d0,a1
+
+		move.l		(im_Class,a1),d6
+		move.w		(im_Code,a1),d5
+		move.l		(im_IAddress,a1),a4
+		move.l		(im_Seconds,a1),d4
+		move.l		(im_Micros,a1),d3
+		Call		GT_ReplyIMsg
+
+		cmp.l		#IDCMP_CLOSEWINDOW,d6
+		beq		DM_closing
+
+		cmp.l		#IDCMP_GADGETUP,d6
+		beq		DM_button
+
+	;cmp.l		#IDCMP_NEWSIZE,d6
+	;bne		DM_msgloop
+
+	;------ Ricalcola dim etc.....
+	;bsr		ReCalcSize
+
+		bra.s		DM_lap11
+
+DM_closing	bsr		DM_Exit
+		moveq		#RETURN_WARN,d0
+		rts
+
+DM_button	move.w		(egg_GadgetID,a4),d0
+		cmp.w		#CANCEL_ID,d0
+		beq.s		DM_closing
+		cmp.w		#OK_ID,d0
+		beq		DM_okbutton
+		cmp.w		#LISTVIEW_ID,d0
+		bne.s		DM_msgloop
+DM_listview
+	; d4=seconds, d3=micros
+		move.l		(DC_Seconds,a5),d0
+		move.l		(DC_Micros,a5),d1
+		move.l		d4,(DC_Seconds,a5)
+		move.l		d3,(DC_Micros,a5)
+		move.l		d4,d2
+		Call2		Int,DoubleClick
+		tst.l		d0
+		beq		DM_msgloop
+
+DM_okbutton
+		move.l		(String_Gad,a5),a0
+		move.l		(MWindow,a5),a1
+		move.l		sp,d4
+		clr.l		-(sp)
+		lea		(Selezionato,a5),a2
+		move.l		a2,-(sp)
+		move.l		#GTST_String,-(sp)
+		move.l		sp,a3
+		suba.l		a2,a2
+		Call2		GT,GT_GetGadgetAttrsA
+		move.l		d4,sp
+
+		move.l		(Selezionato,a5),d1
+		move.l		d1,-(sp)
+		move.l		sp,d2
+		lea		(formatq,pc),a0
+		tst.l		(NoQuotesArg,a5)
+		beq.s		DM_quot
+		lea		(format,pc),a0
+DM_quot		move.l		a0,d1
+		Call2		DOS,VPrintf
+		addq.l		#4,sp
+		;bra		DM_Exit
+DM_Exit
+
+		move.l		(MWindow,a5),d0
+		beq.s		DM_nowin
+		move.l		d0,a0
+		bsr		CloseWindowSafely
+
+DM_nowin	move.l		(GList,a5),d0
+		beq.s		DM_nogads
+		move.l		d0,a0
+		Call2		GT,FreeGadgets
+
+DM_nogads	move.l		(VI,a5),a0
+		Call2		GT,FreeVisualInfo
+
+		move.l		(OldScreen,a5),a0
+		Call2		Int,ScreenToFront
+
+		move.l		(MScreen,a5),a1
+		suba.l		a0,a0
+		Call2		Int,UnlockPubScreen
+
+		moveq		#0,d0
+		rts
+
+
+
+;.............. USCITA GENERALE ............................
+
+Exit
+
+XNoApp		move.l		(Argument,a5),d1
+		beq.s		XFreePool
+		Call2		DOS,FreeArgs
+
+XFreePool	ExecBase
+		move.l		(PoolHeader,a5),d0
+		beq.s		Exit0
+		move.l		d0,a0
+		Call		DeletePool
+
+Exit0		ExecBase
+		move.l		(GTBase,a5),a1
+		Call		CloseLibrary
+		move.l		(DOSBase,a5),a1
+		Call		CloseLibrary
+		move.l		(IntBase,a5),a1
+		Call		CloseLibrary
+		move.l		(ReturnCode,a5),d0
+		move.l		(OldStack,a5),sp
+		rts
+
+
+;=SO============================================
+; GetSizeSize - restituisce size del gad resize
+;===============================================
+; OUT	d0	dim gad resize
+;===============================================
+;GetSizeSize	movem.l		d1-d7/a0-a6,-(sp)
+;		lea		(IClassTag,pc),a2
+;	;------	che resolution?
+;		moveq		#SYSISIZE_MEDRES,d0
+;		move.w		([MScreen.l,a5],sc_Flags.l),d1
+;		and.w		#SCREENHIRES,d1
+;		bne.s		checkres_fatto
+;		moveq		#SYSISIZE_LOWRES,d0
+;checkres_fatto	move.l		d0,(4,a2)		; prendiamo drawinfo
+;		move.l		(MScreen,a5),a0
+;		Call2		Int,GetScreenDrawInfo
+;		move.l		d0,(DRI,a2)		; nella tag list sua
+;		beq		GSS_Error0
+;		lea		(IClassName,pc),a1
+;		suba.l		a0,a0
+;		Call		NewObjectA		; creaimao obj
+;		tst.l		d0
+;		beq		GSS_Error
+;		move.l		d0,a0			; ricaviamone altezza
+;		move.w		(ig_Height,a0),-(sp)
+;		clr.w		-(sp)
+;		Call		DisposeObject		; liberriamolo
+;GSS_Free	lea		(IClassTag,pc),a2
+;		move.l		(DRI,a2),a1		; e pure le drawinfo
+;		move.l		(MScreen,a5),a0
+;		Call		FreeScreenDrawInfo
+;		move.l		(sp)+,d0
+;		movem.l		(sp)+,d1-d7/a0-a6
+;		rts				;  per errore restituiamo -1.l ...
+;GSS_Error0	moveq		#-1,d0
+;		movem.l		(sp)+,d1-d7/a0-a6
+;		rts
+;GSS_Error	move.l		#-1,-(sp)
+;		bra.s		GSS_Free
+
+
+;=I-=========================================================
+; CloseWindowSafely - chiude la finestra, da docs di sistema
+;============================================================
+; IN	a0	window
+;============================================================
+CloseWindowSafely
+		movem.l		a3-a4/a6,-(sp)
+		move.l		a0,a4
+cws_doit	ExecBase
+		Call		Forbid			; blocca tutto, manipoliamo
+		move.l		(wd_UserPort,a4),a3	; un po'..
+		bsr		StripIntuiMessages	; sgancia messaggi pendenti
+		clr.l		(wd_UserPort,a4)
+		Base		Int
+		move.l		a4,a0
+		moveq		#0,d0		; così non c'è più alcun msg richiesto,
+		Call		ModifyIDCMP	; evitiamo altre aggiunte
+		ExecBase
+		Call		Permit
+		move.l		a4,a0
+		Base		Int
+		Call		CloseWindow	; ora chiudiamo sul serio
+		movem.l		(sp)+,a3-a4/a6
+		rts
+StripIntuiMessages
+		move.l		(MP_MSGLIST+LH_HEAD,a3),a3
+sim_whileloop	move.l		(LN_SUCC,a3),d0
+		beq.s		sim_whilefine
+		move.l		d0,a2
+		cmp.l		(im_IDCMPWindow,a3),a4	; sono per la nostra window?
+		bne.s		sim_noquestafin
+		move.l		a3,a1
+;REMOVE		
+		move.l		(a1)+,a0
+		move.l		(a1),a1
+		move.l		a0,(a1)
+		move.l		a1,(LN_PRED,a0)
+;END REMOVE
+		move.l		a3,a1		; diciamo comunque al mittente che
+		Call2		GT,GT_ReplyIMsg	; qualcosa ci è arrivato.
+sim_noquestafin
+		move.l		a2,a3
+		bra.s		sim_whileloop
+sim_whilefine	rts
+
+;============
+; ReCalcSize
+;============
+; (non funzionava, tanto!!)
+;ReCalcSize
+;		rts
+
+
+;=================== CODICE DI SORT, PRESO DALLA TINY LIB E NON ======================
+;=================== ADATTATO COMPLETAMENTE IN STILE MIO =============================
+;
+; integrato.
+
+*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% SortList
+; a0 = ptr list
+
+SortList	cmp.l		(LH_TAIL+LN_PRED,a0),a0
+		beq		_retsort
+
+		movem.l		d2-d7/a2-a5/a6,-(sp)
+		move.l		(UtilBase,a5),d0
+		beq		_sl_exit
+		move.l		d0,a6		; MIA BASE
+		move.l		d0,d5
+		lea		(shelldata,pc),a5
+		sf		d5
+		move.l		a0,d6		; uno dei due è LST
+ 
+_singlesort	
+		; utility.library
+_sortloop01	move.l		d6,a2		;list
+		move.l		(LH_HEAD,a2),a2
+		tst.b		d5
+		beq.s		_sort1
+		subq.l		#1,a5
+_sort1		moveq.l		#0,d0
+		move.b		(a5)+,d0
+		beq.s		_exitsort
+		sf		d5
+		bsr.s		_splitshel
+		beq.s		_sortloop01
+_sortloop11	move.l		(LN_NAME,a2),a0
+		move.l		(LN_NAME,a3),a1
+		Call		Stricmp		; StriCmp
+		tst.l		d5
+		bpl.s		_trueord1
+		tst.l		d0
+		bge.s		_isord1
+		bra.s		_swapord1
+
+_trueord1	tst.l		d0
+		ble.s		_isord1
+_swapord1	st		d5
+		move.l		(LN_SUCC,a2),a0
+		move.l		(LN_SUCC,a3),a1
+		move.l		a3,(LN_PRED,a0)
+		move.l		a2,(LN_PRED,a1)
+		move.l		a1,(LN_SUCC,a2)
+		move.l		a0,(LN_SUCC,a3)
+		move.l		(LN_PRED,A2),a0
+		move.l		(LN_PRED,A3),a1
+		move.l		a3,(LN_SUCC,a0)
+		move.l		a2,(LN_SUCC,a1)
+		move.l		a1,(LN_PRED,a2)
+		move.l		a0,(LN_PRED,a3)
+		move.l		a3,a0
+		move.l		a2,a3
+		move.l		a0,a2
+_isord1		move.l		(LN_SUCC,a3),a3
+		tst.l		(a3)
+		beq.s		_sortloop01
+		move.l		(LN_SUCC,a2),a2
+		bra.s		_sortloop11
+
+_sl_exit
+_exitsort	movem.l		(sp)+,d2-d7/a2-a5/a6
+_retsort	rts	
+
+*-------------------------------
+_splitshel1	subq.w		#1,d1
+		move.l		a4,a0
+_splitloop1	move.l		(LN_SUCC,a0),a0
+		tst.l		(LN_SUCC,a0)
+		dbeq		d1,_splitloop1
+		rts	
+ 
+_splitshel	subq.w		#1,d0
+		move.l		a2,a3
+_splitloop	move.l		(LN_SUCC,a3),a3
+		tst.l		(LN_SUCC,a3)
+		dbeq		d0,_splitloop
+		rts	
+*-------------------------------
+shelldata	dc.b	255
+		dc.b	127
+		dc.b	63
+		dc.b	31
+		dc.b	15
+		dc.b	9
+		dc.b	5
+		dc.b	3
+		dc.b	2
+		dc.b	1
+		dc.b	0
+		dc.b	0
+		even
+
+
+
+;======================================================= Testi
+
+DOSName		dc.b	"dos.library",0
+GTName		dc.b	"gadtools.library",0
+IntName		dc.b	"intuition.library",0
+UtilName	dc.b	"utility.library",0
+
+InteroName	dc.b	"mMmMmMmMmMmMmMmMmMmMmMmMmM",0
+
+GTErrTxt	dc.b	"You need %s version %ld !",10,0
+ErrText		dc.b	"%s %s",10,0
+NoPoolText	dc.b	"allocating pool",0
+NoMemText	dc.b	"allocating a chunk of memory from pool",0
+FileErrText	dc.b	"opening file",0
+
+*IClassName	dc.b	"sysiclass",0
+
+format		dc.b	"%s",10,0
+formatq		dc.b	'"%s"',10,0
+
+AppTitle
+DefaultTitle
+MyName		dc.b	"RequestLV",0
+
+MyName0		dc.b	"RequestLV: error while",0
+
+OKText		dc.b	"OK",0
+CancelText	dc.b	"Cancel",0
+
+CR		dc.b	"(c) 2000 by "
+ApplicName	dc.b	"Mauro PANIGADA",0
+
+Template	dc.b	"LIST/M/A,TITLE/K,SEL=SELECTED/N/K,"
+		dc.b	"PUBSCREEN/K,FROMFILE/S,SORT/S"
+		dc.b	",NOQUOTES/S,NOSTRIP/S",0
+		even
+
+Listview_tag	dc.l	GTLV_Labels,0
+lv_sel		EQU	*-Listview_tag+4
+		dc.l	GTLV_Selected,-1
+lv_show		EQU	*-Listview_tag+4
+		dc.l	GTLV_ShowSelected,0
+		dc.l	LAYOUTA_Spacing,LINE_SPACING
+		;dc.l	GTLV_ItemHeight,0	; height esatta degli item...
+		dc.l	TAG_END
+
+String_tag	dc.l	GTST_MaxChars,MAXSTRINGLEN
+		dc.l	TAG_END
+
+*IClassTag	dc.l	SYSIA_Size,0		; della classe
+*		dc.l	SYSIA_DrawInfo
+*DRI		EQU	*-IClassTag
+*		dc.l	0
+*		dc.l	SYSIA_Which,SIZEIMAGE
+*		dc.l	TAG_END
+
+Window_Tag
+Win_Left	EQU	4
+		dc.l	WA_Left,0
+Win_Top		EQU	*-Window_Tag+4
+		dc.l	WA_Top,0
+Win_Width	EQU	*-Window_Tag+4
+		dc.l	WA_Width,0
+Win_Height	EQU	*-Window_Tag+4
+		dc.l	WA_Height,0
+		dc.l	WA_IDCMP,IDCMP_GADGETUP|IDCMP_CLOSEWINDOW|IDCMP_GADGETDOWN|IDCMP_MOUSEMOVE
+Win_Title	EQU	*-Window_Tag+4
+		dc.l	WA_Title,MyName
+Win_Gadgets	EQU	*-Window_Tag+4
+		dc.l	WA_Gadgets,0
+*Win_MinWidth	EQU	*-Window_Tag+4
+*		dc.l	WA_MinWidth,0
+*Win_MinHeight	EQU	*-Window_Tag+4
+*		dc.l	WA_MinHeight,0
+Win_PubScr	EQU	*-Window_Tag+4
+		dc.l	WA_PubScreen,0
+	;dc.l	WA_SizeGadget,1
+		dc.l	WA_DragBar,1
+		dc.l	WA_DepthGadget,1
+		dc.l	WA_CloseGadget,1
+	;dc.l	WA_SizeBBottom,1
+		dc.l	WA_RMBTrap,1
+		dc.l	WA_Activate,1
+		dc.l	WA_MaxWidth,-1
+		dc.l	WA_MaxHeight,-1
+		dc.l	TAG_END
+
+
+
+	SECTION	store,BSS
+
+Stores		ds.b	stores_SIZE
+
+
+		END

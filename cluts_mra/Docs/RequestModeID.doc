@@ -1,0 +1,16 @@
+
+$VER: RequestModeID.doc 39.1 (c) 1999 by Mauro Panigada
+
+RequestModeID 39.1
+===================
+
+(c) 1999 by Mauro Panigada
+
+RequestString, RequestFile, RequestChoice, what is lost? Request ... ?
+So RequestModeID is born: to fill the list of Request-- programs.
+Really, some program needs a magic number for the resolution of their
+screen. This number is the ModeID. Before this one, I have to read in
+graphics include file, now it exists RequestModeID. When I finished it,
+I never needed it again!
+Enjoy yourself.
+

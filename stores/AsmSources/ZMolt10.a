@@ -1,0 +1,15 @@
+
+		move.l	#$FF0000,d7
+		moveq	#1,d0
+loop0		mulu.w	#10,d0		;\
+		sub.l	#1,d7		; | 2 min 50 sec circa
+		bne.s	loop0		;/
+		move.l	#$FF0000,d7
+		moveq	#1,d0
+loop1		move.l	d0,d1		;\
+		lsl.l	#3,d1		; |
+		add.l	d0,d0		; | 2 min 15 sec circa
+		add.l	d1,d0		; |
+		sub.l	#1,d7		; |
+		bne.s	loop1		;/
+		rts

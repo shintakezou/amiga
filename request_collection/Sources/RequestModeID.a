@@ -1,0 +1,190 @@
+;
+; RequestModeID 39.1
+; written by Mauro Panigada
+;
+; $VER: RequestModeID.a 39.1 (1998.07.23) by Mauro Panigada
+;
+; What it does:
+; Write to standard output the hex value of the choosen mode id, through
+; asl screen mode requester.
+;
+; Requirements: OS3.0 (39), 68020+
+;
+
+		incdir	"inc:"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/execbase.i"
+		include	"exec/exec_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"libraries/asl.i"
+		include	"libraries/asl_lib.i"
+		include	"intuition/intuition_lib.i"
+
+
+LIBVERSION	EQU	39
+
+SPACE		MACRO
+		dc.b	" "
+		ENDM
+PROG_NAME	MACRO
+		dc.b	"RequestModeID"
+		SPACE
+		ENDM
+PROG_VERSION	MACRO
+		dc.b	"39.1"
+		SPACE
+		ENDM
+PROG_DATE	MACRO
+		dc.b	"(1998.07.23)"
+		ENDM
+PROG_AUTHOR	MACRO
+		SPACE
+		dc.b	"by Mauro Panigada"
+		ENDM
+
+CALL		MACRO
+		jsr	(_LVO\1,a6)
+		ENDM
+
+
+
+		opt	p=68020
+
+	SECTION	Main,CODE
+
+		bra.s	Start
+
+		dc.b	"$VER: "
+		PROG_NAME
+		PROG_VERSION
+		PROG_DATE
+		PROG_AUTHOR
+		dc.b	13,10,0
+		even
+
+Start
+		move.l	(4).w,a6
+		move.w	(AttnFlags,a6),d0
+		and.w	#AFF_68020,d0		; almeno il 68020!
+		bne.s	Ok68020P
+		moveq	#RETURN_ERROR,d0
+		rts
+
+Ok68020P
+		moveq	#RETURN_FAIL,d7		;d7=retunr code
+
+		suba.l	a3,a3
+
+		lea	(DOSName,pc),a1
+		moveq	#LIB_VERSION,d0
+		CALL	OpenLibrary
+		move.l	d0,d6			;d6=dosbase
+		beq	Main_Exit0
+
+		lea	(AslName,pc),a1
+		moveq	#LIBVERSION,d0
+		CALL	OpenLibrary
+		move.l	d0,d5			;d5=aslbase
+		beq	Main_Exit1
+
+		lea	(IntuitionName,pc),a1
+		moveq	#LIBVERSION,d0
+		CALL	OpenLibrary
+		move.l	d0,a3
+		tst.l	d0
+		beq	Main_Exit1
+
+		move.l	d6,a6
+		lea	(Template,pc),a0
+		move.l	a0,d1
+		clr.l	-(sp)
+		move.l	sp,d2
+		moveq	#0,d3
+		CALL	ReadArgs
+		move.l	d0,d4			;d4=readargs
+		move.l	(sp)+,a4		;a4=ptr a stringa nome pubscreen
+* ingora possibili errori: semplicemente fa come se non gli fosse stato passato
+* alcun argomento... (potrebbe esserci l'errore too many arguments o simile)
+
+		moveq	#RETURN_ERROR,d7
+
+		move.l	sp,a5
+		clr.l	-(sp)				; TAG_END
+		tst.l	a4
+		beq.s	NoPubScreen
+		move.l	a4,-(sp)
+		move.l	#ASLSM_PubScreenName,-(sp)
+		move.l	a4,a0
+		move.l	a3,a6
+		CALL	LockPubScreen
+		tst.l	d0
+		beq.s	NoPubScreen
+		move.l	d0,a0
+		CALL	ScreenToFront
+		move.l	a4,a0
+		CALL	UnlockPubScreen
+NoPubScreen	lea	(DefTitle,pc),a0
+		move.l	a0,-(sp)
+		move.l	#ASLSM_TitleText,-(sp)
+		move.l	sp,a0
+		moveq	#ASL_ScreenModeRequest,d0
+		move.l	d5,a6
+		CALL	AllocAslRequest
+		move.l	a5,sp
+		move.l	d0,a5
+		tst.l	d0
+		beq	Main_Exit2
+
+		moveq	#RETURN_WARN,d7
+		move.l	d0,a0
+		suba.l	a1,a1
+		CALL	AslRequest
+		tst.l	d0
+		beq.s	NullaFatto
+
+		moveq	#RETURN_OK,d7
+
+		move.l	(sm_DisplayID,a5),-(sp)
+		lea	(PFormat,pc),a0
+		move.l	a0,d1
+		move.l	sp,d2
+		move.l	d6,a6
+		CALL	VPrintf
+		addq.l	#4,sp
+NullaFatto
+		move.l	a5,a0
+		move.l	d5,a6
+		CALL	FreeAslRequest
+
+Main_Exit2
+		move.l	d4,d1
+		beq.s	Main_Exit1
+		move.l	d6,a6
+		CALL	FreeArgs
+
+Main_Exit1
+		move.l	d5,a1
+		move.l	(4).w,a6
+		CALL	CloseLibrary
+		move.l	d6,a1
+		CALL	CloseLibrary
+		move.l	a3,a1
+		CALL	CloseLibrary
+Main_Exit0
+		move.l	d7,d0
+		rts
+
+
+;=======================================
+
+DOSName		dc.b	"dos.library",0
+AslName		dc.b	"asl.library",0
+IntuitionName	dc.b	"intuition.library",0
+Template	dc.b	"PUBSCREEN/K",0
+PFormat		dc.b	"0x%08.lx",10,0
+DefTitle	dc.b	"Select Screen Mode",0
+
+
+		END

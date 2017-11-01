@@ -1,0 +1,663 @@
+;
+; $VER: Translator V1.0 by Mauro Panigada
+;
+; Convert a raw file into a sequence of dc.b, dc.w or dc.l
+; It needs OS3.0+
+;
+; FREEWARE
+;
+; Unfinished and bugged: 20-03-96 (1996-03-20)
+;
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec_lib.i"
+		include	"exec/memory.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/intuition_lib.i"
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i"
+		include	"libraries/asl.i"
+		include	"libraries/asl_lib.i"
+		include	"diskfont/diskfont.i"
+		include	"diskfont/diskfont_lib.i"
+		include	"graphics/graphics_lib.i"
+
+
+SETVAR		MACRO
+VarOffset	SET	\1
+		ENDM
+
+VARL		MACRO
+\1		EQU	VarOffset
+VarOffset	SET	VarOffset+4
+		ds.l	1
+		ENDM
+
+VARW		MACRO
+\1		EQU	VarOffset
+VarOffset	SET	VarOffset+2
+		ds.w	1
+		ENDM
+
+VARB		MACRO
+\1		EQU	VarOffset
+VarOffset	SET	VarOffset+1
+		ds.b	1
+		ENDM
+
+MEMB		MACRO
+\1		EQU	VarOffset
+VarOffset	SET	VarOffset+\2
+		ds.b	\2
+		ENDM
+
+CALL		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+NEWGAD		MACRO
+		dc.w	\1,\2,\3,\4
+		dc.l	\5,0,0,\6,0,\7
+		ENDM
+
+LV		EQU	39	; 3.0
+
+
+		SECTION	TranslatorCODE,CODE
+
+		lea	Stores,a5
+		bra.s	Start
+
+		dc.b	"$VER: Translator v1.0 by Mauro Panigada",0
+		even
+
+Start		movea.l	4.w,a6
+		lea	DosName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_DosBase(a5)
+		beq.s	LExit
+		lea	IntName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_IntBase(a5)
+		beq.s	LExit
+		lea	GadTName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_GadToolsBase(a5)
+		beq.s	LExit
+		lea	AslName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_AslBase(a5)
+		beq.s	LExit
+		lea	DiskFontName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_DiskFontBase(a5)
+		beq.s	LExit
+		lea	GfxName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_GfxBase(a5)
+		beq.s	LExit
+
+		bsr	Main
+		bsr	ErrorCheck
+
+LExit		movea.l	4.w,a6
+		move.l	_AslBase(a5),a1
+		CALL	CloseLibrary
+		move.l	_GadToolsBase(a5),a1
+		CALL	CloseLibrary
+		move.l	_IntBase(a5),a1
+		CALL	CloseLibrary
+		move.l	_DosBase(a5),a1
+		CALL	CloseLibrary
+		rts
+
+
+Main		bsr	OpenDiskFont
+		bsr	CreateGadgets
+		bsr	OpenMyWindow
+		bsr	AllocAsl
+
+		move.l	#DcB.msg,_DcType(a5)
+
+WaitMessages	movea.l	4.w,a6
+		move.l	_UserPort(a5),a0
+		CALL	WaitPort
+		move.l	_UserPort(a5),a0
+		move.l	_GadToolsBase(a5),a6
+		CALL	GT_GetIMsg
+		move.l	d0,a1
+		move.l	im_Class(a1),_Class(a5)
+		move.w	im_Code(a1),_Code(a5)
+		move.w	im_Qualifier(a1),_Qualifier(a5)
+		move.l	im_IAddress(a1),_IAddress(a5)
+		CALL	GT_ReplyIMsg
+
+		move.l	_Class(a5),d0
+		cmp.l	#IDCMP_GADGETUP,d0
+		beq.s	ButtonGadget
+		cmp.l	#IDCMP_CLOSEWINDOW,d0
+		bne.s	WaitMessages
+
+CloseAll	bsr	CloseMyWindow
+		bsr	FreeGadgets
+		bsr	UF_FreeVisual
+		bsr	UF_UnlockPS
+		bsr	FreeAsl
+		rts
+
+ButtonGadget	move.l	_IAddress(a5),a0
+		move.w	gg_GadgetID(a0),d0
+		lsl.w	#2,d0
+		lea	GadgetRoutines(pc),a0
+		move.l	(a0,d0),d0
+		beq.s	CloseAll
+		move.l	d0,a0
+		jsr	(a0)
+		bra	WaitMessages
+
+;--------------------------------------------------------------------------
+GetSAddr	suba.l	a2,a2
+		move.l	_IAddress(a5),a0
+		move.l	_Window(a5),a1
+		lea	MxG_TagList(pc),a3
+		CALL	GT_GetGadgetAttrsA
+		move.w	MxSelected(pc),d0
+		rts
+
+;--------------------------------------------------------------------------
+Cycle_sub	bsr	GetSAddr
+		move.w	d0,_GS_Number(a5)
+		lsl.w	#2,d0
+		lea	MxAddress(pc),a0
+		move.l	(a0,d0),_DcType(a5)
+		rts
+
+;--------------------------------------------------------------------------
+Hex_sub		bsr	GetSAddr
+		tst.w	d0
+		beq.s	HS_DecOut
+HS_HexOut	move.b	#"x",d0
+		move.b	#"$",d1
+		bra.s	HS_Do
+HS_DecOut	move.b	#"d",d0
+		move.b	#"0",d1
+HS_Do		move.b	d0,H_DcB+3
+		move.b	d0,H_DcW+3
+		move.b	d0,H_DcL+4
+		move.b	d1,H_DcB+1
+		move.b	d1,H_DcB+1
+		move.b	d1,H_DcL+1
+HS_End		rts
+		
+;--------------------------------------------------------------------------
+CreateGadgets	move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		CALL	LockPubScreen
+		move.l	d0,_WBLock(a5)
+		move.l	d0,a0
+		suba.l	a1,a1
+		move.l	_GadToolsBase(a5),a6
+		CALL	GetVisualInfoA
+		move.l	d0,_VisualInfo(a5)
+		lea	_GList(a5),a0
+		CALL	CreateContext
+		lea	MyGList(pc),a4
+		moveq	#0,d7		; gadgetID
+CGAD_Loop	tst.l	d0
+		beq	CGAD_Error
+		move.l	d0,a0
+		move.l	(a4),d0		; KIND
+		bmi.s	CGAD_End
+		move.l	4(a4),a1	; NEWGAD
+		move.l	_VisualInfo(a5),gng_VisualInfo(a1)
+		move.l	_SFont(a5),gng_TextAttr(a1)
+		move.w	d7,gng_GadgetID(a1)
+		addq.w	#1,d7
+		move.l	8(a4),a2	; TAGLIST
+		CALL	CreateGadgetA
+		add.l	#(4*3),a4
+		bra.s	CGAD_Loop
+CGAD_End	rts
+
+CGAD_Error	add.l	#4,sp
+		or.w	#$1111,_ErrorFlag(a5)
+		move.l	#CGAD_Error.msg,_ErrorString(a5)
+		bra	CloseAll
+
+;--------------------------------------------------------------------------
+OpenMyWindow	move.l	_IntBase(a5),a6
+		suba.l	a0,a0
+		lea	MyNewWindowTags(pc),a1
+		move.l	_GList(a5),NMWT_Gadgets(a1)
+		move.l	_WBLock(a5),NMWT_PubScreen(a1)
+		CALL	OpenWindowTagList
+		move.l	d0,_Window(a5)
+		bne.s	OMW_End
+OMW_Error	add.l	#4,sp
+		or.w	#$3333,_ErrorFlag(a5)
+		move.l	#OMW_Error.msg,_ErrorString(a5)
+		bra	CloseAll
+OMW_End		move.l	d0,a0
+		move.l	wd_UserPort(a0),_UserPort(a5)
+		rts
+
+;--------------------------------------------------------------------------
+OpenDiskFont	move.l	_DiskFontBase(a5),a6
+		lea	MyFont(pc),a0
+		CALL	OpenDiskFont
+		move.l	d0,_Font(a5)
+		bne.s	ODF_End
+ODF_Error	add.l	#4,sp
+		or.w	#$2222,_ErrorFlag(a5)
+		move.l	#ODF_Error.msg,_ErrorString(a5)
+		bra	CloseAll
+ODF_End		move.l	#MyFont,_SFont(a5)
+		rts
+
+;--------------------------------------------------------------------------
+FreeGadgets	move.l	_GList(a5),d0
+		beq.s	FG_End
+		move.l	d0,a0
+		move.l	_GadToolsBase(a5),a6
+		CALL	FreeGadgets
+FG_End		rts
+
+;--------------------------------------------------------------------------
+CloseMyWindow	move.l	_IntBase(a5),a6
+		move.l	_Window(a5),d0
+		beq.s	CMW_End
+		move.l	d0,a0
+		CALL	CloseWindow
+CMW_End		rts
+
+;--------------------------------------------------------------------------
+UF_FreeVisual	move.l	_GadToolsBase(a5),a6
+		move.l	_VisualInfo(a5),d0
+		beq.s	UF_F_End
+		move.l	d0,a0
+		CALL	FreeVisualInfo
+UF_F_End	rts
+
+UF_UnlockPS	move.l	_IntBase(a5),a6
+		move.l	_WBLock(a5),d0
+		beq.s	UF_U_End
+		move.l	d0,a1
+		suba.l	a0,a0
+		CALL	UnlockPubScreen
+UF_U_End	rts
+
+;--------------------------------------------------------------------------
+ErrorCheck	tst.w	_ErrorFlag(a5)
+		beq.s	EC_End
+		move.l	#Error.msg,d1
+		lea	_ErrorString(a5),a0
+		move.l	a0,d2
+		and.w	#$ff,_ErrorFlag(a5)
+		move.l	_DosBase(a5),a6
+		CALL	VPrintf
+EC_End		rts
+
+;--------------------------------------------------------------------------
+AllocAsl	move.l	_AslBase(a5),a6
+		moveq	#ASL_FileRequest,d0
+		lea	AslRequestTags(pc),a0
+		move.l	_Window(a5),4(a0)
+		CALL	AllocAslRequest
+		move.l	d0,_AslFileReq(a5)
+		beq.s	AA_Error
+		rts
+AA_Error	add.l	#4,sp
+		or.w	#$3333,_ErrorFlag(a5)
+		move.l	#AA_Error.msg,_ErrorString(a5)
+		bra	CloseAll
+
+;--------------------------------------------------------------------------
+FreeAsl		move.l	_AslBase(a5),a6
+		move.l	_AslFileReq(a5),d0
+		beq.s	FA_End
+		move.l	d0,a0
+		CALL	FreeAslRequest
+FA_End		rts
+
+;--------------------------------------------------------------------------
+Go_sub		move.l	_AslBase(a5),a6
+		move.l	_AslFileReq(a5),a0
+		lea	AFR_Tags(pc),a1
+		CALL	AslRequest
+		tst.l	d0
+		beq	GS_End
+		move.l	_AslFileReq(a5),a0
+		move.l	fr_Drawer(a0),a1
+		lea	_PathBuffer(a5),a2
+		move.l	a2,d1
+GS_CopyLoop	move.b	(a1)+,(a2)+
+		tst.b	-1(a1)
+		bne.s	GS_CopyLoop
+		move.l	fr_File(a0),d2
+		moveq	#64,d3
+		lsl.w	#1,d3		;128
+		move.l	_DosBase(a5),a6
+		CALL	AddPart
+		lea	_PathBuffer(a5),a0
+		move.l	a0,d1
+		move.l	#MODE_OLDFILE,d2
+		CALL	Open
+		move.l	d0,_FileHandler(a5)
+		beq	GS_Error
+		move.l	d0,d1
+		moveq	#0,d2
+		moveq	#OFFSET_END,d3
+		CALL	Seek
+		move.l	_FileHandler(a5),d1
+		moveq	#0,d2
+		moveq	#OFFSET_BEGINNING,d3
+		CALL	Seek
+		move.l	d0,_FileLength(a5)
+		move.l	_AslBase(a5),a6
+		move.l	_AslFileReq(a5),a0
+		lea	GSFR_Tags(pc),a1
+		CALL	AslRequest
+		tst.l	d0
+		beq	GS_End
+		move.l	_AslFileReq(a5),a0
+		move.l	fr_Drawer(a0),a1
+		lea	_PathBuffer(a5),a2
+		move.l	a2,d1
+GS_CopyLoop0	move.b	(a1)+,(a2)+
+		tst.b	-1(a1)
+		bne.s	GS_CopyLoop0
+		move.l	fr_File(a0),d2
+		moveq	#64,d3
+		lsl.w	#1,d3		;128
+		move.l	_DosBase(a5),a6
+		CALL	AddPart
+		lea	_PathBuffer(a5),a0
+		move.l	a0,d1
+		move.l	#MODE_NEWFILE,d2
+		CALL	Open
+		move.l	d0,_SaveHandler(a5)
+		beq	GS_Error
+
+GS_Main		move.l	4.w,a6
+		move.l	_FileLength(a5),d0
+		move.l	#MEMF_PUBLIC,d1
+		CALL	AllocVec
+		move.l	d0,_FileAVec(a5)
+		beq	GS_Error
+		move.l	d0,d2
+		move.l	_FileLength(a5),d3
+		move.l	_FileHandler(a5),d1
+		move.l	_DosBase(a5),a6
+		CALL	Read
+		move.l	_FileLength(a5),d1
+		cmp.l	d0,d1
+		bne	GS_Error
+
+		move.l	_SaveHandler(a5),d4
+		move.l	_DcType(a5),d5
+		move.l	_FileAVec(a5),a4
+		lea	GS_Buffer(pc),a3
+		move.w	_GS_Number(a5),d6
+		move.l	_FileLength(a5),d7
+GS_LoopA	moveq	#0,d0
+		tst.b	d6
+		bne.s	GS_NoByte
+		move.b	(a4)+,d0
+		;ext.w	d0
+		move.w	d0,(a3)
+		sub.l	#1,d7
+		bra.s	GS_Go
+GS_NoByte	cmp.b	#1,d6
+		bne.s	GS_NoWord
+		move.w	(a4)+,(a3)
+		sub.l	#2,d7
+		bra.s	GS_Go
+GS_NoWord	move.l	(a4)+,(a3)
+		sub.l	#4,d7
+GS_Go		move.l	d4,d1
+		move.l	d5,d2
+		move.l	a3,d3
+		CALL	VFPrintf
+		tst.l	d7
+		bgt.s	GS_LoopA
+
+GS_End		bsr	CloseHandler
+		rts
+GS_Error	move.l	_IntBase(a5),a6
+		move.l	_Window(a5),a0
+		lea	MEasyStruct(pc),a1
+		suba.l	a2,a2
+		lea	_PathBuffer(a5),a4
+		lea	GSE_Stream(pc),a3
+		move.l	a4,(a3)
+		CALL	EasyRequestArgs
+		bsr	CloseHandler
+		rts
+
+CloseHandler	move.l	_DosBase(a5),a6
+		move.l	_SaveHandler(a5),d1
+		beq.s	CH_NoHandler0
+		CALL	Close
+CH_NoHandler0	move.l	_FileHandler(a5),d1
+		beq.s	CH_NoHandler1
+		CALL	Close
+CH_NoHandler1
+GS_FreeAll	move.l	_FileAVec(a5),d0
+		beq.s	GS_FA_End
+		move.l	d0,a1
+		move.l	4.w,a6
+		CALL	FreeVec
+GS_FA_End	rts
+
+
+;==========================================================================
+DosName		dc.b	"dos.library",0
+		even
+IntName		dc.b	"intuition.library",0
+		even
+GadTName	dc.b	"gadtools.library",0
+		even
+AslName		dc.b	"asl.library",0
+		even
+DiskFontName	dc.b	"diskfont.library",0
+		even
+GfxName		dc.b	"graphics.library",0
+		even
+
+MyFont		dc.l	Mapa_name
+		dc.w	8
+		dc.b	FS_NORMAL,FPF_DISKFONT|FPF_PROPORTIONAL
+Mapa_name	dc.b	"Mapa.font",0
+		even
+
+Error.msg	dc.b	"Error while %s (%d).",10,0
+		even
+CGAD_Error.msg	dc.b	"creating gadgets",0
+		even
+OMW_Error.msg	dc.b	"opening window",0
+		even
+ODF_Error.msg	dc.b	"opening font mapa.font",0
+		even
+AA_Error.msg	dc.b	"allocating asl file requester",0
+		even
+
+ASL_WIDTH	EQU	200+(10*8)
+ASL_HEIGHT	EQU	210
+ASL_LEFTEDGE	EQU	(640-ASL_WIDTH)/2
+ASL_TOPEDGE	EQU	(256-ASL_HEIGHT)/2
+
+AslRequestTags	dc.l	ASLFR_Window,0
+		dc.l	ASLFR_PrivateIDCMP,TRUE
+		dc.l	ASLFR_SleepWindow,TRUE
+		dc.l	ASLFR_InitialLeftEdge,ASL_LEFTEDGE
+		dc.l	ASLFR_InitialTopEdge,ASL_TOPEDGE
+		dc.l	ASLFR_InitialWidth,ASL_WIDTH
+		dc.l	ASLFR_InitialHeight,ASL_HEIGHT
+		dc.l	ASLFR_RejectIcons,TRUE
+		dc.l	ASLFR_TextAttr,MyFont
+		dc.l	TAG_END
+
+AFR_Tags	dc.l	ASLFR_TitleText,GS_Title
+		dc.l	TAG_DONE
+
+GSFR_Tags	dc.l	ASLFR_TitleText,GSFR_Title
+		dc.l	ASLFR_DoSaveMode,TRUE
+		dc.l	TAG_DONE
+
+
+GS_Title	dc.b	"Select a file",0
+GSFR_Title	dc.b	"Select save file",0
+		even
+
+GSE_Stream	dc.l	0
+
+MEasyStruct	dc.l	EasyStruct_SIZEOF
+		dc.l	0
+		dc.l	GSE_Title
+		dc.l	GSE_Text
+		dc.l	GSE_Gadget
+
+GSE_Title	dc.b	"Translator",0
+GSE_Text	dc.b	"Error while opening file:",10
+		dc.b	"%s",0
+GSE_Gadget	dc.b	"Resume",0
+		even
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+My_IDCMP	EQU	IDCMP_GADGETUP|IDCMP_CLOSEWINDOW
+
+MyNewWindowTags	dc.l	WA_Left,40
+		dc.l	WA_Top,20
+		dc.l	WA_Width,174+6
+		dc.l	WA_Height,30+22
+		dc.l	WA_IDCMP,My_IDCMP
+NMWT_Gadgets	EQU	(*-MyNewWindowTags)+4
+		dc.l	WA_Gadgets,0
+NMWT_PubScreen	EQU	(*-MyNewWindowTags)+4
+		dc.l	WA_PubScreen,0
+		dc.l	WA_Title,MyTitle
+		dc.l	WA_SizeGadget,FALSE
+		dc.l	WA_DragBar,TRUE
+		dc.l	WA_CloseGadget,TRUE
+		dc.l	WA_DepthGadget,TRUE
+		dc.l	WA_GimmeZeroZero,FALSE
+		dc.l	WA_Activate,TRUE
+		dc.l	WA_RMBTrap,TRUE
+		dc.l	WA_ScreenTitle,MyScreenTitle
+		dc.l	TAG_DONE
+
+MyTitle		dc.b	"Translator V1.0",0
+		even
+MyScreenTitle	dc.b	"Translator V1.0 by Mauro Panigada",0
+		even
+
+GadgetRoutines	dc.l	0
+		dc.l	Cycle_sub
+		dc.l	Go_sub
+		dc.l	Hex_sub
+
+MyGList		dc.l	BUTTON_KIND,Gadget_0,0
+		dc.l	CYCLE_KIND,Gadget_1,G1_Tags
+		dc.l	BUTTON_KIND,Gadget_2,0
+		dc.l	CYCLE_KIND,Gadget_3,G3_Tags
+		dc.l	-1
+
+Gadget_0	NEWGAD	12,30,72,13,G0_Text,PLACETEXT_IN,0
+Gadget_1	NEWGAD	84,17,80,13,0,PLACETEXT_IN,0
+Gadget_2	NEWGAD	12,17,72,13,G2_Text,PLACETEXT_IN,0
+Gadget_3	NEWGAD	84,30,80,13,0,PLACETEXT_IN,0
+
+G0_Text		dc.b	"Quit",0
+G2_Text		dc.b	"GO",0
+		even
+
+MxG_TagList	dc.l	GTCY_Active,MxSelected
+		dc.l	TAG_DONE
+
+G1_Tags		dc.l	GTCY_Labels,MxStringArray
+		dc.l	TAG_DONE
+
+G3_Tags		dc.l	GTCY_Labels,MxStrArray2
+
+MxStringArray	dc.l	MxString0
+		dc.l	MxString1
+		dc.l	MxString2
+		dc.l	0
+
+MxStrArray2	dc.l	MxString3
+		dc.l	MxString4
+		dc.l	0
+
+MxString0	dc.b	"dc.b",0,0
+MxString1	dc.b	"dc.w",0,0
+MxString2	dc.b	"dc.l",0,0
+MxString3	dc.b	"Dec",0
+MxString4	dc.b	"Hex",0
+		even
+
+MxSelected	dc.w	0
+
+MxAddress	dc.l	DcB.msg
+		dc.l	DcW.msg
+		dc.l	DcL.msg
+
+DcB.msg		dc.b	9,9,"dc.b"
+H_DcB		dc.b	9,"0%d",10,0
+		even
+DcW.msg		dc.b	9,9,"dc.w"
+H_DcW		dc.b	9,"0%d",10,0
+		even
+DcL.msg		dc.b	9,9,"dc.l"
+H_DcL		dc.b	9,"0%ld",10,0
+		even
+
+GS_Buffer	dc.l	0
+
+
+;==========================================================================
+		SECTION	TranslatorBSS,BSS
+
+Stores
+		SETVAR	0
+		VARL	_DosBase
+		VARL	_IntBase
+		VARL	_GadToolsBase
+		VARL	_AslBase
+		VARL	_DiskFontBase
+		VARL	_GfxBase
+		VARL	_GList
+		VARL	_ErrorString
+		VARW	_ErrorFlag
+		VARL	_UserPort
+		VARL	_Font
+		VARL	_SFont
+		VARL	_WBLock
+		VARL	_VisualInfo
+		VARL	_Window
+		VARL	_Class
+		VARW	_Code
+		VARW	_Qualifier
+		VARL	_IAddress
+		VARL	_DcType
+		VARL	_AslFileReq
+		MEMB	_PathBuffer,128
+		VARL	_FileHandler
+		VARL	_FileLength
+		VARL	_SaveHandler
+		VARL	_FileAVec
+		VARW	_GS_Number
+
+
+		END

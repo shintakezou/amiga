@@ -1,0 +1,25 @@
+
+
+READ ME PLEASE
+==============
+
+All the program here documented, are tested on:
+
+Amiga 1200, 68030/882,
+ROM Operating System 39
+2MBytes of graphics memory
+4MBytes of other memory
+
+But they should work very well also on the simplest Amiga1200. The Operating
+System that the programs need is always (often) v39 (3.0). Almost all the
+programs need also 68020. To be sure, check and read the source file, read
+only its header, there are explained sometimes more things that in the doc.
+
+However, if you have the simplest Amiga1200, you can be sure the programs work.
+If you have 68000 (eg Amiga500) with OS 39, you have to read docs.
+
+Contact me to
+
+email: mrapng@hotmail.com    (PANIGADA Mauro)
+
+

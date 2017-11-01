@@ -1,0 +1,123 @@
+
+                                 MProtect v1.5
+                                ===============
+
+                           written by Mauro Panigada
+
+
+History
+~~~~~~~
+
+	1996.04.04		first line written
+	1996.04.10		finished (two days of real work with a
+				black-out... funny)
+	1996.04.11		control-break added (SetSignal way)
+	1996.04.15		(Ctrl-C performed via CheckSignal)
+
+
+
+What it does
+~~~~~~~~~~~~
+
+	As the name says, it is another protect command to be used from
+the CLI. I do not want to say that this can replace the standard DOS command,
+because it could be a lie... First of all it was an interesting exsercize
+which became a (probably) useful tool. It is different enough from
+the standard, you surely will prefer Protect and delete MProtect...
+but something (I believe) is better...
+
+
+Features
+~~~~~~~~
+
+	o Short (shorter than Protect)
+	o Multiple files with pattern-matching
+	o Handling of OTR and GRP protection flags
+	o It is pure.
+
+
+Usage
+~~~~~
+
+	From CLI you can try to write:
+
+		1> MProtect ?
+
+and read what it writes. First of all you will see that it can set
+the other&group protection flags, normally not used...
+
+	The main differece between Protect and MProtect is the way
+they handle the argument to understand which bits have to be changed,
+set on or set off. Protect uses a more powerful and intelligent way,
+that I did not use in MProtect.
+
+	While with Protect you can decide to keep some bits, leave
+others and change the status of these or those, with MProtect you ALWAYS
+specifies the whole mask: the specified flag (through argument) is setted
+on, those not specified is cleared. You cannot say to leave a bit as it
+was before, but if you know its status, you can do the right deed.
+This seems to be not very powerful... Maybe I will change it.
+
+	In MProtect it is better the way through which you can select
+the files you want to modify. MProtect accepts multiple files and each
+file-argument can be a pattern-matching mask!
+
+
+Examples
+~~~~~~~~
+
+	Suppose you have DF2:TOPO, DF2:CANE, DF2:DOG-GOD and
+DF2:GOD-DOG with strange file protection flags.. You will just type:
+
+1> mprotect df2:topo df2:cane df2:dog-god df2:god-dog
+
+and so you now setted the normal protection flags to these files.
+
+	Try this:
+
+1> protect df2:#?
+
+	You will see the protection all zero: (--------)
+
+1> mprotect df2:#?
+
+	You will see: (----RWED)
+
+	But surely the strong in MProtect is its multiple-files-pattern-
+matching arguments:
+
+2> protect df2:topo
+2> protect dh0:gatto
+2> protect df2:#?o
+
+	With MProtect you can write:
+
+3> mprotect df2:topo dh0:gatto df2:#?o
+
+	Or you can write:
+
+1> mprotect df2:o?o dh0:gatt#? df2:i/am/the/best/#?.???
+
+	To do the same thing you do with the three lines above (2> pr...)
+you cannot use the (3> mpr...). You have to write:
+
+3> mprotect df2:topo dh0:gatto df2:#?o R W EXE DEL
+
+	But if these files had the ARCHIVE flag, it will be destroyed.
+To save it you have to know its state (status!) and behave on purpose:
+
+3> mprotect df2:topo dh0:gatto df2:#?o A R W EXE DEL
+
+	This is not the better, I mean! Through this MProtect you can also
+modify the OTR_ and GRP_ flags, just typing it. Easy, isn't it? However,
+the best way to know a program it is to use it! If you like it, use it.
+
+	BUT:
+
+I AM *NOT* RESPONSIBLE OF ANY DAMAGES CAUSED BY A RIGHT OR WRONG USE OF
+THIS PROGRAM OR CAUSED BY UNKNOWN OR KNOWN BUGS OF IT.
+
+(And remember: this, even if not declared everywhere, it is always true).
+
+
+

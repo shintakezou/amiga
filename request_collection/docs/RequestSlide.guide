@@ -1,0 +1,130 @@
+@database RequestSlide.guide
+@$VER: RequestSlide.guide v1.0 (2003-07-19)
+@Author Mauro Panigada
+@(c) 2003 Mauro Panigada
+@wordwrap
+@index "MAIN"
+@NODE "MAIN" "RequestSlide's guide"
+
+@{b}RequestSlide 1.1@{ub}
+
+The purpose of this program is to make you able to choose a value in a range by using a gadtools slider. This program is part of a "request project" in order to do easier scripts. Other request tools I have written and that you can find on Aminet (ReqCollect): RequestString, RequestFile, RequestModeID, RequestChoice, RequestLV (RequestLVMUI).
+
+It happens not so often that I write in C. De facto, this is my first release of a C-written program. Surely the source code is far from being a good C-programming example...
+
+@{"Requirements" link "Requi"}
+@{"Usage" link "usage"}
+@{"Author" link "autore"}
+
+@ENDNODE
+
+@NODE "Requi" "Requirements"
+
+An Amiga(TM) can be useful.
+
+68020 and AmigaOS 3.0 (v39) are required.
+
+RequestSlide is tested on Amiga1200 with GVP A1291 (EC030+FPU), 4Mb + 2Mb (chip), AmigaOS v39.
+
+@ENDNODE
+
+@NODE "usage" "Usage"
+
+As all Request-serie program, is easy enough to use. Of course, the only way you can run it is on CLI/Shell or in scripts.
+
+The template is
+
+@{fg text}TO/N/A@{fg text}             the upper value of the range
+@{fg text}FROM/N@{fg text}             the lowest value of the range
+@{fg text}VALUE/N@{fg text}            set value to...
+@{fg text}HEX/S@{fg text}              output in hex
+@{fg text}HEXPREFIX/S@{fg text}        output in hex, use a prefix
+@{fg text}MOUSEPOS/S@{fg text}         popup window under mouse
+@{fg text}CENTER/S@{fg text}           center the window on screen
+@{"FUNC/K" link "funza"}            the only keyword I will explain better
+@{fg text}PUBSCREEN/K@{fg text}        popup on desired public screen
+
+@ENDNODE
+
+@NODE "funza" "The FUNC feature"
+
+RequestSlide allow you to choose a value from slider in a non linear way. Maybe sometimes it can be useful. Surely, it gives this feature in a way more complicated than it needs.
+
+In fact, RequestSlide has a little @{i}RPN calculator@{ui}, and you can pass a string to the RPN parser via FUNC keyword.
+
+Do you know how RPN calc works? It is easy. It exists a stack (here is of 256 items, enough room for the purpose), last you push, first you pop (LIFO, last in first out), where operands are stacked. Functions (operator) pop items they need from stack, compute and the result is pushed on the stack.
+
+Because of the fact that it is a more wide-spread set of C functions and procedures, the parser handles numbers in double precision, even if at last they are given as long integer values.
+
+In RequestSlide, you have to suppose the first operand on stack is the value of the slider. You can handle it using FUNC, then the number gadget will show you the result. It is easier if I give examples.
+
+But first it should be said that the values you use as FROM, as TO and as VALUE are the values @{b}before@{ub} computing!! The same can be said when you write a number in the number gadget of RequestSlide. Hm, this is because it should compute the inverse function of that one given by FUNC. It is an effort greater than the need, even if compute the inverse function in RPN I think it is easier than compute the inverse function in classic notation. (The inverse func should be computed as text expression... eg "1 + ln" would became "exp 1 -")
+
+Examples:
+(let x be the slider's value)
+
+1. FUNC "1 + ln"        -->>     ln(x+1)
+2. FUNC "sqrt 1 +"      -->>     sqrt(x) + 1
+3. FUNC "+ 1 sqrt"
+4. FUNC "2.5 * 0.0 /"
+
+1. Stack holds "x"
+   after "1", stack holds "x 1"
+   "+" takes x and 1, sums it and pushes "x+1". Now stack holds "x+1"
+   "ln" takes "x+1", compute log (base e) and pushes "ln(x+1)"
+   This last value on stack is taken by RequestSlide and shown in number gadget,
+   after reduction to integer.
+
+2. Try to do yourself.
+
+3. "+" waits two operands, but stack holds one ("x"). Never mind, you will
+   get wrong value, but nothing of dangerous.
+
+4. Division by zero. Ignored.
+
+Of course every needed check on range of work of math func is done. So, argument of sqrt must be a positive value, of ln and log must be greater than or equal to 1... Otherwise, the operation is not performed and you will take a wrong result.
+
+Stack holds 256 operands maximum. The bounds are cyclic. So, in exemplum 3, the "+" operator will try to take an operand from last position (256)... This is strange, but it is stranger you let the stack underflow.
+
+Here a list of operator RequestSlide recognize and their usage. If you want more, ask me or do it yourself (but remember, this software is freeware, you have to keep my name, just add your if you upload somewhere)
+
+(that needs two operands)
+
+@{fg highlight}+@{fg text}        a b +    -> a+b
+@{fg highlight}-@{fg text}        a b -    -> a-b
+@{fg highlight}*@{fg text}        a b *    -> a*b
+@{fg highlight}/@{fg text}        a b /    -> a/b
+@{fg highlight}%@{fg text}        a b %    -> a%b (integer modulo)
+@{fg highlight}^@{fg text}        a b ^    -> a^b
+@{fg highlight}swap@{fg text}     a b swap -> b a
+
+(that needs one operand)
+
+@{fg highlight}neg@{fg text}    a b neg    -> a -b
+@{fg highlight}sin@{fg text}    a b sin    -> a sin(b)
+@{fg highlight}cos@{fg text}    b cos      -> cos(b)
+@{fg highlight}exp@{fg text}    a exp      -> e^(a)
+@{fg highlight}log@{fg text}    a log      -> log(a)    (base10 log)
+@{fg highlight}ln@{fg text}     a ln       -> ln(a)     (base e log)
+@{fg highlight}pop@{fg text}    a b pop    -> a         (trash a value)
+@{fg highlight}sqrt@{fg text}   a sqrt     -> sqrt(a)
+
+@ENDNODE
+
+@NODE "autore" "About the Author"
+
+@{b}Mauro Panigada@{ub}
+
+You can find me here:
+
+musashi_7@libero.it
+tkn77@tiscali.it
+panigada@roma2.infn.it
+
+for questions, bugs report, suggestions, thanks and so on.
+
+I hope one of these addresses will still work in the future...
+
+@ENDNODE
+
+

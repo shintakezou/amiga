@@ -1,0 +1,1135 @@
+;==========================================================================
+; "Filetto", versione per il 2.04
+;==========================================================================
+;
+; Tentativo di scrivere un programma-gioco sul filetto a cinque, cioe`
+; quello in cui bisogna fare cinque in verticale, orizzontale, obliquo.
+;
+;--------------------------------------------------------------------------
+; Piu` che altro per scrivere la parte "intelligente" che gioca contro
+; l'avversario umano... Problema di intelligenza artificiale; strategia
+; e tattica.
+;--------------------------------------------------------------------------
+; $VER: Filetto.a by Mauro Panigada
+;--------------------------------------------------------------------------
+
+
+OSVERSION20	EQU	37
+OSVERSION30	EQU	39
+LV		EQU	OSVERSION20
+
+RES_X		EQU	640
+RES_Y		EQU	256
+
+DISPL_X		EQU	640		; stesse di prima
+DISPL_Y		EQU	256
+
+RESS_X		EQU	640
+RESS_Y		EQU	270
+
+GF_X		EQU	33		; 31
+BO_X		EQU	2	;33-2=31
+GF_Y		EQU	24		; 23
+BO_Y		EQU	1	; 24-1=23
+				; qualche problema a far quadrare
+MOD_X		EQU	20	; le dimensioni... (VEDERE)
+MOD_Y		EQU	26
+
+START_X		EQU	8
+START_Y		EQU	5
+
+STEP_X		EQU	20		;RES_X/GF_X
+STEP_Y		EQU	10		;RES_Y/GF_Y
+
+GF_MEMORY	EQU	(GF_X-BO_X)*(GF_Y-BO_Y)
+
+
+		incdir	"dh0:progr/assem/include/"
+		include	"exec/types.i"
+		include	"exec/libraries.i"
+		include	"exec/exec.i"
+		include	"exec/exec_lib.i"
+		include	"intuition/intuition.i"
+		include	"intuition/screens.i"
+		include	"intuition/intuition_lib.i"
+		include	"graphics/graphics_lib.i"
+		include	"libraries/gadtools.i"
+		include	"libraries/gadtools_lib.i"
+		include	"dos/dos.i"
+		include	"dos/dos_lib.i"
+		include	"libraries/asl.i"
+		include	"libraries/asl_lib.i"
+		include	"libraries/amigaguide.i"
+		include	"libraries/amigaguide_lib.i"
+
+
+		;include	"LVOs.i"
+	; LVOs.i non e` standard, ma e` completo (lo dice lui)
+
+
+CALL		MACRO
+		jsr	_LVO\1(a6)
+		ENDM
+
+VAR0		MACRO
+VarLength	SET	0
+		ENDM
+
+VARB		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+1
+		ds.b	1
+		ENDM
+
+VARW		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+2
+		ds.w	1
+		ENDM
+
+VARL		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+4
+		ds.l	1
+		ENDM
+
+MEMB		MACRO
+\1		EQU	VarLength
+VarLength	SET	VarLength+\2
+		ds.b	\2
+		ENDM
+
+MENU		MACRO
+		dc.b	\1,0
+		dc.l	\2,\3
+		dc.w	\4
+		dc.l	0,\5
+		ENDM
+
+MENUBAR		MACRO
+		MENU	NM_ITEM,NM_BARLABEL,0,0,0
+		ENDM
+
+MENUEND		MACRO
+		dc.b	NM_END,0
+		ENDM
+
+ITEXT		MACRO
+		dc.b	\4,\5		; front/backpen
+		dc.b	\6,0		; drawmode
+		dc.w	\2,\3		; left/top
+		dc.l	Topaz_80	; font
+		dc.l	\7		; text
+		dc.l	\1		; next
+		ENDM
+
+
+		SECTION	Filetto_CandD,CODE
+
+		lea	MemBase,a5
+		bra	Start
+
+FilettoVer	dc.b	"$VER: Filetto V1.0 by Mauro Panigada 1996"
+		dc.b	" for O.S. version 2.04 or upper.",0
+		even
+
+IntName		dc.b	"intuition.library",0
+		even
+DosName		dc.b	"dos.library",0
+		even
+GfxName		dc.b	"graphics.library",0
+		even
+GadToolsName	dc.b	"gadtools.library",0
+		even
+AslName		dc.b	"asl.library",0
+		even
+GuideName	dc.b	"amigaguide.library",0
+		even
+
+
+Start		lea	_MakeMove,a0
+		move.l	(a0),a0
+		jsr	(a0)
+		lea	IntName(pc),a1
+		moveq	#LV,d0
+		movea.l	4.w,a6
+		CALL	OpenLibrary
+		move.l	d0,_IntBase(a5)
+		beq	Exit
+		lea	GfxName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_GfxBase(a5)
+		beq	Exit
+		lea	GadToolsName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_GadToolsBase(a5)
+		beq	Exit
+		lea	AslName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_AslBase(a5)
+		beq	Exit
+		lea	GuideName(pc),a1
+		moveq	#34,d0			; »»»» v 34 ««««
+		CALL	OpenLibrary
+		move.l	d0,_AGuideBase(a5)
+			; se non lo apre, non puo` mostrare la guida
+		lea	DosName(pc),a1
+		moveq	#LV,d0
+		CALL	OpenLibrary
+		move.l	d0,_DosBase(a5)
+		beq.s	Exit
+
+		bsr	FilettoGame
+
+Exit		move.l	4.w,a6		; dal 2.04 (37) se un valore
+		move.l	_IntBase(a5),a1	; nullo viene passato, non cade
+		CALL	CloseLibrary	; il mondo!
+CloseGfx	move.l	_GfxBase(a5),a1
+		CALL	CloseLibrary
+CloseGadTools	move.l	_GadToolsBase(a5),a1
+		CALL	CloseLibrary
+CloseAsl	move.l	_AslBase(a5),a1
+		CALL	CloseLibrary
+CloseGuide	move.l	_AGuideBase(a5),a1
+		CALL	CloseLibrary
+CloseDos	move.l	_DosBase(a5),a1
+		CALL	CloseLibrary
+FastExit	lea	_MakeMove,a0
+		move.l	4(a0),a0
+		jsr	(a0)
+		moveq	#0,d0
+		rts
+
+;--------------------------------------------------------------------------
+FilettoGame	bsr	InitWin
+		tst.b	_InitFlag(a5)
+		bne.s	NoInitOh
+		bsr	OtherInit
+		bsr	AllocGameField
+		tst.b	_MemFlag(a5)
+		bne.s	NoInitOh
+		bsr	MakeMenu
+		tst.b	_InitFlag(a5)
+		bne.s	NoInitOh
+		bsr	PlayGame
+NoInitOh	bsr	KillMenu
+		bsr	CloseAll
+		rts
+
+;--------------------------------------------------------------------------
+OtherInit	move.l	_DosBase(a5),a6
+		CALL	GetProgramDir
+		move.l	d0,_ProgramDir(a5)
+		move.l	_AslBase(a5),a6
+		moveq	#ASL_FileRequest,d0
+		lea	AslRequestTags(pc),a0
+		move.l	_Window(a5),4(a0)
+		CALL	AllocAslRequest
+		move.l	d0,_AslFileReq(a5)
+		rts
+
+;--------------------------------------------------------------------------
+InitWin		move.l	_IntBase(a5),a6		; screen
+		suba.l	a0,a0
+		lea	NewScreenTag(pc),a1
+		CALL	OpenScreenTagList
+		move.l	d0,_Screen(a5)
+		beq	InitError
+		lea	CustomPtr(pc),a0
+		move.l	d0,4(a0)
+		move.l	d0,a0
+		moveq	#0,d0
+		move.b	sc_BarHeight(a0),d0
+		addq.w	#1,d0
+		lea	NewWindowTag(pc),a1
+		move.l	d0,4(a1)
+		lea	Win_Y_Dim(pc),a0
+		sub.l	d0,4(a0)		; tolte all'altezza!
+		suba.l	a0,a0
+		CALL	OpenWindowTagList
+		move.l	d0,_Window(a5)
+		beq	InitError
+		move.l	d0,a0
+		move.l	wd_RPort(a0),_RastPort(a5)
+		move.l	wd_UserPort(a0),_UserPort(a5)
+		rts
+
+InitError	st	_InitFlag(a5)
+		rts
+
+;--------------------------------------------------------------------------
+PlayGame	bsr	TraceField
+		bsr	SetPointer
+		lea	IntuiText_1(pc),a1
+		bsr	WriteGameStatus
+WaitMessages	move.l	_UserPort(a5),a0
+		move.l	4.w,a6
+		CALL	WaitPort
+		tst.l	d0
+		beq.s	WaitMessages
+		move.l	_UserPort(a5),a0
+		CALL	GetMsg
+		move.l	d0,a1
+		move.l	im_Class(a1),_Class(a5)
+		move.w	im_Code(a1),_Code(a5)
+		move.w	im_Qualifier(a1),_Qualifier(a5)
+		move.l	im_IAddress(a1),_IAddress(a5)
+		move.l	im_MouseX(a1),_MouseX(a5)
+		CALL	ReplyMsg
+		move.l	_Class(a5),d0
+		cmp.l	#IDCMP_MOUSEBUTTONS,d0
+		beq	MouseButtons
+		cmp.l	#IDCMP_MENUPICK,d0
+		bne	WaitMessages
+MenuPick	move.w	_Code(a5),d0
+		cmp.w	#-1,d0
+		beq	WaitMessages
+		move.w	d0,d1
+		and.w	#$1f,d0			;--> d0 = numero menu
+		move.w	d1,d2
+		lsr.w	#5,d1
+		and.w	#$3f,d1			;--> d1 = numero item
+		moveq	#11,d3
+		lsr.w	d3,d2
+		and.w	#$1f,d2			;--> d2 = numero sub
+		tst.b	d0
+		beq	MProjectMenu
+		cmp.b	#1,d0
+		beq	MGameMenu
+		cmp.b	#2,d0
+		beq	MSpecialMenu
+		cmp.b	#3,d0
+		bne	WaitMessages
+MScoreMenu	tst.b	d1			; MENU SCORE
+		beq	MShowScItem
+MResetScItem	;nop				; ITEM RESET SCORE
+		bra	WaitMessages
+MSpecialMenu	tst.b	d1			; MENU SPECIAL
+		beq	MSuggestItem
+		cmp.b	#1,d1
+		beq	MSkipItem
+		cmp.b	#2,d1
+		beq	MUndoItem
+		cmp.b	#4,d1
+		beq	MGuideItem
+		cmp.b	#5,d1
+		bne	WaitMessages
+MAbout		move.l	_IntBase(a5),a6		; ITEM ABOUT *
+		move.l	_Window(a5),a0
+		lea	EReqStruct(pc),a1
+		move.l	#AboutTitle,es_Title(a1)
+		move.l	#AboutText,es_TextFormat(a1)
+		move.l	#AboutGadget,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		suba.l	a3,a3
+		CALL	EasyRequestArgs
+		bra	WaitMessages
+MGameMenu	tst.b	d1			; MENU GAME
+		beq	MPlayItem
+		cmp.b	#1,d1
+		beq	MStopItem
+		cmp.b	#3,d1
+		bne	WaitMessages
+MResetItem	tst.b	_StatusFlag(a5)
+		beq	MRI_NoProblem
+		move.l	_IntBase(a5),a6
+		move.l	_Window(a5),a0
+		lea	EReqStruct(pc),a1
+		move.l	#MRI_Title,es_Title(a1)
+		move.l	#MRI_Text,es_TextFormat(a1)
+		move.l	#GIP_Gadget,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		suba.l	a3,a3
+		CALL	EasyRequestArgs
+		tst.l	d0
+		beq	WaitMessages
+MRI_NoProblem	bsr	StopGame		; ITEM RESET
+		bsr	FreeGame
+		bra	WaitMessages
+MShowScItem	;nop				; ITEM SHOW SCORE
+		bra	WaitMessages
+MProjectMenu	tst.b	d1			; MENU PROJECT
+		beq	MLoadItem
+		cmp.b	#1,d1
+		beq	MSaveItem
+		cmp.b	#2,d1
+		beq	MSaveAsItem
+		cmp.b	#4,d1
+		bne	WaitMessages
+MQuitItem	rts				; ITEM QUIT *
+
+MLoadItem	tst.b	_StatusFlag(a5)		; ITEM LOAD
+		bne.s	GameInPlay
+LoadAGame	move.l	_AslBase(a5),a6
+		move.l	_AslFileReq(a5),a0
+		lea	MLI_Tag(pc),a1
+		CALL	AslRequest
+		bra	WaitMessages
+MSaveItem	;nop				; ITEM SAVE
+		bra	WaitMessages
+MSaveAsItem	;nop				; ITEM SAVE AS
+		bra	WaitMessages
+
+GameInPlay	move.l	_IntBase(a5),a6
+		move.l	_Window(a5),a0
+		lea	EReqStruct(pc),a1
+		move.l	#GIP_Title,es_Title(a1)
+		move.l	#GIP_Text,es_TextFormat(a1)
+		move.l	#GIP_Gadget,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		suba.l	a3,a3
+		CALL	EasyRequestArgs
+		tst.l	d0
+		beq	WaitMessages
+		bsr	StopGame
+		bsr	FreeGame
+		bra	LoadAGame
+
+MPlayItem	tst.b	d2			; ITEM PLAY
+		beq	MYouStart
+		cmp.b	#1,d2
+		beq	MIStart
+		cmp.b	#2,d2
+		bne	WaitMessages
+MRegular	tst.b	_StatusFlag(a5)
+		bne	WaitMessages
+		move.b	_PrevGame(a5),d0
+		sub.b	#1,d0
+		tst.b	d0
+		bpl.s	RegularGame
+		moveq	#1,d0			; ITEM REGULAR
+		bsr	RandomGenerator
+RegularGame	tst.b	d0
+		beq	MIStart
+MYouStart	tst.b	_StatusFlag(a5)
+		bne	WaitMessages
+MYS_Passing	move.b	#2,_StatusFlag(a5)
+		lea	IntuiText_3(pc),a1	; ITEM MACHINE START
+		bsr	WriteGameStatus
+		move.l	a5,-(sp)
+		move.l	_MoveList(a5),a4
+		move.l	_PossibleMoves(a5),a3
+		move.l	_FieldMem(a5),a5
+		moveq	#0,d7		; dot
+		lea	_MakeMove,a0
+		addq.w	#8,a0
+		jsr	(a0)
+		move.l	(sp)+,a5
+		bsr	DoGfxMove
+		bsr	AddToMoveList
+		bsr	CPossibleMove
+		bsr	CheckWinner
+		tst.l	d0
+		bne	MachineWinner
+		lea	IntuiText_4(pc),a1
+		bsr	WriteGameStatus
+		move.b	#1,_StatusFlag(a5)	; tocca a human
+		bra	WaitMessages
+MIStart		tst.b	_StatusFlag(a5)
+		bne	WaitMessages
+		move.b	#1,_StatusFlag(a5)	; ITEM HUMAN START
+		lea	IntuiText_4(pc),a1
+		bsr	WriteGameStatus
+		bra	WaitMessages
+
+MachineWinner	bra	WaitMessages
+
+MStopItem	tst.b	_StatusFlag(a5)
+		beq.s	MSI_WM
+		bsr	StopGame
+MSI_WM		bra	WaitMessages
+
+StopGame	clr.b	_StatusFlag(a5)		; ITEM STOP
+		lea	IntuiText_1(pc),a1
+		bsr	WriteGameStatus
+		rts
+
+MSuggestItem	;nop				; ITEM SUGGEST
+		bra	WaitMessages
+MSkipItem	;nop				; ITEM SKIP
+		bra	WaitMessages
+MUndoItem	;nop				; ITEM UNDO
+		bra	WaitMessages
+MGuideItem	move.l	_IntBase(a5),a6
+		move.l	_AGuideBase(a5),d0	; ITEM AMIGAGUIDE *
+		beq.s	AGuideError
+		move.l	d0,a4
+		suba.l	a1,a1
+		lea	AGuideStruct(a5),a0
+		move.l	_ProgramDir(a5),nag_Lock(a0)
+		lea	AGuideName(pc),a2
+		move.l	a2,nag_Name(a0)
+		move.l	_Screen(a5),nag_Screen(a0)
+		;lea	PubTitle(pc),a2
+		;move.l	a2,nag_Screen(a0)
+		exg.l	a4,a6
+		CALL	OpenAmigaGuide
+		tst.l	d0
+		beq.s	AGuideAbsent
+		move.l	d0,d3
+		move.l	a6,a4
+		move.l	_DosBase(a5),a6
+		CALL	IoErr
+		cmp.w	#205,d0			; ERROR_OBJECT_NOT_FOUND
+		beq.s	AGuideAbsent
+		cmp.w	#101,d0
+		beq.s	AGuideAbsent
+		move.l	d3,a0
+		move.l	a4,a6
+		CALL	CloseAmigaGuide
+		bra	WaitMessages
+
+AGuideError	lea	EReqStruct(pc),a1
+		move.l	_Window(a5),a0
+		lea	AG_ErrorTitle,a2
+		move.l	a2,es_Title(a1)
+		lea	AG_ErrorText,a2
+		move.l	a2,es_TextFormat(a1)
+		lea	AboutGadget(pc),a2
+		move.l	a2,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		suba.l	a3,a3
+		move.l	_IntBase(a5),a6
+		CALL	EasyRequestArgs
+		bra	WaitMessages
+
+AGuideAbsent	lea	EReqStruct(pc),a1
+		move.l	_Window(a5),a0
+		move.l	#AG_AbsentTitle,es_Title(a1)
+		move.l	#AG_AbsentText,es_TextFormat(a1)
+		move.l	#AboutGadget,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		lea	AG_Stream(pc),a3
+		move.l	_IntBase(a5),a6
+		CALL	EasyRequestArgs
+		bra	WaitMessages
+
+;--------------------------------------------------------------------------
+MouseButtons	tst.b	_StatusFlag(a5)
+		beq	WaitMessages
+		cmp.b	#2,_StatusFlag(a5)
+		beq	WaitMessages
+		move.w	_Code(a5),d0
+		cmp.b	#IECODE_LBUTTON,d0
+		bne	WaitMessages
+MB_GetPlayerMv	moveq	#0,d0
+		move.l	d0,d1		; li azzera, onde evitare...
+		move.w	_MouseX(a5),d0
+		move.w	_MouseY(a5),d1
+		add.w	#START_X+2,d0
+		add.w	#START_Y,d1
+		divu.w	#STEP_X,d0	; d0=box X
+		divu.w	#STEP_Y,d1	; d1=box Y
+		bsr	CheckThisMove
+		tst.b	d2
+		beq	WaitMessages
+		moveq	#-1,d7		; d7=cross
+		bsr	DoGfxMoveH
+		bsr	AddToMoveList
+		bsr	CPossibleMove
+		bsr	CheckWinner
+		tst.l	d0
+		beq	MYS_Passing
+
+Human_Winner	bra	WaitMessages
+
+;--------------------------------------------------------------------------
+SetPointer	move.l	_Window(a5),a0
+		lea	MyPointer,a1
+		moveq	#12,d0
+		moveq	#16,d1
+		moveq	#-1,d2
+		moveq	#-1,d3
+		move.l	_IntBase(a5),a6
+		CALL	SetPointer
+		rts
+
+;--------------------------------------------------------------------------
+WriteGameStatus	move.l	a1,-(sp)
+		lea	IntuiText_Clr(pc),a1
+		bsr	WriteGS
+		move.l	(sp)+,a1
+WriteGS		move.l	_RastPort(a5),a0
+		move.w	#254+(8*8),d0
+		move.w	#244,d1
+		move.l	_IntBase(a5),a6
+		CALL	PrintIText
+		rts
+
+;--------------------------------------------------------------------------
+TraceField	move.l	_GfxBase(a5),a6
+		move.l	_RastPort(a5),a1
+		move.l	a1,a4
+		moveq	#3,d0
+		CALL	SetAPen
+		move.w	#GF_Y-1,d3
+		moveq	#START_Y,d2
+DrawY		moveq	#START_X,d0
+		move.w	d2,d1
+		move.l	a4,a1
+		CALL	Move
+		move.w	#RES_X-MOD_X+START_X,d0
+		move.w	d2,d1
+		move.l	a4,a1
+		CALL	Draw
+		add.w	#STEP_Y,d2
+		dbf	d3,DrawY
+		move.w	#GF_X-1,d3
+		moveq	#START_X,d2
+DrawX		move.w	d2,d0
+		moveq	#START_Y,d1
+		move.l	a4,a1
+		CALL	Move
+		move.w	#RES_Y-MOD_Y+START_Y,d1
+		move.w	d2,d0
+		move.l	a4,a1
+		CALL	Draw
+		add.w	#STEP_X,d2
+		dbf	d3,DrawX
+WriteStatus	move.l	_IntBase(a5),a6
+		lea	IntuiText_2(pc),a1
+		move.l	_RastPort(a5),a0
+		move.w	#254,d0
+		move.w	#244,d1
+		CALL	PrintIText
+		rts
+
+;--------------------------------------------------------------------------
+CloseAll	move.l	_IntBase(a5),a6
+		move.l	_Window(a5),d0
+		beq.s	CloseScr
+		move.l	d0,a0
+		CALL	CloseWindow
+CloseScr	move.l	_Screen(a5),d0
+		beq.s	FreeField
+		move.l	d0,a0
+		CALL	CloseScreen
+FreeField	move.l	_FieldMem(a5),d0
+		beq.s	FreeAsl
+		move.l	d0,a1
+		movea.l	4.w,a6
+		CALL	FreeVec
+FreeAsl		move.l	_AslFileReq(a5),d0
+		beq.s	FastCloseAll
+		move.l	d0,a0
+		move.l	_AslBase(a5),a6
+		CALL	FreeAslRequest
+FastCloseAll	rts
+
+;--------------------------------------------------------------------------
+AllocGameField	movea.l	4.w,a6
+		move.l	#GF_MEMORY,d0
+		move.l	#MEMF_PUBLIC!MEMF_CLEAR,d1
+		CALL	AllocVec
+		move.l	d0,_FieldMem(a5)
+		seq	_MemFlag(a5)
+		rts
+
+;--------------------------------------------------------------------------
+MakeMenu	lea	MyMenu(pc),a0
+		lea	MyMenuTag(pc),a1
+		move.l	_GadToolsBase(a5),a6
+		CALL	CreateMenusA
+		move.l	d0,_NMenuList(a5)
+		beq	MakeMenuError
+		move.l	_Screen(a5),a0
+		suba.l	a1,a1
+		CALL	GetVisualInfoA
+		move.l	d0,a1
+		move.l	d0,a4
+		move.l	_NMenuList(a5),a0
+		lea	MyMenuTag(pc),a2
+		CALL	LayoutMenusA
+		move.l	a4,a0
+		CALL	FreeVisualInfo		; -A in LVOs.i, ma in
+		move.l	_NMenuList(a5),a1	; gadtools_lib.i ricavato
+		move.l	_Window(a5),a0		; dall' fd e` solo
+		move.l	_IntBase(a5),a6		; FreeVisualInfo, e cosi`
+		CALL	SetMenuStrip		; negli autodocs.
+		sf	_InitFlag(a5)
+		rts
+
+MakeMenuError	st	_InitFlag(a5)
+		rts
+
+;--------------------------------------------------------------------------
+KillMenu	move.l	_IntBase(a5),a6
+		move.l	_Window(a5),d0
+		beq.s	NoMenuToKill
+		move.l	d0,a0
+		CALL	ClearMenuStrip
+		move.l	_NMenuList(a5),d0
+		beq.s	NoMenuToKill
+		move.l	d0,a0
+		move.l	_GadToolsBase(a5),a6
+		CALL	FreeMenus
+NoMenuToKill	rts
+
+;--------------------------------------------------------------------------
+RandomGenerator	lea	rndseed(pc),a0		; by P. Schwab
+		move.l	d0,d1
+		tst.w	d1
+		ble.s	setseed
+		move.l	(a0),d0
+		add.l	d0,d0
+		bhi.s	over
+		move.l	d2,-(sp)
+		move.l	$000CABC0,d2
+		eor.l	d2,d0		; <-- aggiunta by M.P. Considerando
+		move.l	(sp)+,d2
+		eori.l	#$1db72b41,d0	; che non si sa che ci puo` essere
+over		move.l	d0,(a0)		; in una locazione sconosciuta
+		andi.l	#$ffff,d0	; fissa....
+		divu	d1,d0
+		swap	d0
+		rts
+setseed		neg.w	d1
+		move.l	d1,(a0)
+		rts
+
+rndseed		dc.l	0
+
+
+;--------------------------------------------------------------------------
+DoGfxMove	bsr	CheckThisMove
+		tst.b	d2
+		beq	ErrorInMove
+DoGfxMoveH	movem.l	d0-d1,-(sp)
+		mulu.w	#STEP_X,d0
+		mulu.w	#STEP_Y,d1
+		sub.w	#START_X+2,d0
+		sub.w	#START_Y-2,d1
+		move.l	_RastPort(a5),a0
+		move.l	_IntBase(a5),a6
+		lea	Image_Dot(pc),a1
+		tst.b	d7
+		beq.s	DGM_OkDot
+		lea	Image_Cross(pc),a1
+DGM_OkDot	CALL	DrawImage
+		movem.l	(sp),d0-d1
+		move.l	_FieldMem(a5),a0
+		subq.w	#1,d0
+		subq.w	#1,d1
+		mulu.w	#(GF_X-BO_X),d1
+		adda.l	d1,a0
+		move.b	d7,d6
+		bset	#7,d6
+		move.b	d6,(a0,d0.w)
+		movem.l	(sp)+,d0-d1
+		rts
+
+ErrorInMove	move.l	_IntBase(a5),a6
+		move.l	_Window(a5),a0
+		lea	EReqStruct(pc),a1
+		move.l	#EIM_Title,es_Title(a1)
+		move.l	#EIM_Text,es_TextFormat(a1)
+		move.l	#EIM_Gadget,es_GadgetFormat(a1)
+		suba.l	a2,a2
+		lea	EIM_Stream(pc),a3
+		CALL	EasyRequestArgs
+		moveq	#-1,d0
+		moveq	#-1,d1
+		rts
+
+;--------------------------------------------------------------------------
+CheckWinner	moveq	#0,d0
+		rts
+
+;--------------------------------------------------------------------------
+AddToMoveList	rts
+
+;--------------------------------------------------------------------------
+CPossibleMove	rts
+
+;--------------------------------------------------------------------------
+CheckThisMove	moveq	#0,d2
+		tst.w	d0
+		beq.s	CTM_Error
+		tst.w	d1
+		beq.s	CTM_Error
+		cmp.w	#(GF_X-BO_X),d0
+		bhi.s	CTM_Error
+		cmp.w	#(GF_Y-BO_Y),d1
+		bhi.s	CTM_Error
+		move.w	d1,d3
+		subq.w	#1,d3
+		mulu.w	#(GF_X-BO_X),d3
+		move.l	_FieldMem(a5),a0
+		adda.l	d3,a0
+		sub.l	#1,a0
+		tst.b	(a0,d0.w)
+		bne.s	CTM_Error
+		moveq	#-1,d2
+CTM_Error	rts
+
+;--------------------------------------------------------------------------
+		rsreset
+dm_NextMove	rs.l	1	; struttura DoneMove
+dm_XPos		rs.w	1
+dm_YPos		rs.w	1
+dm_CrossDot	rs.l	1
+dm_SIZEOF	rs.l	1
+
+		rsreset
+pm_NextMove	rs.l	1	; struttura PossibleMove
+pm_XPos		rs.w	1
+pm_YPos		rs.w	1
+pm_SIZEOF	rs.l	1
+
+
+FreeGame	movea.l	4.w,a6
+		move.l	_MoveList(a5),d3	; d3 gia` testato,
+FG_ML_Loop	tst.l	d3			; ma serve per il loop
+		beq.s	NoMoveListFG
+		move.l	d3,a1
+		move.l	dm_NextMove(a1),d3
+		CALL	FreeVec
+		bra.s	FG_ML_Loop
+NoMoveListFG	move.l	_PossibleMoves(a5),d3
+FG_PM_Loop	tst.l	d3
+		beq.s	NoPossMoveFG
+		move.l	d3,a1
+		move.l	pm_NextMove(a1),d3
+		CALL	FreeVec
+		bra.s	FG_PM_Loop
+NoPossMoveFG	rts
+
+
+;==========================================================================
+
+TRUE		EQU	-1
+FALSE		EQU	0
+
+NewScreenTag	dc.l	SA_Width,RESS_X
+		dc.l	SA_Height,RESS_Y
+		dc.l	SA_Depth,2
+		dc.l	SA_DetailPen,0
+		dc.l	SA_BlockPen,1
+		dc.l	SA_DisplayID,PAL_MONITOR_ID|HIRES_KEY
+		dc.l	SA_Pens,ScreenPens
+		dc.l	SA_Title,ScreenTitle
+		dc.l	SA_Font,Topaz_80
+		dc.l	SA_Overscan,OSCAN_STANDARD
+		dc.l	SA_Type,CUSTOMSCREEN
+		dc.l	SA_AutoScroll,TRUE
+		dc.l	SA_PubName,PubTitle
+		dc.l	SA_Colors,ScreenColors
+		dc.l	TAG_END
+
+NewWindowTag	dc.l	WA_Top,0
+		dc.l	WA_Left,0
+		dc.l	WA_Width,RESS_X
+Win_Y_Dim	dc.l	WA_Height,RESS_Y
+		dc.l	WA_IDCMP,IDCMP_MENUPICK!MOUSEBUTTONS
+CustomPtr	dc.l	WA_CustomScreen,0
+		dc.l	WA_SizeGadget,FALSE
+		dc.l	WA_DragBar,FALSE
+		dc.l	WA_DepthGadget,FALSE
+		dc.l	WA_CloseGadget,FALSE
+		dc.l	WA_Backdrop,TRUE
+		dc.l	WA_Activate,TRUE
+		dc.l	WA_Borderless,TRUE
+		dc.l	WA_NewLookMenus,TRUE
+		dc.l	TAG_END
+
+MyMenuTag	dc.l	GTMN_NewLookMenus,TRUE
+		dc.l	TAG_END
+
+
+ScreenTitle	dc.b	"Filetto V1.0 by Mauro Panigada",0
+		even
+
+PubTitle	dc.b	"FilettoGame1",0
+		even
+
+Topaz_80	dc.l	Topaz_name
+		dc.w	TOPAZ_EIGHTY
+		dc.b	FS_NORMAL,FPF_ROMFONT
+
+Topaz_name	dc.b	"topaz.font",0
+		even
+
+ScreenPens	dc.w	-1
+
+ScreenColors	dc.w	0,10,10,10
+		dc.w	1,0,0,0
+		dc.w	2,15,15,15
+		dc.w	3,6,8,11
+		dc.w	-1
+
+Project_Menu	dc.b	"Project",0
+Load_Item	dc.b	"Load...",0
+Save_Item	dc.b	"Save",0
+SaveAs_Item	dc.b	"Save As...",0
+About_Item	dc.b	"About",0
+Quit_Item	dc.b	"Quit Filetto ",0
+Game_Menu	dc.b	"Game",0
+Play_Item	dc.b	"Play",0
+IStart_Item	dc.b	"Machine starts ",0
+HeStarts_Item	dc.b	"Human starts",0
+Regular_Item	dc.b	"Regular",0
+Stop_Item	dc.b	"Stop",0
+Reset_Item	dc.b	"Reset   ",0
+Extras_Menu	dc.b	"Special",0
+Suggest_Item	dc.b	"Suggest my move ",0
+Skip_Item	dc.b	"Skip my move",0
+Undo_Item	dc.b	"Undo last move",0
+Guide_Item	dc.b	"AmigaGuide",0
+Score_Menu	dc.b	"Score",0
+Show_Item	dc.b	"Show",0
+SReset_Item	dc.b	"Reset    ",0
+		even
+
+Load_Key	dc.b	"L",0
+Save_Key	dc.b	"S",0
+SaveAs_Key	dc.b	"A",0
+Quit_Key	dc.b	"Q",0
+Play_Key	dc.b	"P",0
+Stop_Key	dc.b	"O",0
+		even
+
+EReqStruct	dc.l	EasyStruct_SIZEOF
+		dc.l	0
+		dc.l	-1		; falsi valori (TITLE)
+		dc.l	-1		; (TEXT)
+		dc.l	-1		; (GADGET)
+
+EIM_Title	dc.b	"Error!",0
+EIM_Text	dc.b	"Error in _MakeMove routine:",10
+		dc.b	"%s",0
+EIM_Gadget	dc.b	"Resume",0
+		even
+
+EIM_Stream	dc.l	EIM_ErrorType
+
+EIM_ErrorType	dc.b	"impossible move.",0
+		even
+
+AboutTitle	dc.b	"About...",0
+AboutText	dc.b	"         Filetto  V1.0         ",10,10
+		dc.b	"   Written by Mauro Panigada",10,10
+		dc.b	"  Public screen: FilettoGame1",10,10
+		dc.b	"For more  informations  you can",10
+		dc.b	"read the AmigaGuide Text."
+		dc.b	0
+AboutGadget	dc.b	"Ok",0
+		even
+
+MRI_Title
+GIP_Title	dc.b	"Filetto's query",0
+GIP_Text	dc.b	"You are playing a game.",10
+		dc.b	"Are you sure you want to lose it?",0
+GIP_Gadget	dc.b	"Sure|Noooh!",0
+		even
+
+MRI_Text	dc.b	"RESET: This game will be lost.",10
+		dc.b	"Are you sure?",0
+		even
+
+AGuideName	dc.b	"Filetto.guide",0
+		even
+
+AG_Stream	dc.l	AGuideName
+
+AG_ErrorTitle
+AG_AbsentTitle	dc.b	"Opening error...",0
+		even
+AG_AbsentText	dc.b	"I can't find %s",0
+		even
+
+AG_ErrorText	dc.b	"I have not found amigaguide.library",0
+		even
+
+IntuiText_Clr	ITEXT	IntuiText_ClrB,1,1,1,0,RP_JAM2,Text_Clr
+IntuiText_ClrB	ITEXT	0,0,0,2,0,RP_JAM2,Text_Clr
+Text_Clr	dc.b	"        ",0
+		even
+
+IntuiText_1	ITEXT	IntuiText_1b,1,1,1,0,RP_JAM1,Text_1
+IntuiText_1b	ITEXT	0,0,0,2,0,RP_JAM1,Text_1
+Text_1		dc.b	"Stopped ",0
+		even
+
+IntuiText_2	ITEXT	IntuiText_2b,1,1,1,0,RP_JAM1,Text_2
+IntuiText_2b	ITEXT	0,0,0,2,0,RP_JAM1,Text_2
+Text_2		dc.b	"STATUS:",0
+		even
+
+IntuiText_3	ITEXT	IntuiText_3b,1,1,1,0,RP_JAM1,Text_3
+IntuiText_3b	ITEXT	0,0,0,2,0,RP_JAM1,Text_3
+Text_3		dc.b	"Computer",0
+		even
+
+IntuiText_4	ITEXT	IntuiText_4b,1,1,1,0,RP_JAM1,Text_4
+IntuiText_4b	ITEXT	0,0,0,2,0,RP_JAM1,Text_4
+Text_4		dc.b	"Human   ",0
+		even
+
+ASL_WIDTH	EQU	200+(10*8)
+ASL_HEIGHT	EQU	210
+ASL_LEFTEDGE	EQU	(DISPL_X-ASL_WIDTH)/2
+ASL_TOPEDGE	EQU	(DISPL_Y-ASL_HEIGHT)/2
+
+AslRequestTags	dc.l	ASLFR_Window,0
+		dc.l	ASLFR_PrivateIDCMP,TRUE
+		dc.l	ASLFR_SleepWindow,TRUE
+		dc.l	ASLFR_InitialLeftEdge,ASL_LEFTEDGE
+		dc.l	ASLFR_InitialTopEdge,ASL_TOPEDGE
+		dc.l	ASLFR_InitialWidth,ASL_WIDTH
+		dc.l	ASLFR_InitialHeight,ASL_HEIGHT
+		dc.l	ASLFR_RejectIcons,TRUE
+		dc.l	TAG_END
+
+MLI_Tag		dc.l	ASLFR_TitleText,MLI_Title
+		dc.l	ASLFR_PositiveText,MLI_Positive
+		dc.l	ASLFR_DoPatterns,TRUE
+		dc.l	ASLFR_RejectIcons,TRUE
+		dc.l	TAG_END
+
+MLI_Title	dc.b	"Loading a game...",0
+MLI_Positive	dc.b	"Load",0
+		even
+
+Image_Cross	dc.w	0,0,16,7
+		dc.b	1,0
+		dc.l	Data_Cross
+		dc.b	1,%00000001
+		dc.l	0
+
+Image_Dot	dc.w	0,0,16,7
+		dc.b	1,0
+		dc.l	Data_Dot
+		dc.b	1,%00000001
+		dc.l	0
+
+MyMenu		MENU	NM_TITLE,Project_Menu,0,0,0
+		MENU	NM_ITEM,Load_Item,Load_Key,0,0
+		MENU	NM_ITEM,Save_Item,Save_Key,0,0
+		MENU	NM_ITEM,SaveAs_Item,SaveAs_Key,0,0
+		MENUBAR
+		MENU	NM_ITEM,Quit_Item,Quit_Key,0,0
+		MENU	NM_TITLE,Game_Menu,0,0,0
+		MENU	NM_ITEM,Play_Item,0,0,0
+		MENU	NM_SUB,IStart_Item,0,0,0
+		MENU	NM_SUB,HeStarts_Item,0,0,0
+		MENU	NM_SUB,Regular_Item,Play_Key,0,0
+		MENU	NM_ITEM,Stop_Item,Stop_Key,0,0
+		MENUBAR
+		MENU	NM_ITEM,Reset_Item,0,0,0
+		MENU	NM_TITLE,Extras_Menu,0,0,0
+		MENU	NM_ITEM,Suggest_Item,0,0,0
+		MENU	NM_ITEM,Skip_Item,0,0,0
+		MENU	NM_ITEM,Undo_Item,0,0,0
+		MENUBAR
+		MENU	NM_ITEM,Guide_Item,0,0,0
+		MENU	NM_ITEM,About_Item,0,0,0
+		MENU	NM_TITLE,Score_Menu,0,0,0
+		MENU	NM_ITEM,Show_Item,0,0,0
+		MENU	NM_ITEM,SReset_Item,0,0,0
+		MENUEND
+
+
+		SECTION	Filetto_Buffer,BSS
+
+MemBase
+		VAR0
+		VARL	_IntBase
+		VARL	_GfxBase
+		VARL	_GadToolsBase
+		VARL	_AGuideBase
+		VARL	_AslBase
+		VARL	_DosBase
+
+		VARL	_Screen
+		VARL	_Window
+		VARL	_RastPort
+		VARL	_UserPort
+
+		VARL	_Class
+		VARW	_Code
+		VARW	_Qualifier
+		VARL	_IAddress
+		VARW	_MouseX
+		VARW	_MouseY
+
+		VARL	_ProgramDir
+		VARL	_AslFileReq
+
+		VARB	_InitFlag
+		VARB	_MemFlag
+		VARB	_StatusFlag	; 0, stop; 1 human; 2 computer
+		VARB	_PrevGame	; 0, no; 1 vinto comp; 2 vinto uomo
+
+		VARL	_NMenuList
+
+		VARL	_FieldMem
+		VARL	_MoveList
+		VARL	_PossibleMoves
+
+		MEMB	AGuideStruct,NewAmigaGuide_SIZEOF
+
+
+
+		SECTION	FilettoImages,DATA_C
+
+MyPointer	dc.w	0,0
+
+		dc.w	%0000000000000000,%0000000000000000
+		dc.w	%1100000000000000,%0100000000000000
+		dc.w	%0111000000000000,%1011000000000000
+		dc.w	%0011110000000000,%0100110000000000
+		dc.w	%0011111100000000,%0100001100000000
+		dc.w	%0001111111000000,%0010000011000000
+		dc.w	%0001111111000000,%0010000000000000
+		dc.w	%0000111100000000,%0001000100000000
+		dc.w	%0000110110000000,%0001001010000000
+		dc.w	%0000010011000000,%0000100101000000
+		dc.w	%0000010001100000,%0000100010100000
+		dc.w	%0000000000100000,%0000000001000000
+
+		dc.w	0,0
+
+Data_Cross	dc.w	%0001100000011000	; 16*7
+		dc.w	%0000110000110000
+		dc.w	%0000011001100000
+		dc.w	%0000001111000000
+		dc.w	%0000011001100000
+		dc.w	%0000110000110000
+		dc.w	%0001100000011000
+
+Data_Dot	dc.w	%0001111111111000
+		dc.w	%0011000000001100
+		dc.w	%0011000000001100
+		dc.w	%0011000000001100
+		dc.w	%0011000000001100
+		dc.w	%0011000000001100
+		dc.w	%0001111111111000
+
+
+
+		SECTION	FilettoMain,CODE
+
+_MakeMove	dc.l	NoInitReq
+		dc.l	NoClrReq
+
+		moveq	#0,d0
+		move.b	#30,d0
+		jsr	RandomGenerator
+		addq.w	#1,d0
+		move.w	d0,d2
+		moveq	#0,d0
+		move.b	#22,d0
+		jsr	RandomGenerator
+		addq.w	#1,d0
+		move.w	d0,d1
+		move.w	d2,d0
+		
+NoInitReq
+NoClrReq
+		rts
+
+
+		END

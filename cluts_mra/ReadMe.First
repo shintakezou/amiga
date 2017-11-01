@@ -1,0 +1,58 @@
+
+How to contact me
+=================
+
+ Do not use the e-mail address (or addresses) you can find in the source
+ Instead use this email address.
+
+ tkn77@tiscali.it                   or
+ mauro.panigada@capo-nord.org       or
+
+
+About archive
+=============
+
+*
+ Of course, I AM *NOT* RESPONSIBLE OF ANY DAMAGES DONE BY A CORRECT OR
+ UNCORRECT USAGE OF THE GIVEN PROGRAMS. USE IT AT YOUR OWN RISK.
+*
+ All the programs are freely distributable (FREEWARE). This means that you can get
+ a single program and re-distribute it, WITH ITS SOURCE in assembly language,
+ if given, and ITS OWN DOCUMENTATION. Only If you keep altogether this three things
+ you can re-distribute single program (the archive is a collection of several
+ programs). You can re-distribute also the whole archive, of course.
+*
+ You ARE NOT ALLOWED to modify the program(s) in anyway, even if the source in
+ assembly language is given. These sources are given only for study and analysis.
+ Only UN-MODIFIED program (include: its source, its documentation) can be
+ re-distribute.
+*
+ All programs in this archive are copyrighted by Mauro PANIGADA.
+
+
+ABOUT DOCUMENTATION
+===================
+
+ Its often very brief. Part of it derives from the header of the sources, as
+ you can easily verify.
+ Enjoy yourself.
+
+
+WHY THIS ONE AGAIN?
+===================
+
+This files and programs are already present on Aminet, because I uploaded them
+time ago. Why I uploaded them again?
+There are four reason:
+1) The first archive seems to be passed rather unobserved. Yes, the contents
+   are not so great, but something interesting exists.
+2) Because of 1, I decided to release, this time, only truely the best program,
+   the ones you can really use and find useful. So this archive is shorter.
+   I believe that you already have in your c dir RequestFile, RequestChoice,
+   RequestString or equivalent, you can replace it and be happier.
+3) MUFilter is not between the programs I believe you need better, but the
+   released version was bugged... now it is ok!
+4) Have you seen XCom? (it is my very little beast) Do you think Filenote is
+   better? Where have I to enhance it?
+   (I would like to see that everyone have replaced Filenote with my XCom...)
+
